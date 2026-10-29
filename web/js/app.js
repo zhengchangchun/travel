@@ -71,6 +71,7 @@
   function renderItinerary() {
     Itinerary.render($('itinerary-list'), Selection.list(), {
       onMove: onMovePin,
+      onRemove: onRemoveFromItinerary,
     });
     if (Route) Route.draw(state.city, Selection.list());
   }
@@ -124,6 +125,19 @@
       await Selection.remove(pin.id);
     } catch (err) {
       UI.setStatus('移除失败：' + err.message);
+    }
+  }
+
+  // 行程视图删点：DELETE /api/pins/:id → 刷新选中集、地图旗子与计数
+  async function onRemoveFromItinerary(pin) {
+    if (!window.confirm('从行程中删除「' + pin.name + '」？')) return;
+    try {
+      if (pin.pinId != null) await API.deletePin(pin.pinId);
+      else await Selection.remove(pin);
+      await reloadSelection();
+      UI.setStatus('已删除：' + pin.name);
+    } catch (err) {
+      UI.setStatus('删除失败：' + err.message);
     }
   }
 

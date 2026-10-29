@@ -41,14 +41,17 @@
         '<button class="up" title="上移">↑</button>' +
         '<button class="down" title="下移">↓</button>' +
         '</span>' +
+        '<button class="del" title="从行程删除">×</button>' +
         '</div>' +
         '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
         (meta.length ? '<div class="poi-meta">' + esc(meta.join(' · ')) + '</div>' : '');
 
       const up = li.querySelector('.up');
       const down = li.querySelector('.down');
+      const del = li.querySelector('.del');
       if (up) up.onclick = (e) => { e.stopPropagation(); handlers.onMove(index, -1); };
       if (down) down.onclick = (e) => { e.stopPropagation(); handlers.onMove(index, 1); };
+      if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
       container.appendChild(li);
     });
   }
