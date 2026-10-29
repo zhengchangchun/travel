@@ -130,6 +130,10 @@
   async function onMovePin(index, delta) {
     try {
       await Selection.move(index, delta);
+      // 顺序需先落库再重算，避免用旧顺序请求路线（乐观刷新可能早于 PUT 完成）
+      if (state.view === 'itinerary' && Route) {
+        Route.draw(state.city, Selection.list());
+      }
     } catch (err) {
       UI.setStatus('调序失败：' + err.message);
     }
