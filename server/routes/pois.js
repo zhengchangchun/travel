@@ -1,4 +1,5 @@
 const { collectCityCategory } = require('../collect');
+const { toDetail } = require('../poi-detail');
 
 function requireCity(ctx, value) {
   if (!value || !String(value).trim()) {
@@ -184,6 +185,26 @@ module.exports = [
         n_inserted: num(r.n_inserted),
         n_updated: num(r.n_updated),
       }));
+    },
+  },
+  // 单点详情（T5）：优先读缓存；缓存没有 → 高德现取一次（不落库）；都没有 → 404
+  // 注意：注册在 /api/pois/stats 之后，避免 stats 被 :poiId 抢先匹配
+  {
+    method: 'GET',
+    path: '/api/pois/:poiId',
+    async handler(ctx) {
+      const poiId = String(ctx.params.poiId || '').trim();
+      if (!poiId) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 poiId');
+      const row = ctx.db.getPoi(poiId);
+      if (row) return toDetail(row, poiId);
+      let live = null;
+      try {
+        live = await ctx.amap.poiDetail(poiId);
+      } catch (err) {
+        live = null;
+      }
+      if (!live) throw new ctx.HttpError(404, 'NOT_FOUND', '未找到该地点');
+      return toDetail(live, poiId);
     },
   },
 ];
