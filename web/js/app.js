@@ -144,6 +144,21 @@
     refresh();
   }
 
+  // 右栏折叠 / 展开：收起后地图变宽，AMap 需 resize() 防灰块错位
+  function onTogglePanel() {
+    const panel = $('right-panel');
+    const collapsed = panel.classList.toggle('collapsed');
+    const btn = $('panel-toggle');
+    if (btn) {
+      btn.textContent = collapsed ? '展开 ›' : '收起 ‹';
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    }
+    if (MapCtl.resize) {
+      requestAnimationFrame(() => MapCtl.resize());
+      setTimeout(() => MapCtl.resize(), 240);
+    }
+  }
+
   function onPlan() {
     setView('itinerary');
   }
@@ -321,6 +336,7 @@
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
     $('plan-btn').onclick = onPlan;
+    $('panel-toggle').onclick = onTogglePanel;
     $('itinerary-back').onclick = () => setView('list');
     $('itinerary-copy').onclick = onCopyItinerary;
     $('itinerary-download').onclick = onDownloadItinerary;

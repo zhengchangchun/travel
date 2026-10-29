@@ -73,11 +73,23 @@
       center: [120.15507, 30.27415],
       viewMode: '2D',
     });
+    window.addEventListener('resize', onWindowResize);
     return map;
   }
 
   function isReady() {
     return !!map;
+  }
+
+  // 容器尺寸变化（窗口缩放 / 右栏折叠）后重算画布，避免灰块与错位
+  function resize() {
+    if (map && typeof map.resize === 'function') map.resize();
+  }
+
+  let resizeTimer = null;
+  function onWindowResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resize, 120);
   }
 
   function clearMarkers() {
@@ -209,6 +221,7 @@
   window.TravelMap = {
     init,
     isReady,
+    resize,
     clearMarkers,
     addMarker,
     fitView,

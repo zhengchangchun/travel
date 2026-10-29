@@ -8,7 +8,8 @@
 </head>
 <body>
   <div id="app">
-    <aside id="sidebar">
+    <!-- 左栏：全部（浏览用） -->
+    <aside id="sidebar" class="col-left">
       <header class="brand">
         <h1>🧭 城市旅行规划器</h1>
         <p class="sub">选城 → 看推荐 → 按分类过滤 → 地图落旗 → 存行程</p>
@@ -38,50 +39,61 @@
         <p class="hint">可多选；全部取消 = 显示全部</p>
       </section>
 
-      <section class="card pin-card">
-        <h2>我的选择 <span id="selection-count" class="count">0</span></h2>
-        <div class="row">
-          <button id="only-selected-btn" class="chip toggle" title="只看我选中的">只看我选中的</button>
-          <button id="plan-btn" class="primary" title="规划行程">规划行程</button>
-        </div>
-        <ul id="selection-list" class="poi-list"></ul>
-        <div id="itinerary-panel" class="hidden">
-          <div class="row itin-toolbar">
-            <button id="itinerary-back" class="ghost">返回</button>
-            <button id="itinerary-copy" class="ghost">一键复制</button>
-            <button id="itinerary-download" class="ghost">下载 .md</button>
-          </div>
-          <div class="route-modes" id="route-modes"></div>
-          <div class="route-summary">
-            <div id="route-totals" class="route-totals"></div>
-            <div id="route-progress" class="route-progress"></div>
-            <ul id="route-legs" class="route-legs"></ul>
-          </div>
-          <ol id="itinerary-list" class="poi-list itinerary"></ol>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>我的行程</h2>
-        <div class="row">
-          <button id="trip-new-btn" class="ghost">新建行程</button>
-          <span id="trip-name" class="trip-name">未创建</span>
-        </div>
-        <ul id="trip-list" class="poi-list"></ul>
-      </section>
-
       <section class="card">
         <h2>结果 <span id="result-count" class="count">0</span></h2>
         <ul id="result-list" class="poi-list"></ul>
       </section>
     </aside>
 
+    <!-- 中栏：地图 -->
     <main id="map-wrap">
       <div id="map"></div>
       <div id="map-status" class="map-status">地图加载中…</div>
       <div id="map-error" class="map-error hidden"></div>
       <aside id="infocard" class="infocard hidden"></aside>
     </main>
+
+    <!-- 右栏：我挑的 -->
+    <aside id="right-panel" class="col-right">
+      <div class="right-head">
+        <h2>我挑的</h2>
+        <button id="panel-toggle" class="panel-toggle" title="收起 / 展开右栏"
+                aria-controls="right-body" aria-expanded="true">收起 ‹</button>
+      </div>
+      <div id="right-body" class="right-body">
+        <section class="card pin-card">
+          <h2>我的选择 <span id="selection-count" class="count">0</span></h2>
+          <div class="row">
+            <button id="only-selected-btn" class="chip toggle" title="只看我选中的">只看我选中的</button>
+            <button id="plan-btn" class="primary" title="规划行程">规划行程</button>
+          </div>
+          <ul id="selection-list" class="poi-list"></ul>
+          <div id="itinerary-panel" class="hidden">
+            <div class="row itin-toolbar">
+              <button id="itinerary-back" class="ghost">返回</button>
+              <button id="itinerary-copy" class="ghost">一键复制</button>
+              <button id="itinerary-download" class="ghost">下载 .md</button>
+            </div>
+            <div class="route-modes" id="route-modes"></div>
+            <div class="route-summary">
+              <div id="route-totals" class="route-totals"></div>
+              <div id="route-progress" class="route-progress"></div>
+              <ul id="route-legs" class="route-legs"></ul>
+            </div>
+            <ol id="itinerary-list" class="poi-list itinerary"></ol>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>我的行程</h2>
+          <div class="row">
+            <button id="trip-new-btn" class="ghost">新建行程</button>
+            <span id="trip-name" class="trip-name">未创建</span>
+          </div>
+          <ul id="trip-list" class="poi-list"></ul>
+        </section>
+      </div>
+    </aside>
   </div>
 
   <script src="/js/categories.js"></script>
