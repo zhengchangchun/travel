@@ -361,6 +361,18 @@
     }
   }
 
+  // 选中会自动在后端建城市行程；同步守卫 state.trip，保证「删除行程」可用
+  async function syncTripFromServer() {
+    if (!state.city) return;
+    try {
+      const trips = await API.listTrips(state.city);
+      state.trip = trips[0] || null;
+      await refreshTrips();
+    } catch (err) {
+      /* 行程非关键路径，失败不阻塞 */
+    }
+  }
+
   async function onAddPin(poi) {
     try {
       const trip = await ensureTrip();
@@ -424,7 +436,10 @@
     Cats.init(state.config.categories);
     UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
 
-    Selection.subscribe(() => refresh({ fit: false }));
+    Selection.subscribe(() => {
+      refresh({ fit: false });
+      if (!state.trip) syncTripFromServer();
+    });
 
     bind();
 

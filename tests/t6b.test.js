@@ -33,3 +33,8 @@ test('二次确认弹层存在（confirm-modal，页内可取证）', () => {
   assert.match(HTML, /id="confirm-modal"/, 'index 缺确认弹层');
   assert.match(APP, /function confirmDialog/, 'app.js 缺 confirmDialog');
 });
+
+test('F3 选中后同步行程守卫（state.trip 为空时拉取城市行程）', () => {
+  assert.match(APP, /syncTripFromServer/, 'app.js 应同步城市行程守卫');
+  assert.match(APP, /Selection\.subscribe/, '应在选中变更时同步');
+});
