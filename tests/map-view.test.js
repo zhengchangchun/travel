@@ -47,14 +47,17 @@ function makeFakeMap() {
   return fake;
 }
 
-function loadMap(fakeMap) {
+function loadMap(fakeMap, stats = {}) {
   const win = {
     AMap: {
       Map: function () {
         return fakeMap;
       },
       Marker: function () {
-        this.setMap = () => {};
+        stats.created = (stats.created || 0) + 1;
+        this.setMap = () => {
+          stats.mapped = (stats.mapped || 0) + 1;
+        };
         this.on = () => {};
       },
       Pixel: function () {},
@@ -71,6 +74,16 @@ function loadMap(fakeMap) {
   };
   new Function('window', 'document', MAP)(win, doc);
   return win.TravelMap;
+}
+
+function pois(prefix, n) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: prefix + i,
+    name: prefix + i,
+    lng: 120 + i * 0.001,
+    lat: 30,
+    category: 'food',
+  }));
 }
 
 test('map.getBounds 返回 {minLng,minLat,maxLng,maxLat}', async () => {
@@ -146,4 +159,37 @@ test('map.js 暴露视野接口（getBounds/onMoveEnd/setZoomAndCenter/getZoom�
   assert.match(MAP, /onMoveEnd/);
   assert.match(MAP, /setZoomAndCenter/);
   assert.match(MAP, /getZoom/);
+});
+
+test('map.setMarkers 分批渲染：全部点最终落图', async () => {
+  const fake = makeFakeMap();
+  const stats = {};
+  const MapCtl = loadMap(fake, stats);
+  await MapCtl.init('map', { jsApiKey: 'K' });
+  MapCtl.setMarkers(pois('P', 7), () => false);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(stats.mapped, 7);
+});
+
+test('map.setMarkers 取消过期批次：只保留最后一次渲染', async () => {
+  const fake = makeFakeMap();
+  const stats = {};
+  const MapCtl = loadMap(fake, stats);
+  await MapCtl.init('map', { jsApiKey: 'K' });
+  MapCtl.setMarkers(pois('A', 500), () => false);
+  MapCtl.setMarkers(pois('B', 3), () => false);
+  await new Promise((r) => setTimeout(r, 120));
+  assert.ok(stats.mapped < 500, '过期批次应被取消（不应把 500 个都画完）');
+  assert.strictEqual(stats.mapped, 203, '首批 200 + 新批 3');
+});
+
+test('map.js 提供 setMarkers 分批接口', () => {
+  assert.match(MAP, /setMarkers/);
+});
+
+test('map.getMap 暴露底层 AMap 实例（便于联动/取证）', async () => {
+  const fake = makeFakeMap();
+  const MapCtl = loadMap(fake);
+  await MapCtl.init('map', { jsApiKey: 'K' });
+  assert.strictEqual(MapCtl.getMap(), fake);
 });

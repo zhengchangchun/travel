@@ -101,8 +101,7 @@
 
   function renderMap(list, fit) {
     if (!MapCtl.isReady()) return;
-    MapCtl.clearMarkers();
-    list.forEach((p) => MapCtl.addMarker(p, Selection.has(p)));
+    MapCtl.setMarkers(list, (p) => Selection.has(p));
     if (fit) MapCtl.fitView();
   }
 
@@ -656,11 +655,18 @@
       UI.setStatus('地图加载失败：' + err.message);
     }
 
-    // 默认城市：用城市搜索拿到主城区 center（高德 city center 就是主城区）
+    // 默认城市：用城市搜索拿到主城区 center（高德 city center 就是主城区）；
+    // 名字沿用配置里的 defaultCity，保证与已收录缓存的城市键一致
     let bootCity = { name: state.config.defaultCity };
     try {
       const found = await API.searchCity(state.config.defaultCity);
-      if (Array.isArray(found) && found.length) bootCity = found[0];
+      if (Array.isArray(found) && found.length) {
+        bootCity = {
+          name: state.config.defaultCity,
+          lng: found[0].lng,
+          lat: found[0].lat,
+        };
+      }
     } catch (err) {
       /* 拿不到 center 时退化为仅城市名 */
     }

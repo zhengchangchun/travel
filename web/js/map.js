@@ -4,6 +4,7 @@
   let AMap = null;
   const markers = new Map();
   let clickHandler = null;
+  let markerBatch = 0; // 分批落旗的批次号：新批次会取消未画完的旧批次
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
@@ -88,6 +89,10 @@
     return !!map;
   }
 
+  function getMap() {
+    return map;
+  }
+
   // 容器尺寸变化（窗口缩放 / 右栏折叠）后重算画布，避免灰块与错位
   function resize() {
     if (map && typeof map.resize === 'function') map.resize();
@@ -100,6 +105,7 @@
   }
 
   function clearMarkers() {
+    markerBatch += 1; // 取消未完成的分批渲染
     if (!map) return;
     markers.forEach((m) => map.remove(m));
     markers.clear();
@@ -122,6 +128,28 @@
     marker.setMap(map);
     markers.set(key, marker);
     return marker;
+  }
+
+  // 分批落旗：视野内点很多时不抽稀，但分帧 append，避免主线程卡死
+  const MARKER_CHUNK = 200;
+  function setMarkers(list, isSelected) {
+    if (!map) return;
+    clearMarkers();
+    const token = markerBatch;
+    const items = list || [];
+    let i = 0;
+    const step = () => {
+      if (token !== markerBatch) return; // 已被新批次取代，丢弃
+      const end = Math.min(i + MARKER_CHUNK, items.length);
+      for (; i < end; i += 1) {
+        addMarker(items[i], isSelected ? isSelected(items[i]) : false);
+      }
+      if (i < items.length) {
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(step);
+        else setTimeout(step, 0);
+      }
+    };
+    step();
   }
 
   function fitView() {
@@ -292,9 +320,11 @@
   window.TravelMap = {
     init,
     isReady,
+    getMap,
     resize,
     clearMarkers,
     addMarker,
+    setMarkers,
     fitView,
     flyTo,
     getZoom,
