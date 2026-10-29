@@ -100,5 +100,9 @@
     collect: (payload) => request('/api/collect', post(payload)),
     collectStatus: (runId) => request('/api/collect/status?' + qs({ runId })),
     collectRuns: (city) => request('/api/collect/runs?' + qs({ city })),
+
+    // 按视野自动采集（T8）
+    coverage: (params) => request('/api/coverage?' + qs(params)),
+    collectViewport: (payload) => request('/api/collect/viewport', post(payload)),
   };
 })();

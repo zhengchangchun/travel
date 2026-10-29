@@ -44,11 +44,11 @@
       <section class="card">
         <h2>数据采集</h2>
         <div class="row">
-          <button id="collect-btn" class="primary">开始采集</button>
+          <button id="collect-btn" class="primary">采集全城（补全）</button>
           <button id="collect-refresh-btn" class="ghost">刷新列表</button>
         </div>
         <div id="collect-progress" class="collect-progress"></div>
-        <p class="hint">按行政区逐区翻页取全；结果落库缓存，二次采集只补新增（省配额）。</p>
+        <p class="hint">地图放大到一定程度会自动采集当前视野（无需点按钮）；本按钮用于一次补全全城。</p>
       </section>
 
       <section class="card">
@@ -61,6 +61,7 @@
     <main id="map-wrap">
       <div id="map"></div>
       <div id="view-count" class="view-count">当前视野 0 条 · 全城已收录 0 条</div>
+      <div id="view-hint" class="view-hint hidden"></div>
       <div id="map-status" class="map-status">地图加载中…</div>
       <div id="map-error" class="map-error hidden"></div>
       <aside id="score-legend" class="score-legend hidden">

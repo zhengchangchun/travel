@@ -11,6 +11,8 @@
   // 切城市落主城区用的倍率；倍率阈值是「是否加载视野内地点」的唯一门控
   const CITY_ZOOM = 13;
   const MIN_MARKER_ZOOM = 13;
+  // 按视野自动采集的最低倍率（默认 13）；与落点阈值同值
+  const MIN_COLLECT_ZOOM = 13;
 
   const state = {
     config: null,
@@ -27,6 +29,8 @@
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
+    gridFlight: new Set(), // 正在采集的格（前端去重，防重复触发）
+    viewportTimer: null, // 视野采集轮询定时器
   };
 
   const RATING_OPTIONS = [
@@ -88,21 +92,26 @@
     return Number.isFinite(n) && n >= min;
   }
 
+  // 分类 / 评分过滤（不含「只看选中」）
+  function passesFilters(p) {
+    if (state.activeCats.size && !state.activeCats.has(p.category)) return false;
+    if (state.ratingFilter !== 'all' && !passesRating(p)) return false;
+    return true;
+  }
+
   function currentList() {
-    let list = state.onlySelected ? Selection.list() : state.pois;
-    if (state.activeCats.size) {
-      list = list.filter((p) => state.activeCats.has(p.category));
-    }
-    if (state.ratingFilter !== 'all') {
-      list = list.filter(passesRating);
-    }
-    return list;
+    const list = state.onlySelected ? Selection.list() : state.pois;
+    return list.filter(passesFilters);
   }
 
   function renderMap(list, fit) {
     if (!MapCtl.isReady()) return;
     MapCtl.setMarkers(list, (p) => Selection.has(p));
     if (fit) MapCtl.fitView();
+  }
+
+  function gridKeyOf(g) {
+    return g.gx + ',' + g.gy;
   }
 
   function updateStatus(list) {
@@ -138,6 +147,7 @@
 
   function refresh(opts) {
     const fit = !!(opts && opts.fit);
+    const drawMarkers = !opts || opts.markers !== false;
     const list = currentList();
     UI.renderResults($('result-list'), list, onPickPoi, {
       isSelected: (p) => Selection.has(p),
@@ -146,7 +156,7 @@
     $('result-count').textContent = String(list.length);
     updateStatus(list);
     updateViewCount();
-    renderMap(list, fit);
+    if (drawMarkers) renderMap(list, fit);
     renderSelection();
     if (state.view === 'itinerary') renderItinerary();
   }
@@ -292,25 +302,31 @@
     updateViewCount();
   }
 
-  // 视野加载：取当前 bounds → bbox → 拉该视野内 POI（无数量限制，点多少拉多少）
+  function currentBbox() {
+    const bounds = MapCtl.getBounds();
+    if (!bounds) return null;
+    return [bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat]
+      .map(fmtCoord)
+      .join(',');
+  }
+
+  // 视野加载：缩小时不采不画；放大时先读缓存立即落旗，再自动补采缺失格（渐进）
   async function fetchPoisInView() {
     if (!MapCtl.isReady()) return;
     const zoom = MapCtl.getZoom();
-    if (zoom != null && zoom < MIN_MARKER_ZOOM) {
-      // 倍率阈值是唯一门控：不请求、不画点，只提示
+    if (zoom != null && (zoom < MIN_MARKER_ZOOM || zoom < MIN_COLLECT_ZOOM)) {
+      // 倍率阈值门控：不请求、不画点、不采集，只提示
       state.pois = [];
       MapCtl.clearMarkers();
       UI.showLegend(false);
+      UI.setViewHint('放大地图以加载本区域地点');
       refresh();
       UI.setStatus('放大地图以加载本区域地点');
       return;
     }
-    const bounds = MapCtl.getBounds();
-    if (!bounds) return;
+    const bbox = currentBbox();
+    if (!bbox) return;
     const seq = (state.viewSeq += 1);
-    const bbox = [bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat]
-      .map(fmtCoord)
-      .join(',');
     UI.setStatus('加载视野内地点…');
     let data;
     try {
@@ -321,9 +337,111 @@
       return;
     }
     if (seq !== state.viewSeq) return; // 丢弃过期响应，只应用最后一次
+    // ① 先落已有的旗（有多少画多少，不白屏）
     state.pois = dedupe(data.items || []);
     UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
     refresh();
+    // ② 查覆盖 → 自动采缺失格（无需点按钮）
+    autoCollectViewport(bbox, seq);
+  }
+
+  // 自动按视野采集：查覆盖 → 有未覆盖且未在采的格 → 触发采集 → 轮询 → 增量补旗
+  async function autoCollectViewport(bbox, seq) {
+    if (!state.city) return;
+    let cov;
+    try {
+      cov = await API.coverage({ city: state.city, bbox, category: 'all' });
+    } catch (err) {
+      return; // 覆盖查询失败不阻塞已显示的缓存
+    }
+    if (seq !== state.viewSeq) return;
+    const uncovered = (cov.uncovered || []).filter((g) => !state.gridFlight.has(gridKeyOf(g)));
+    if (!uncovered.length) return;
+    uncovered.forEach((g) => state.gridFlight.add(gridKeyOf(g))); // 认领，防重复触发
+    UI.setViewHint('本区域加载中…');
+    UI.setStatus('本区域加载中…');
+    const release = () => uncovered.forEach((g) => state.gridFlight.delete(gridKeyOf(g)));
+    let res;
+    try {
+      res = await API.collectViewport({ city: state.city, bbox, category: 'all' });
+    } catch (err) {
+      release();
+      UI.setViewHint('');
+      UI.setStatus('采集失败：' + err.message);
+      return;
+    }
+    if (seq !== state.viewSeq || !res || !res.runId) {
+      release();
+      UI.setViewHint('');
+      return;
+    }
+    pollViewportCollect(res.runId, seq, release);
+  }
+
+  // 轮询按视野采集进度；完成后重读缓存增量补旗
+  function pollViewportCollect(runId, seq, release) {
+    if (state.viewportTimer) {
+      clearInterval(state.viewportTimer);
+      state.viewportTimer = null;
+    }
+    const tick = async () => {
+      let st;
+      try {
+        st = await API.collectStatus(runId);
+      } catch (err) {
+        if (state.viewportTimer) clearInterval(state.viewportTimer);
+        state.viewportTimer = null;
+        release();
+        UI.setViewHint('');
+        return;
+      }
+      if (st.status === 'running') return;
+      if (state.viewportTimer) clearInterval(state.viewportTimer);
+      state.viewportTimer = null;
+      release();
+      UI.setViewHint('');
+      if (seq === state.viewSeq) await mergeViewFromCache(seq);
+    };
+    tick();
+    state.viewportTimer = setInterval(tick, 700);
+  }
+
+  // 采集完成后重读 bbox 缓存 → 增量补旗（不整体重画）
+  async function mergeViewFromCache(seq) {
+    if (!MapCtl.isReady()) return;
+    const zoom = MapCtl.getZoom();
+    if (zoom != null && zoom < MIN_COLLECT_ZOOM) return;
+    const bbox = currentBbox();
+    if (!bbox) return;
+    let data;
+    try {
+      data = await API.listPois({ city: state.city, bbox });
+    } catch (err) {
+      return;
+    }
+    if (seq !== state.viewSeq) return;
+    mergeNewItems(dedupe(data.items || []));
+    await loadCityTotals(state.city);
+  }
+
+  // 把新采到的点并入当前视野：地图只补新旗，列表/计数刷新（不动已有旗）
+  function mergeNewItems(fetched) {
+    const keyOf = (p) => p.id || p.name + '@' + p.lng + ',' + p.lat;
+    const have = new Set(state.pois.map(keyOf));
+    const add = [];
+    fetched.forEach((p) => {
+      const k = keyOf(p);
+      if (have.has(k)) return;
+      have.add(k);
+      add.push(p);
+    });
+    if (!add.length) return;
+    state.pois = state.pois.concat(add);
+    const drawable = add.filter(passesFilters);
+    if (drawable.length && state.view !== 'itinerary') {
+      MapCtl.addMarkers(drawable, (p) => Selection.has(p));
+    }
+    refresh({ markers: false });
   }
 
   // 切城 / 刷新按钮：先刷「全城已收录」，再按当前视野加载
@@ -332,7 +450,7 @@
     await loadCityTotals(city);
     await fetchPoisInView();
     if (!state.cityTotal && !state.pois.length) {
-      UI.setStatus('该城市还没采集，点左侧「开始采集」');
+      UI.setStatus('该城市还没采集，点左侧「采集全城（补全）」');
     }
   }
 
@@ -438,10 +556,14 @@
     state.ratingFilter = 'all';
     state.pois = [];
     state.cityTotal = 0;
+    state.trip = null; // N20：切城市必须重置当前行程，避免残留上一城市的行程
+    state.gridFlight.clear();
+    UI.setViewHint('');
     UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
     if (MapCtl.isReady()) MapCtl.clearMarkers();
     refresh();
+    await refreshTrips();
 
     const center =
       typeof city.lng === 'number' && typeof city.lat === 'number'
@@ -461,6 +583,14 @@
     } catch (err) {
       /* 选中加载失败不阻塞主流程 */
     }
+    // N20：按新城市重取行程（没有则置空），界面同步刷新
+    try {
+      const trips = await API.listTrips(state.city);
+      state.trip = trips[0] || null;
+    } catch (err) {
+      state.trip = null;
+    }
+    await refreshTrips();
     await loadCityView(state.city);
   }
 
@@ -670,15 +800,7 @@
     } catch (err) {
       /* 拿不到 center 时退化为仅城市名 */
     }
-    await setCity(bootCity);
-
-    try {
-      const trips = await API.listTrips(state.city);
-      state.trip = trips[0] || null;
-      await refreshTrips();
-    } catch (err) {
-      /* 行程非关键路径，失败不阻塞 */
-    }
+    await setCity(bootCity); // setCity 内已按城市载入行程
   }
 
   window.addEventListener('DOMContentLoaded', boot);

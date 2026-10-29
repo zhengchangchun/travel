@@ -152,6 +152,23 @@
     step();
   }
 
+  // 增量落旗：只补尚无的旗子（不整体重画，避免闪烁）。返回新增数量。
+  function addMarkers(list, isSelected) {
+    if (!map) return 0;
+    const items = list || [];
+    let added = 0;
+    for (let i = 0; i < items.length; i += 1) {
+      const before = markers.size;
+      addMarker(items[i], isSelected ? isSelected(items[i]) : false);
+      if (markers.size > before) added += 1;
+    }
+    return added;
+  }
+
+  function markerCount() {
+    return markers.size;
+  }
+
   function fitView() {
     if (!map || markers.size === 0) return;
     map.setFitView(Array.from(markers.values()));
@@ -325,6 +342,8 @@
     clearMarkers,
     addMarker,
     setMarkers,
+    addMarkers,
+    markerCount,
     fitView,
     flyTo,
     getZoom,

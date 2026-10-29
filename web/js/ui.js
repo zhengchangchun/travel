@@ -22,6 +22,19 @@
     el.textContent = '当前视野 ' + viewN + ' 条 · 全城已收录 ' + total + ' 条';
   }
 
+  // 视野提示（「本区域加载中…」「放大地图以加载」）：空串则隐藏
+  function setViewHint(text) {
+    const el = $('view-hint');
+    if (!el) return;
+    if (!text) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = text;
+    el.classList.remove('hidden');
+  }
+
   function showMapError(msg) {
     const el = $('map-error');
     if (!el) return;
@@ -190,6 +203,7 @@
     esc,
     setStatus,
     setViewCount,
+    setViewHint,
     showMapError,
     hideMapError,
     renderChips,

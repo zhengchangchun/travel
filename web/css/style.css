@@ -144,6 +144,12 @@ button.primary:hover { background: #0958d9; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
   pointer-events: none; z-index: 10;
 }
+.view-hint {
+  position: absolute; top: 52px; left: 12px;
+  background: rgba(22, 119, 255, .12); border: 1px solid rgba(22, 119, 255, .35);
+  color: #0958d9; font-size: 12px; padding: 6px 10px; border-radius: 8px;
+  max-width: 70%; pointer-events: none; z-index: 11;
+}
 .map-error {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
   background: #fff2f0; border: 1px solid #ffccc7; color: #cf1322;
