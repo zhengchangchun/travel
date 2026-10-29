@@ -19,3 +19,12 @@ test('F2 删点走 DELETE /api/pins/:id（API.deletePin）且二次确认', () =
   assert.match(APP, /deletePin/, 'app.js 应调用 API.deletePin');
   assert.match(APP, /window\.confirm\(/, '删点前应二次确认');
 });
+
+test('F3 行程卡片有「删除行程」入口', () => {
+  assert.match(HTML, /id="trip-delete-btn"/, 'index 缺删除行程按钮');
+});
+
+test('F3 删行程走 DELETE /api/trips/:id（API.deleteTrip）且二次确认', () => {
+  assert.match(APP, /deleteTrip/, 'app.js 应调用 API.deleteTrip');
+  assert.match(APP, /window\.confirm\(/, '删行程前应二次确认');
+});

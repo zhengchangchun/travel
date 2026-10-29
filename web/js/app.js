@@ -316,6 +316,26 @@
     );
   }
 
+  // 删除整个行程：二次确认 → DELETE /api/trips/:id → 踢出守卫并重选/置空
+  async function onDeleteTrip() {
+    if (!state.trip) {
+      UI.setStatus('尚未创建行程');
+      return;
+    }
+    if (!window.confirm('删除行程「' + state.trip.title + '」及其全部地点？此操作不可恢复')) return;
+    try {
+      await API.deleteTrip(state.trip.id);
+      state.trip = null;
+      await reloadSelection();
+      const trips = await API.listTrips();
+      state.trip = trips.find((t) => t.city === state.city) || trips[0] || null;
+      await refreshTrips();
+      UI.setStatus('行程已删除');
+    } catch (err) {
+      UI.setStatus('删除行程失败：' + err.message);
+    }
+  }
+
   async function onAddPin(poi) {
     try {
       const trip = await ensureTrip();
@@ -363,6 +383,7 @@
         UI.setStatus('新建行程失败：' + err.message);
       }
     };
+    $('trip-delete-btn').onclick = onDeleteTrip;
   }
 
   async function boot() {

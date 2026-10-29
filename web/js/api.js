@@ -63,6 +63,7 @@
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
     addPin: (payload) => request('/api/pins', post(payload)),
     deletePin: (id) => request('/api/pins/' + id, { method: 'DELETE' }),
+    deleteTrip: (id) => request('/api/trips/' + id, { method: 'DELETE' }),
     listNotes: (city) => request('/api/notes' + (city ? '?' + qs({ city }) : '')),
     addNote: (payload) => request('/api/notes', post(payload)),
     updatePinNote: (id, note) =>
