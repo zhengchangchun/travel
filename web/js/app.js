@@ -23,6 +23,31 @@
     return document.getElementById(id);
   }
 
+  // 页内二次确认弹层：返回 Promise<boolean>
+  function confirmDialog(message) {
+    return new Promise((resolve) => {
+      const mask = $('confirm-modal');
+      const ok = $('confirm-ok');
+      const cancel = $('confirm-cancel');
+      if (!mask || !ok || !cancel) {
+        resolve(window.confirm(message));
+        return;
+      }
+      $('confirm-modal-msg').textContent = message;
+      mask.classList.remove('hidden');
+      const done = (val) => {
+        mask.classList.add('hidden');
+        ok.onclick = null;
+        cancel.onclick = null;
+        mask.onclick = null;
+        resolve(val);
+      };
+      ok.onclick = () => done(true);
+      cancel.onclick = () => done(false);
+      mask.onclick = (e) => { if (e.target === mask) done(false); };
+    });
+  }
+
   function dedupe(list) {
     const seen = new Set();
     const out = [];
@@ -130,7 +155,7 @@
 
   // 行程视图删点：DELETE /api/pins/:id → 刷新选中集、地图旗子与计数
   async function onRemoveFromItinerary(pin) {
-    if (!window.confirm('从行程中删除「' + pin.name + '」？')) return;
+    if (!(await confirmDialog('从行程中删除「' + pin.name + '」？'))) return;
     try {
       if (pin.pinId != null) await API.deletePin(pin.pinId);
       else await Selection.remove(pin);
@@ -322,7 +347,7 @@
       UI.setStatus('尚未创建行程');
       return;
     }
-    if (!window.confirm('删除行程「' + state.trip.title + '」及其全部地点？此操作不可恢复')) return;
+    if (!(await confirmDialog('删除行程「' + state.trip.title + '」及其全部地点？此操作不可恢复'))) return;
     try {
       await API.deleteTrip(state.trip.id);
       state.trip = null;

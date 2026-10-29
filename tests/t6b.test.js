@@ -17,7 +17,7 @@ test('F2 行程视图每项有删除按钮并回调 onRemove', () => {
 
 test('F2 删点走 DELETE /api/pins/:id（API.deletePin）且二次确认', () => {
   assert.match(APP, /deletePin/, 'app.js 应调用 API.deletePin');
-  assert.match(APP, /window\.confirm\(/, '删点前应二次确认');
+  assert.match(APP, /confirmDialog\(/, '删点前应二次确认');
 });
 
 test('F3 行程卡片有「删除行程」入口', () => {
@@ -26,5 +26,10 @@ test('F3 行程卡片有「删除行程」入口', () => {
 
 test('F3 删行程走 DELETE /api/trips/:id（API.deleteTrip）且二次确认', () => {
   assert.match(APP, /deleteTrip/, 'app.js 应调用 API.deleteTrip');
-  assert.match(APP, /window\.confirm\(/, '删行程前应二次确认');
+  assert.match(APP, /confirmDialog\(/, '删行程前应二次确认');
+});
+
+test('二次确认弹层存在（confirm-modal，页内可取证）', () => {
+  assert.match(HTML, /id="confirm-modal"/, 'index 缺确认弹层');
+  assert.match(APP, /function confirmDialog/, 'app.js 缺 confirmDialog');
 });

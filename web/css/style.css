@@ -145,6 +145,22 @@ button.primary:hover { background: #0958d9; }
 }
 .hidden { display: none !important; }
 
+/* 二次确认弹层（删点 / 删行程） */
+.modal-mask {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15, 23, 42, .38);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  background: #fff; border-radius: 12px; padding: 18px 20px;
+  min-width: 280px; max-width: 86vw;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+}
+.modal-msg { margin: 0 0 14px; font-size: 14px; color: #1f2937; line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+button.danger { background: #d4380d; border-color: #d4380d; color: #fff; }
+button.danger:hover { background: #ad2102; }
+
 /* 分类旗子 */
 .flag { width: 26px; height: 34px; position: relative; cursor: pointer; }
 .flag-head {
