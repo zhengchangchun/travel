@@ -78,3 +78,23 @@ T3 复核读数：`node --test` **78 pass / 0 fail**；`smoke.sh` **27 项全 PA
 
 T6 复核读数：`node --test` **84 pass / 0 fail**（T1–T3 78 + 新增 `tests/layout.test.js` 6）；`smoke.sh` **31 项全 PASS，exit 0**（既有 27 + 新增 P39–P42）；无 `node_modules`；key 未硬编码。
 DOM 布局断言（Playwright 实跑）另 **14 项全 PASS**（L1/L2/L3/L4/L5/L6/R3）。
+
+## T6b（补丁：禁缓存 ＋ 行程删除 ＋ 数据清理）
+
+由 Playwright/Chromium（`playwright-core` 无头 + swiftshader）实跑：先选中 3 个点（武林广场 → 杭州西湖风景名胜区 → 杭州东站），逐项断言后再截图。
+
+| 文件 | 对应判据 | 内容 |
+|---|---|---|
+| `T6b-F2-1-行程删除按钮.png` | F2-1 | 行程视图每项右侧「×」删除按钮（3 项各一） |
+| `T6b-F2-2a-删点确认弹层.png` | F2-2 | 点 × 弹出页内二次确认：「从行程中删除「武林广场」？」 |
+| `T6b-F2-2-删点后同步.png` | F2-2 | 确认后同步：计数 3→2、地图旗子 3→2、行程列表 3→2 |
+| `T6b-F3-1-删除行程入口.png` | F3-1 | 右栏「我的行程」卡片有「删除行程」按钮（显示 #8 杭州 · 我的行程） |
+| `T6b-F3-2-删除行程确认弹层.png` | F3-2 | 页内二次确认：「删除行程「杭州 · 我的行程」及其全部地点？此操作不可恢复」 |
+| `T6b-F3-2b-删除行程后.png` | F3-2 | 确认后：`GET /api/trips?city=杭州` 返回 `[]`，卡片显示「未创建」，选中计数归 0 |
+
+F1 禁缓存读数：`curl -I` 对 `/`、`/js/app.js`、`/css/style.css` 均含 `Cache-Control: no-cache, no-store, must-revalidate` ＋ `Pragma: no-cache` ＋ `Expires: 0`；
+改 `web/js/app.js` 追加探针 → `curl` 立即读到（probe 0→1），`git checkout` 后立即消失（1→0），证明响应不缓存旧文件。
+
+F4 读数：`GET /api/trips?city=杭州` 仅返回杭州行程；新建三亚市行程标题为 `三亚市 · 我的行程`；`getOrCreateCityTrip` 会把脏标题 `杭州 · 杭州 · 我的行程` 修复为 `杭州 · 我的行程`。
+
+T6b 复核读数：`node --test` **94 pass / 0 fail**；`smoke.sh` **35 项全 PASS，exit 0**（T6 的 31 + 新增 P43–P46）；无 `node_modules`；key 未硬编码。
