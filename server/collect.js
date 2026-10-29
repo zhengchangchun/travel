@@ -10,6 +10,7 @@ const MAX_DEPTH = 8; // 递归深度上限，防御死循环
 const GRID_DEG = 0.01; // 网格边长（度），约 1km
 const MAX_VIEWPORT_GRIDS = 400; // 单次视野最多采的格数，防超大 bbox
 const GRID_RADIUS_M = 800; // 以格中心周边搜索的半径（米），略大于格对角半径
+const VIEWPORT_MAX_PAGE = 1; // 按视野采集每格只翻 1 页，严格省配额（补全走「采集全城」）
 const DEFAULT_VIEWPORT_RATE_PER_MIN = 60; // 单位时间高德调用上限（默认 60/分钟）
 
 // 正在采集中的格（内存内，防同格重复起）。键：city\0category\0gx,gy
@@ -336,7 +337,7 @@ async function collectViewport({
     const center = gridCenter(g.gx, g.gy);
     let gridInserted = 0;
     try {
-      for (let page = 1; page <= MAX_PAGE; page += 1) {
+      for (let page = 1; page <= VIEWPORT_MAX_PAGE; page += 1) {
         if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
         if (intervalMs) await sleep(intervalMs);
         const pois = await amap.searchPoiAround({
