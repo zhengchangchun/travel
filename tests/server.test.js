@@ -470,3 +470,29 @@ test('静态资源禁缓存：/、JS、CSS 均带 no-store/no-cache/Pragma/Expir
   }
 });
 
+
+// ---------- T6b F4-1 行程按城市过滤 ----------
+
+test('GET /api/trips?city= 只返回该城市的行程（F4-1）', async () => {
+  const { base, close: done } = await start();
+  try {
+    const mk = (city) =>
+      fetch(base + '/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city, title: city + ' · 我的行程' }),
+      });
+    await mk('杭州');
+    await mk('上海');
+    const all = await getJson(base, '/api/trips');
+    assert.strictEqual(all.body.data.length, 2);
+    const hz = await getJson(base, '/api/trips?city=' + encodeURIComponent('杭州'));
+    assert.strictEqual(hz.body.data.length, 1);
+    assert.strictEqual(hz.body.data[0].city, '杭州');
+    const sh = await getJson(base, '/api/trips?city=' + encodeURIComponent('上海'));
+    assert.strictEqual(sh.body.data.length, 1);
+    assert.strictEqual(sh.body.data[0].city, '上海');
+  } finally {
+    await done();
+  }
+});

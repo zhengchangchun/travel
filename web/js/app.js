@@ -327,8 +327,8 @@
       await API.deleteTrip(state.trip.id);
       state.trip = null;
       await reloadSelection();
-      const trips = await API.listTrips();
-      state.trip = trips.find((t) => t.city === state.city) || trips[0] || null;
+      const trips = await API.listTrips(state.city);
+      state.trip = trips[0] || null;
       await refreshTrips();
       UI.setStatus('行程已删除');
     } catch (err) {
@@ -418,7 +418,7 @@
     await setCity({ name: state.config.defaultCity });
 
     try {
-      const trips = await API.listTrips();
+      const trips = await API.listTrips(state.city);
       state.trip = trips[0] || null;
       await refreshTrips();
     } catch (err) {

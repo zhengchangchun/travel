@@ -3,7 +3,8 @@ module.exports = [
     method: 'GET',
     path: '/api/trips',
     handler(ctx) {
-      return ctx.db.listTrips();
+      const city = ctx.query && ctx.query.city;
+      return ctx.db.listTrips(city ? String(city).trim() : undefined);
     },
   },
   {

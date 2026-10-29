@@ -418,6 +418,44 @@ HDR_CSS="$(curl -s -D - -o /dev/null "${BASE}/css/style.css")"
 [[ "${HDR_CSS}" == *"Cache-Control: no-cache, no-store, must-revalidate"* ]] || fail "P43 CSS 缺 Cache-Control no-store"
 ok "P43 静态资源禁缓存（HTML / JS / CSS 均 no-store + Pragma + Expires）"
 
+# ================= T6b F4 行程按城市过滤 + 标题去重（P44–P46） =================
+curl -s -X POST "${BASE}/api/trips" -H 'Content-Type: application/json' \
+  -d '{"city":"上海","title":"上海 · 我的行程"}' >/dev/null
+T_HZ="$(req_body "/api/trips?city=%E6%9D%AD%E5%B7%9E")"
+if printf '%s' "${T_HZ}" | node -e '
+  let s = "";
+  process.stdin.on("data", (c) => (s += c)).on("end", () => {
+    const arr = (JSON.parse(s).data || []);
+    if (!arr.length) { console.log("杭州行程为空"); process.exit(1); }
+    const bad = arr.filter((t) => t.city !== "杭州");
+    if (bad.length) { console.log("含非杭州行程: " + bad.map((t) => t.city).join(",")); process.exit(2); }
+    process.exit(0);
+  });
+'; then
+  ok "P44 GET /api/trips?city=杭州 只返回杭州行程"
+else
+  fail "P44 按城市过滤未生效"
+fi
+
+# P45 前端删除资产就绪（行程删点 + 删行程入口）
+ITIN_ASSET="$(req_body /js/itinerary.js)"
+APP_ASSET="$(req_body /js/app.js)"
+IDX_T6B="$(req_body /)"
+[[ "${ITIN_ASSET}" == *onRemove* ]] || fail "P45 itinerary.js 缺删除回调"
+[[ "${ITIN_ASSET}" == *'class="del"'* ]] || fail "P45 itinerary.js 缺删除按钮"
+[[ "${APP_ASSET}" == *deleteTrip* ]] || fail "P45 app.js 缺 deleteTrip"
+[[ "${APP_ASSET}" == *deletePin* ]] || fail "P45 app.js 缺 deletePin"
+[[ "${IDX_T6B}" == *'id="trip-delete-btn"'* ]] || fail "P45 index 缺删除行程按钮"
+ok "P45 前端删除资产就绪（行程删点 + 删行程入口）"
+
+# P46 城市行程标题去重
+curl -s -X POST "${BASE}/api/pins" -H 'Content-Type: application/json' \
+  -d '{"city":"三亚市","name":"天涯海角","lng":109.5,"lat":18.25,"category":"sight"}' >/dev/null
+T_SY="$(req_body "/api/trips?city=%E4%B8%89%E4%BA%9A%E5%B8%82")"
+SY_TITLE="$(printf '%s' "${T_SY}" | jget '.data[0].title')"
+[ "${SY_TITLE}" = "三亚市 · 我的行程" ] || fail "P46 标题去重失败：${SY_TITLE}"
+ok "P46 城市行程标题去重（三亚市 · 我的行程，不含重复城市名）"
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0

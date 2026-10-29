@@ -58,7 +58,7 @@
     searchPoi: (params) => request('/api/poi/search?' + qs(params)),
     nearbyPoi: (params) => request('/api/poi/nearby?' + qs(params)),
     poiDetail: (id) => request('/api/poi/detail?' + qs({ id })),
-    listTrips: () => request('/api/trips'),
+    listTrips: (city) => request('/api/trips' + (city ? '?' + qs({ city }) : '')),
     createTrip: (payload) => request('/api/trips', post(payload)),
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
     addPin: (payload) => request('/api/pins', post(payload)),

@@ -54,6 +54,19 @@ function toNumber(value) {
   return typeof value === 'bigint' ? Number(value) : value;
 }
 
+// 标题去重：把「城市 · 城市 · …」折叠回「城市 · …」，修复历史脏标题
+function dedupeCityTitle(city, rawTitle) {
+  let title = String(rawTitle == null ? '' : rawTitle).trim();
+  if (!title) return `${city} · 我的行程`;
+  const dup = `${city} · ${city}`;
+  let guard = 0;
+  while (title.startsWith(dup) && guard < 10) {
+    title = `${city} · ${title.slice(dup.length).replace(/^\s*·\s*/, '')}`;
+    guard += 1;
+  }
+  return title;
+}
+
 // 幂等迁移：先查 pragma table_info，缺列才 ALTER（重复启动不报错）
 function ensureColumn(db, table, column, ddl) {
   const cols = db
@@ -76,6 +89,8 @@ function createDb(filePath) {
     insertTrip: db.prepare('INSERT INTO trips (city, title) VALUES (?, ?)'),
     getTrip: db.prepare('SELECT * FROM trips WHERE id = ?'),
     listTrips: db.prepare('SELECT * FROM trips ORDER BY id DESC'),
+    listTripsByCity: db.prepare('SELECT * FROM trips WHERE city = ? ORDER BY id DESC'),
+    updateTripTitle: db.prepare('UPDATE trips SET title = ? WHERE id = ?'),
     deleteTrip: db.prepare('DELETE FROM trips WHERE id = ?'),
     deletePinsOfTrip: db.prepare('DELETE FROM pins WHERE trip_id = ?'),
     insertPin: db.prepare(
@@ -125,8 +140,8 @@ function createDb(filePath) {
       const info = stmts.insertTrip.run(city, title);
       return stmts.getTrip.get(toNumber(info.lastInsertRowid));
     },
-    listTrips() {
-      return stmts.listTrips.all();
+    listTrips(city) {
+      return city ? stmts.listTripsByCity.all(city) : stmts.listTrips.all();
     },
     getTrip(id) {
       return stmts.getTrip.get(id);
@@ -194,7 +209,14 @@ function createDb(filePath) {
     },
     getOrCreateCityTrip(city) {
       const existing = stmts.tripByCity.get(city);
-      if (existing) return existing;
+      if (existing) {
+        const fixed = dedupeCityTitle(city, existing.title);
+        if (fixed !== existing.title) {
+          stmts.updateTripTitle.run(fixed, existing.id);
+          return stmts.getTrip.get(existing.id);
+        }
+        return existing;
+      }
       return this.createTrip({ city, title: `${city} · 我的行程` });
     },
     getSelectionByCity(city) {

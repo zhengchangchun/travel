@@ -168,3 +168,23 @@ test('updatePinNote 改备注', () => {
   assert.strictEqual(db.getPin(pin.id).note, '记得提前订位');
   db.close();
 });
+
+// ---------- T6b F4-2 标题去重 ----------
+
+test('getOrCreateCityTrip 修复「城市 · 城市 · …」重复标题（F4-2）', () => {
+  const db = createDb(':memory:');
+  const t = db.createTrip({ city: '杭州', title: '杭州 · 杭州 · 我的行程' });
+  const got = db.getOrCreateCityTrip('杭州');
+  assert.strictEqual(got.id, t.id);
+  assert.strictEqual(got.title, '杭州 · 我的行程');
+  assert.strictEqual(db.getTrip(t.id).title, '杭州 · 我的行程');
+  db.close();
+});
+
+test('getOrCreateCityTrip 新建城市行程标题为「城市 · 我的行程」（F4-2）', () => {
+  const db = createDb(':memory:');
+  const t = db.getOrCreateCityTrip('三亚市');
+  assert.strictEqual(t.title, '三亚市 · 我的行程');
+  assert.ok(!/三亚市 · 三亚市/.test(t.title));
+  db.close();
+});
