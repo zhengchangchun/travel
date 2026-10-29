@@ -544,6 +544,17 @@ else
   fail "T5 mock 检查未全绿"
 fi
 
+# ================= T7 切城市视角与视野加载（T7-P68–T7-P75） =================
+# bbox 接口（mock 高德）＋ 视野加载前端资产 ＋ 工程约束，见 scripts/t7-smoke.cjs
+if T7_OUT="$(node scripts/t7-smoke.cjs)"; then
+  printf '%s\n' "${T7_OUT}"
+  T7_N="$(printf '%s\n' "${T7_OUT}" | grep -c '^PASS')"
+  PASS=$((PASS + T7_N))
+else
+  printf '%s\n' "${T7_OUT}"
+  fail "T7 mock 检查未全绿"
+fi
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0
