@@ -12,6 +12,7 @@ const poiRoutes = require('./routes/poi');
 const tripsRoutes = require('./routes/trips');
 const notesRoutes = require('./routes/notes');
 const selectionRoutes = require('./routes/selection');
+const routeRoutes = require('./routes/route');
 
 class HttpError extends Error {
   constructor(status, code, msg) {
@@ -139,11 +140,23 @@ function createApp(opts = {}) {
     ...tripsRoutes,
     ...notesRoutes,
     ...selectionRoutes,
+    ...routeRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));
 
-  const baseCtx = { config, categories, db, cache, amap, HttpError };
+  const baseCtx = {
+    config,
+    categories,
+    db,
+    cache,
+    amap,
+    HttpError,
+    routeIntervalMs:
+      opts.routeIntervalMs !== undefined
+        ? Number(opts.routeIntervalMs) || 0
+        : Number(process.env.ROUTE_LEG_INTERVAL_MS || 300),
+  };
 
   async function handleApi(req, res, ctx, method, pathname, query) {
     let pathMatched = false;
