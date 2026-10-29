@@ -246,6 +246,119 @@ else
   fail "P28 工程约束不满足"
 fi
 
+# ================= T3 路线连线（P29–P37） =================
+
+# P29 单段驾车路线：距离/耗时 > 0、折线 >= 2 点
+R29="$(req_body '/api/route?mode=driving&origin=120.161,30.279&destination=120.148,30.246')"
+[ "$(printf '%s' "${R29}" | jget '.ok')" = "true" ] || fail "P29 driving 返回非 ok"
+[ "$(printf '%s' "${R29}" | jget '.data.distance')" -gt 0 ] 2>/dev/null || fail "P29 distance<=0"
+[ "$(printf '%s' "${R29}" | jget '.data.duration')" -gt 0 ] 2>/dev/null || fail "P29 duration<=0"
+[ "$(printf '%s' "${R29}" | jget '.data.polyline.length')" -ge 2 ] 2>/dev/null || fail "P29 polyline<2 点"
+ok "P29 GET /api/route driving（distance/duration>0，polyline>=2 点）"
+sleep 0.4
+
+# P30 步行可返回；公交（带 city）可返回且含换乘摘要
+R30W="$(req_body '/api/route?mode=walking&origin=120.161,30.279&destination=120.148,30.246')"
+[ "$(printf '%s' "${R30W}" | jget '.ok')" = "true" ] || fail "P30 walking 返回非 ok"
+[ "$(printf '%s' "${R30W}" | jget '.data.mode')" = "walking" ] || fail "P30 walking mode 不符"
+sleep 0.4
+R30T="$(req_body '/api/route?mode=transit&origin=120.161,30.279&destination=120.148,30.246&city=%E6%9D%AD%E5%B7%9E')"
+[ "$(printf '%s' "${R30T}" | jget '.ok')" = "true" ] || fail "P30 transit 返回非 ok"
+[ "$(printf '%s' "${R30T}" | jget '.data.mode')" = "transit" ] || fail "P30 transit mode 不符"
+[ "$(printf '%s' "${R30T}" | jget '.data.transit.segments.length')" -ge 1 ] 2>/dev/null || fail "P30 transit 缺换乘摘要"
+[ "$(printf '%s' "${R30T}" | jget '.data.polyline.length')" -ge 2 ] 2>/dev/null || fail "P30 transit 折线<2 点"
+ok "P30 walking 正常；transit 含换乘摘要与外接折线"
+sleep 0.4
+
+# P31 非法参数：mode 非法 / transit 缺 city / 坐标格式错 → 400
+C31A="$(req_code '/api/route?mode=fly&origin=120.1,30.2&destination=120.2,30.3')"
+[ "${C31A}" = "400" ] || fail "P31 mode 非法应 400（${C31A}）"
+C31B="$(req_code '/api/route?mode=transit&origin=120.1,30.2&destination=120.2,30.3')"
+[ "${C31B}" = "400" ] || fail "P31 transit 缺 city 应 400（${C31B}）"
+C31C="$(req_code '/api/route?mode=driving&origin=abc&destination=120.2,30.3')"
+[ "${C31C}" = "400" ] || fail "P31 坐标格式错应 400（${C31C}）"
+ok "P31 非法 mode / transit 缺 city / 坐标格式错 → 400"
+
+# P32 3 个点行程 → legs=2 且 totalDistance = 两段之和
+sel_post '{"city":"杭州","poi":{"id":"SMOKE_P3","name":"丙点","address":"丙路3号","lng":120.25,"lat":30.24,"category":"stay"}}' >/dev/null
+R32="$(req_body '/api/itinerary/route?city=%E6%9D%AD%E5%B7%9E&mode=driving')"
+[ "$(printf '%s' "${R32}" | jget '.ok')" = "true" ] || fail "P32 行程路线返回非 ok"
+[ "$(printf '%s' "${R32}" | jget '.data.legs.length')" = "2" ] || fail "P32 legs!=2"
+L0="$(printf '%s' "${R32}" | jget '.data.legs[0].distance')"
+L1="$(printf '%s' "${R32}" | jget '.data.legs[1].distance')"
+TOT="$(printf '%s' "${R32}" | jget '.data.totalDistance')"
+[ "${TOT}" = "$((L0 + L1))" ] || fail "P32 totalDistance 不等于段和（${TOT} != $((L0 + L1))）"
+ok "P32 3 点行程 legs=2，totalDistance=两段之和（${TOT}）"
+
+# P33 同参数连打两次 → 第二次命中缓存（cache hits 增加）
+req_body '/api/itinerary/route?city=%E6%9D%AD%E5%B7%9E&mode=driving' >/dev/null
+HITS33A="$(req_body /api/health | jget '.data.cache.hits')"
+req_body '/api/itinerary/route?city=%E6%9D%AD%E5%B7%9E&mode=driving' >/dev/null
+HITS33B="$(req_body /api/health | jget '.data.cache.hits')"
+[ "${HITS33B}" -gt "${HITS33A}" ] 2>/dev/null || fail "P33 第二次未命中缓存（${HITS33A} → ${HITS33B}）"
+ok "P33 同参数二次请求命中缓存（hits ${HITS33A} → ${HITS33B}）"
+
+# P34 单点行程（<2 点）→ 400
+sel_post '{"city":"上海","poi":{"id":"SMOKE_S1","name":"外滩","address":"中山东一路","lng":121.49,"lat":31.24,"category":"sight"}}' >/dev/null
+C34="$(req_code '/api/itinerary/route?city=%E4%B8%8A%E6%B5%B7&mode=driving')"
+[ "${C34}" = "400" ] || fail "P34 单点行程应 400（${C34}）"
+ok "P34 单点行程（<2 点）→ 400"
+
+# P35 段级失败降级：mock 第二段失败 → HTTP 200，该段 ok:false/degraded:true 且有 reason，其余段正常
+if node -e '
+  const { createApp } = require("./server/index");
+  const { createDb } = require("./server/db");
+  const db = createDb(":memory:");
+  [["A", 120.1, 30.2], ["B", 120.11, 30.21], ["C", 120.12, 30.22]].forEach(([id, lng, lat]) =>
+    db.insertPinIfAbsent("杭州", { id, name: id, lng, lat, category: "food" })
+  );
+  let n = 0;
+  const amap = {
+    planDriving: async () => {
+      n += 1;
+      if (n === 2) { const e = new Error("段级规划失败"); e.code = "AMAP_ERROR"; throw e; }
+      return { mode: "driving", distance: 1000, duration: 600,
+        polyline: [[120.1, 30.2], [120.11, 30.21]], steps: [], transit: null, degraded: false };
+    },
+  };
+  const app = createApp({
+    config: { port: 0, amap: { webServiceKey: "K", jsApiKey: "J", jsApiSecurityCode: "" }, defaultCity: "杭州" },
+    db, amap, routeIntervalMs: 0,
+  });
+  app.server.listen(0, "127.0.0.1", async () => {
+    const base = "http://127.0.0.1:" + app.server.address().port;
+    const res = await fetch(base + "/api/itinerary/route?city=" + encodeURIComponent("杭州") + "&mode=driving");
+    const body = await res.json();
+    const d = body.data || {};
+    const ok = res.status === 200 && d.legs && d.legs.length === 2 &&
+      d.legs[0].ok === true && d.legs[1].ok === false && d.legs[1].degraded === true &&
+      !!d.legs[1].reason && d.totalDistance === 1000 && d.failed && d.failed.length === 1;
+    console.log("P35 mock:", res.status, JSON.stringify((d.legs || []).map((l) => ({ ok: l.ok, degraded: l.degraded, reason: l.reason }))));
+    app.server.close(); app.db.close(); process.exit(ok ? 0 : 1);
+  });
+'; then
+  ok "P35 段级失败降级（200 + ok:false/degraded:true/reason，其余段正常）"
+else
+  fail "P35 段级失败未正确降级"
+fi
+
+# P36 前端路线资产就绪：TravelRoute + 三方式 + 总览面板
+A36="$(req_body /js/route.js)"
+[[ "${A36}" == *TravelRoute* ]] || fail "P36 route.js 未含 TravelRoute"
+[[ "${A36}" == *正在规划* ]] || fail "P36 route.js 缺逐段进度文案"
+[[ "${A36}" == *driving* && "${A36}" == *walking* && "${A36}" == *transit* ]] || fail "P36 route.js 缺三种出行方式"
+IDX36="$(req_body /)"
+[[ "${IDX36}" == *route-modes* && "${IDX36}" == *route-totals* && "${IDX36}" == *route-legs* ]] || fail "P36 index 缺路线总览面板"
+ok "P36 前端路线资产就绪（TravelRoute + 三方式 + 总览面板）"
+
+# P37 调序自动重算与分段点击：app 调 Route.draw / map drawRoute / route focusLeg
+M37="$(req_body /js/map.js)"
+AP37="$(req_body /js/app.js)"
+[[ "${M37}" == *drawRoute* && "${M37}" == *clearRoute* ]] || fail "P37 map.js 缺 drawRoute/clearRoute"
+[[ "${AP37}" == *Route.draw* ]] || fail "P37 app.js 未在调序后重算（缺 Route.draw）"
+[[ "${A36}" == *focusLeg* ]] || fail "P37 route.js 缺 focusLeg（分段可点）"
+ok "P37 调序自动重算与分段点击资产就绪（app Route.draw / map drawRoute / route focusLeg）"
+
 echo "-----------------------------------------"
-echo "smoke 全部通过：$PASS 项"
+echo "smoke 全部通过：${PASS} 项"
 exit 0
