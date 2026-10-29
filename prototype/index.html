@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>地图选点 · Travel</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <h1>📍 地图选点</h1>
+    <p class="sub">基于高德地图 JS API · 点击地图即可选点</p>
+
+    <section class="card">
+      <h2>1 · Key 配置</h2>
+      <label>高德 Key
+        <input id="inp-key" placeholder="粘贴你的 Web 端 Key" autocomplete="off" />
+      </label>
+      <label>安全密钥 jsCode（必填）
+        <input id="inp-jscode" placeholder="Web 端安全密钥" autocomplete="off" />
+      </label>
+      <div class="row">
+        <button id="btn-save-key" class="primary">保存并加载地图</button>
+        <button id="btn-clear-key" class="ghost">清除</button>
+      </div>
+      <p class="hint">去 <a href="https://console.amap.com/dev/key/app" target="_blank">高德控制台 → 应用管理 → 添加 Key（服务选 Web 端 JS API）</a>，再配安全密钥。Key 只存你本机 localStorage。</p>
+    </section>
+
+    <section class="card">
+      <h2>2 · 地名搜索</h2>
+      <div class="row">
+        <input id="inp-search" placeholder="如：杭州东站 / 西湖" />
+        <button id="btn-search">搜索</button>
+      </div>
+      <div id="search-results"></div>
+    </section>
+
+    <section class="card">
+      <h2>3 · 已选点 <span id="point-count">0</span></h2>
+      <div class="row">
+        <button id="btn-locate">📡 定位到我</button>
+        <button id="btn-export-json" class="ghost">导出 JSON</button>
+        <button id="btn-export-csv" class="ghost">导出 CSV</button>
+      </div>
+      <div class="row">
+        <button id="btn-copy" class="ghost">复制经纬度</button>
+        <button id="btn-clear-points" class="danger-ghost">清空全部</button>
+      </div>
+      <ul id="point-list"></ul>
+    </section>
+
+    <section class="card small">
+      <h2>用法</h2>
+      <ol>
+        <li>填 Key 后点“保存并加载地图”。</li>
+        <li>单击地图 = 加一个点（自动逆编码出地址）。</li>
+        <li>拖动图标可微调；点列表项可定位；× 删除。</li>
+      </ol>
+    </section>
+  </aside>
+  <main id="map-wrap">
+    <div id="map"></div>
+    <div id="map-tip">👆 单击地图任意位置，加选点</div>
+    <div id="map-status">未加载：请先在左侧填 Key</div>
+  </main>
+</div>
+<script src="./app.js"></script>
+</body>
+</html>

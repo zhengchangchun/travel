@@ -1,0 +1,9 @@
+{
+  "port": 8787,
+  "amap": {
+    "webServiceKey": "在此填入高德 Web服务类型 key",
+    "jsApiKey": "在此填入高德 Web端(JS API)类型 key",
+    "jsApiSecurityCode": "若该 key 配了安全密钥则填，否则留空"
+  },
+  "defaultCity": "杭州"
+}
