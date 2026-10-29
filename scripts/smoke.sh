@@ -359,6 +359,54 @@ AP37="$(req_body /js/app.js)"
 [[ "${A36}" == *focusLeg* ]] || fail "P37 route.js 缺 focusLeg（分段可点）"
 ok "P37 调序自动重算与分段点击资产就绪（app Route.draw / map drawRoute / route focusLeg）"
 
+# ================= T6 三栏左右分离（P39–P42） =================
+IDX_T6="$(req_body /)"
+
+# P39 三栏容器与折叠按钮就绪
+[[ "${IDX_T6}" == *'id="sidebar"'* ]] || fail "P39 缺左栏 #sidebar"
+[[ "${IDX_T6}" == *'id="map-wrap"'* ]] || fail "P39 缺中栏 #map-wrap"
+[[ "${IDX_T6}" == *'id="right-panel"'* ]] || fail "P39 缺右栏 #right-panel"
+[[ "${IDX_T6}" == *'id="panel-toggle"'* ]] || fail "P39 缺折叠按钮"
+ok "P39 三栏容器与折叠按钮就绪（sidebar / map-wrap / right-panel / panel-toggle）"
+
+# P40 左栏无「我挑的」残留；右栏含全部「我挑的」元素
+if printf '%s' "${IDX_T6}" | node -e '
+  let s = "";
+  process.stdin.on("data", (c) => (s += c)).on("end", () => {
+    const l = s.indexOf("id=\"sidebar\"");
+    const m = s.indexOf("id=\"map-wrap\"");
+    const r = s.indexOf("id=\"right-panel\"");
+    if (!(l >= 0 && m > l && r > m)) { console.log("三栏顺序/容器缺失"); process.exit(1); }
+    const left = s.slice(l, m);
+    const right = s.slice(r);
+    const pin = ["selection-count","only-selected-btn","plan-btn","selection-list","itinerary-panel","itinerary-list","route-modes","route-totals","route-legs"];
+    const residual = pin.filter((x) => left.indexOf(x) >= 0);
+    if (residual.length) { console.log("左栏残留: " + residual.join(",")); process.exit(2); }
+    const missing = pin.filter((x) => right.indexOf(x) < 0);
+    if (missing.length) { console.log("右栏缺失: " + missing.join(",")); process.exit(3); }
+    process.exit(0);
+  });
+'; then
+  ok "P40 左栏无「我挑的」残留，右栏含全部「我挑的」元素"
+else
+  fail "P40 左右分离未达成"
+fi
+
+# P41 三栏 / 折叠 / 响应式样式就绪
+CSS_T6="$(req_body /css/style.css)"
+[[ "${CSS_T6}" == *"right-panel"* ]] || fail "P41 CSS 缺右栏样式"
+[[ "${CSS_T6}" == *"collapsed"* ]] || fail "P41 CSS 缺折叠样式"
+[[ "${CSS_T6}" == *"1100px"* ]] || fail "P41 CSS 缺窄屏断点 1100px"
+ok "P41 三栏 + 折叠 + 1100px 响应式样式就绪"
+
+# P42 地图自适应：折叠后 resize
+MJ_T6="$(req_body /js/map.js)"
+AJ_T6="$(req_body /js/app.js)"
+[[ "${MJ_T6}" == *"resize"* ]] || fail "P42 map.js 缺 resize"
+[[ "${AJ_T6}" == *"collapsed"* ]] || fail "P42 app.js 缺折叠处理"
+[[ "${AJ_T6}" == *"resize"* ]] || fail "P42 app.js 折叠后未调 resize"
+ok "P42 地图自适应就绪（map resize + app 折叠调用）"
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0
