@@ -146,6 +146,19 @@ async function collectCityCategory({ city, category, amap, db, intervalMs = 0, c
   let nUpdated = 0;
   let failed = 0;
 
+  if (typeof onProgress === 'function') {
+    onProgress({
+      city,
+      category,
+      done_districts: 0,
+      total_districts: list.length,
+      n_fetched: 0,
+      n_inserted: 0,
+      n_updated: 0,
+      districts: [],
+    });
+  }
+
   for (let i = 0; i < list.length; i += 1) {
     const d = list[i];
     try {
