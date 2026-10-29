@@ -142,6 +142,110 @@ AFTER_CODE="$(req_code "/api/trips/$TRIP_ID/pins")"
 [ "$AFTER_CODE" = "404" ] || fail "P9 删行程后 pins 仍可访问（${AFTER_CODE}）"
 ok "P9 删行程后其下 pins 一并消失"
 
+# ================= T2 选中（P17–P24） =================
+SELQ="%E6%9D%AD%E5%B7%9E"
+sel_post() { curl -s -X POST "$BASE/api/selection" -H 'Content-Type: application/json' -d "$1"; }
+sel_get()  { req_body "/api/selection?city=${SELQ}"; }
+
+# P17 选中一条 → GET 返回该点、count=1
+S17="$(sel_post '{"city":"杭州","poi":{"id":"SMOKE_P1","name":"烟测美食店","address":"测试路1号","lng":120.2,"lat":30.25,"category":"food","rating":"4.5","cost":"88"}}')"
+[ "$(printf '%s' "$S17" | jget '.ok')" = "true" ] || fail "P17 选中返回非 ok"
+[ "$(printf '%s' "$S17" | jget '.data.tripId')" != "" ] || fail "P17 未自动建行程"
+G17="$(sel_get)"
+[ "$(printf '%s' "$G17" | jget '.data.count')" = "1" ] || fail "P17 count!=1"
+[ "$(printf '%s' "$G17" | jget '.data.pins[0].poi_id')" = "SMOKE_P1" ] || fail "P17 poi_id 不符"
+ok "P17 POST /api/selection 选中 → GET count=1"
+
+# P18 同 (city, poi_id) 重复选中仍 count=1（幂等）
+sel_post '{"city":"杭州","poi":{"id":"SMOKE_P1","name":"烟测美食店","address":"测试路1号","lng":120.2,"lat":30.25,"category":"food"}}' >/dev/null
+G18="$(sel_get)"
+[ "$(printf '%s' "$G18" | jget '.data.count')" = "1" ] || fail "P18 重复选中 count!=1"
+ok "P18 重复选中幂等（count 仍为 1）"
+
+# P19 取消选中 → count=0
+D19="$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE/api/selection?city=${SELQ}&poi_id=SMOKE_P1")"
+[ "$D19" = "200" ] || fail "P19 取消返回 ${D19}"
+[ "$(sel_get | jget '.data.count')" = "0" ] || fail "P19 取消后 count!=0"
+ok "P19 DELETE /api/selection → count=0"
+
+# P20 调序 [B,A] → GET 顺序为 B,A（顺序持久化）
+sel_post '{"city":"杭州","poi":{"id":"SMOKE_P1","name":"甲点","address":"甲路1号","lng":120.21,"lat":30.26,"category":"food","rating":"4.5","cost":"88"}}' >/dev/null
+sel_post '{"city":"杭州","poi":{"id":"SMOKE_P2","name":"乙点","address":"乙路2号","lng":120.22,"lat":30.27,"category":"sight"}}' >/dev/null
+curl -s -X PUT "$BASE/api/selection/order" -H 'Content-Type: application/json' \
+  -d '{"city":"杭州","poi_ids":["SMOKE_P2","SMOKE_P1"]}' >/dev/null
+G20="$(sel_get)"
+[ "$(printf '%s' "$G20" | jget '.data.pins[0].poi_id')" = "SMOKE_P2" ] || fail "P20 首项应为 SMOKE_P2"
+[ "$(printf '%s' "$G20" | jget '.data.pins[1].poi_id')" = "SMOKE_P1" ] || fail "P20 次项应为 SMOKE_P1"
+ok "P20 PUT /api/selection/order 顺序持久化（B,A）"
+
+# P21 导出 Markdown
+MD21="$(req_body "/api/selection/export?city=${SELQ}&format=md")"
+[[ "$MD21" == *"# 杭州 · 我的行程"* ]] || fail "P21 缺标题"
+[[ "$MD21" == *"## 美食"* ]] || fail "P21 缺分类分组"
+[[ "$MD21" == *"## 景点"* ]] || fail "P21 缺第二个分类分组"
+[[ "$MD21" == *"乙路2号"* ]] || fail "P21 缺详细地址"
+[[ "$MD21" == *"★4.5"* ]] || fail "P21 缺评分"
+ok "P21 GET /api/selection/export 返回 Markdown（标题/分组/地址）"
+
+# P22 旧库迁移幂等：无 sort_order 的旧库副本 → 自动补列且连跑两次不报错
+if node -e '
+  const fs=require("node:fs"), os=require("node:os"), path=require("node:path");
+  const { DatabaseSync }=require("node:sqlite");
+  const { createDb }=require("./server/db");
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"travel-old-"));
+  const file=path.join(dir,"travel.db");
+  const raw=new DatabaseSync(file);
+  raw.exec("CREATE TABLE trips (id INTEGER PRIMARY KEY AUTOINCREMENT, city TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT);");
+  raw.exec("CREATE TABLE pins (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL, poi_id TEXT, name TEXT NOT NULL, address TEXT, lng REAL NOT NULL, lat REAL NOT NULL, category TEXT NOT NULL, rating TEXT, cost TEXT, tel TEXT, photo TEXT, note TEXT, created_at TEXT);");
+  raw.close();
+  const d1=createDb(file);
+  const cols=d1.raw.prepare("PRAGMA table_info(pins)").all().map(c=>c.name);
+  d1.close();
+  const d2=createDb(file);
+  d2.close();
+  process.exit(cols.includes("sort_order")?0:1);
+'; then
+  ok "P22 旧库迁移幂等（自动补 sort_order，连跑两次不报错）"
+else
+  fail "P22 迁移未补列或不幂等"
+fi
+
+# P23 前端选中资产就绪（★ 选中）
+A23="$(req_body /js/selection.js)"
+[[ "$A23" == *"TravelSelection"* ]] || fail "P23 selection.js 未含 TravelSelection"
+[[ "$(sel_get | jget '.data.count')" = "2" ]] || fail "P23 选中集应为 2"
+ok "P23 前端选中资产 selection.js 就绪（TravelSelection）"
+
+# P24 只看选中：行程/选中资产与开关就绪
+A24="$(req_body /js/itinerary.js)"
+[[ "$A24" == *"TravelItinerary"* ]] || fail "P24 itinerary.js 未含 TravelItinerary"
+IDX24="$(req_body /)"
+[[ "$IDX24" == *"only-selected-btn"* ]] || fail "P24 index 缺只看选中开关"
+ok "P24 只看选中与行程视图资产就绪（only-selected-btn / itinerary.js）"
+
+# P28 工程约束：无 node_modules、无 dependencies、scripts 无 $VAR 紧跟非 ASCII
+if node -e '
+  const fs=require("node:fs"), path=require("node:path");
+  if (fs.existsSync("node_modules")) { console.log("node_modules exists"); process.exit(1); }
+  if (fs.existsSync("package.json")) {
+    const p=JSON.parse(fs.readFileSync("package.json","utf8"));
+    if (p.dependencies && Object.keys(p.dependencies).length) { console.log("dependencies 非空"); process.exit(2); }
+  }
+  const bad=[];
+  for (const f of fs.readdirSync("scripts")) {
+    if (!f.endsWith(".sh")) continue;
+    const t=fs.readFileSync(path.join("scripts",f),"utf8");
+    const re=/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/g;
+    let m; while ((m=re.exec(t))) bad.push(f+": "+m[0]);
+  }
+  if (bad.length) { console.log("脚本卫生问题:", bad.join(" | ")); process.exit(3); }
+  process.exit(0);
+'; then
+  ok "P28 无 node_modules / 无 dependencies / scripts 无 \$VAR 紧跟非 ASCII"
+else
+  fail "P28 工程约束不满足"
+fi
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：$PASS 项"
 exit 0
