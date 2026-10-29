@@ -98,3 +98,14 @@ F1 禁缓存读数：`curl -I` 对 `/`、`/js/app.js`、`/css/style.css` 均含 
 F4 读数：`GET /api/trips?city=杭州` 仅返回杭州行程；新建三亚市行程标题为 `三亚市 · 我的行程`；`getOrCreateCityTrip` 会把脏标题 `杭州 · 杭州 · 我的行程` 修复为 `杭州 · 我的行程`。
 
 T6b 复核读数：`node --test` **94 pass / 0 fail**；`smoke.sh` **35 项全 PASS，exit 0**（T6 的 31 + 新增 P43–P46）；无 `node_modules`；key 未硬编码。
+
+## T6b 独立复核（nanobot 实拍，2026-10-29 23:45）
+
+| 文件 | 内容 |
+|---|---|
+| `T6b-复核-三栏折叠实测.png` | 三栏落地；右栏 340px ↔ 46px 全省实测 |
+| `T6b-复核-删点二次确认.png` | 行程视图删点 → 弹出「从行程中删除「…」？取消/确认删除」 |
+
+复核读数：折叠 340↔46px（地图 820↔1114px）；删点确认后「我的选择」3→2；
+静态响应 `Cache-Control: no-cache, no-store, must-revalidate`（HTML/JS/CSS 三处）；
+`node --test` **94 pass / 0 fail**；`smoke.sh` **35 项全 PASS**。
