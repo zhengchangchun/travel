@@ -12,3 +12,17 @@
 | `P14-窄屏375px.png` | P14 | 375px 宽下布局可用 |
 
 复现：起服务后 `node tools/browser/pw.cjs run <脚本> --profile <任意>`。
+
+## T2（选中 · 我的选择 · 只看选中 · 行程规划）
+
+| 文件 | 对应判据 | 内容 |
+|---|---|---|
+| `P23-select-star.png` | P23 | 点 ★ 选中：计数 0→3，结果项星标变实心 |
+| `P24-only-selected.png` | P24 | 开「只看我选中的」→ 地图/列表只剩 3 个已选点 |
+| `P25-itinerary-reorder.png` | P25 | 行程视图 ↑↓ 调序 |
+| `P25-itinerary-after-reload.png` | P25 | 刷新后顺序仍保持 |
+| `P26-itinerary.md` | P26 | 行程单 Markdown（标题/分组/详细地址/评分人均） |
+| `P27-status-count.png` | P27 | 过滤后底部状态栏计数 90 → 30 |
+| `P23b-我的选择常驻可见.png` | UX 修复 | 未滚动时「我的选择 (3)」面板即完整可见（top 428–746，视口 813）；滚到底仍吸附可见 |
+
+T2 交互取证由 Chrome headless（`--headless=new`）+ CDP 实跑，脚本内以 DOM 断言校验后再截图。

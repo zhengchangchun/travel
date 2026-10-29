@@ -32,6 +32,13 @@ body {
   background: #1677ff; color: #fff; border-radius: 10px;
   padding: 0 8px; font-size: 12px;
 }
+/* 我的选择：常驻可见（置顶吸附，不被长结果列表挤走） */
+.pin-card {
+  position: sticky; top: 0; z-index: 6;
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .06);
+}
+.pin-card #selection-list { max-height: 220px; overflow-y: auto; }
 .current-city { font-size: 13px; color: #374151; margin-top: 8px; }
 .current-city b { color: #1677ff; }
 .hint { font-size: 12px; color: #8b8f98; line-height: 1.5; margin: 6px 0 0; }
