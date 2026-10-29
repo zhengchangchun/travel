@@ -16,6 +16,14 @@
     };
   }
 
+  function put(payload) {
+    return {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    };
+  }
+
   async function request(path, options) {
     let res;
     try {
@@ -57,5 +65,27 @@
     deletePin: (id) => request('/api/pins/' + id, { method: 'DELETE' }),
     listNotes: (city) => request('/api/notes' + (city ? '?' + qs({ city }) : '')),
     addNote: (payload) => request('/api/notes', post(payload)),
+    updatePinNote: (id, note) =>
+      request('/api/pins/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note }),
+      }),
+
+    // 选中（T2）
+    getSelection: (city) => request('/api/selection?' + qs({ city })),
+    selectPoi: (payload) => request('/api/selection', post(payload)),
+    unselectPoi: ({ city, poiId }) =>
+      request('/api/selection?' + qs({ city, poi_id: poiId }), { method: 'DELETE' }),
+    reorderSelection: (payload) => request('/api/selection/order', put(payload)),
+    exportSelection: async (city) => {
+      const res = await fetch('/api/selection/export?' + qs({ city, format: 'md' }));
+      if (!res.ok) {
+        const e = new Error('导出失败（HTTP ' + res.status + '）');
+        e.status = res.status;
+        throw e;
+      }
+      return res.text();
+    },
   };
 })();

@@ -1,16 +1,21 @@
-/* 主控：启动 → 取配置 → 初始化地图 → 载入默认城市 → 拉 POI → 渲染 */
+/* 主控：启动 → 取配置 → 初始化地图 → 载入默认城市 → 拉 POI → 渲染；选中/我的选择/行程视图 */
 (function () {
   const API = window.TravelAPI;
   const UI = window.TravelUI;
   const MapCtl = window.TravelMap;
   const Cats = window.TravelCategories;
+  const Selection = window.TravelSelection;
+  const Itinerary = window.TravelItinerary;
 
   const state = {
     config: null,
     city: null,
-    selected: new Set(),
+    activeCats: new Set(),
     pois: [],
     trip: null,
+    onlySelected: false,
+    view: 'list',
+    cardPoi: null,
   };
 
   function $(id) {
@@ -29,31 +34,150 @@
     return out;
   }
 
-  function applyView() {
-    const filtered = state.selected.size
-      ? state.pois.filter((p) => state.selected.has(p.category))
-      : state.pois;
+  function currentList() {
+    let list = state.onlySelected ? Selection.list() : state.pois;
+    if (state.activeCats.size) {
+      list = list.filter((p) => state.activeCats.has(p.category));
+    }
+    return list;
+  }
 
-    UI.renderResults($('result-list'), filtered, onPickPoi);
-    $('result-count').textContent = String(filtered.length);
+  function renderMap(list, fit) {
+    if (!MapCtl.isReady()) return;
+    MapCtl.clearMarkers();
+    list.forEach((p) => MapCtl.addMarker(p, Selection.has(p)));
+    if (fit) MapCtl.fitView();
+  }
 
-    if (MapCtl.isReady()) {
-      MapCtl.clearMarkers();
-      filtered.forEach((p) => MapCtl.addMarker(p));
-      MapCtl.fitView();
+  function updateStatus(list) {
+    UI.setStatus(
+      '已显示 ' + list.length + ' / ' + state.pois.length + ' 个地点（' + state.city + '）'
+    );
+  }
+
+  function renderSelection() {
+    $('selection-count').textContent = String(Selection.count());
+    $('only-selected-btn').classList.toggle('active', state.onlySelected);
+    UI.renderSelectionPanel($('selection-list'), Selection.list(), {
+      onLocate(pin) {
+        if (MapCtl.isReady()) MapCtl.flyTo(pin.lng, pin.lat, 15);
+        onPickPoi(pin);
+      },
+      onRemove: onRemoveSelected,
+    });
+  }
+
+  function renderItinerary() {
+    Itinerary.render($('itinerary-list'), Selection.list(), {
+      onMove: onMovePin,
+    });
+  }
+
+  function refresh(opts) {
+    const fit = !opts || opts.fit !== false;
+    const list = currentList();
+    UI.renderResults($('result-list'), list, onPickPoi, {
+      isSelected: (p) => Selection.has(p),
+      onToggleSelect,
+    });
+    $('result-count').textContent = String(list.length);
+    updateStatus(list);
+    renderMap(list, fit);
+    renderSelection();
+    if (state.view === 'itinerary') renderItinerary();
+  }
+
+  function setView(view) {
+    state.view = view;
+    const inItinerary = view === 'itinerary';
+    $('itinerary-panel').classList.toggle('hidden', !inItinerary);
+    $('selection-list').classList.toggle('hidden', inItinerary);
+    if (inItinerary) {
+      reloadSelection().then(renderItinerary);
+    } else {
+      renderSelection();
+    }
+  }
+
+  async function reloadSelection() {
+    if (!state.city) return;
+    try {
+      await Selection.load(state.city);
+    } catch (err) {
+      /* 离线时保留本地视图 */
+    }
+  }
+
+  async function onToggleSelect(poi) {
+    try {
+      await Selection.toggle(poi);
+    } catch (err) {
+      UI.setStatus('选中失败：' + err.message);
+    }
+  }
+
+  async function onRemoveSelected(pin) {
+    try {
+      await Selection.remove(pin.id);
+    } catch (err) {
+      UI.setStatus('移除失败：' + err.message);
+    }
+  }
+
+  async function onMovePin(index, delta) {
+    try {
+      await Selection.move(index, delta);
+    } catch (err) {
+      UI.setStatus('调序失败：' + err.message);
+    }
+  }
+
+  function onToggleOnlySelected() {
+    state.onlySelected = !state.onlySelected;
+    refresh();
+  }
+
+  function onPlan() {
+    setView('itinerary');
+  }
+
+  async function onCopyItinerary() {
+    if (!state.city) return;
+    try {
+      const text = await API.exportSelection(state.city);
+      const ok = await Itinerary.copyText(text);
+      UI.setStatus(ok ? '行程单已复制到剪贴板' : '已弹出复制框');
+    } catch (err) {
+      UI.setStatus('导出失败：' + err.message);
+    }
+  }
+
+  async function onDownloadItinerary() {
+    if (!state.city) return;
+    try {
+      const text = await API.exportSelection(state.city);
+      Itinerary.download(state.city + '-行程.md', text);
+      UI.setStatus('行程单已下载');
+    } catch (err) {
+      UI.setStatus('下载失败：' + err.message);
     }
   }
 
   function onToggleChip(key) {
-    if (state.selected.has(key)) state.selected.delete(key);
-    else state.selected.add(key);
-    UI.renderChips($('chips'), Cats.all(), state.selected, onToggleChip);
-    applyView();
+    if (state.activeCats.has(key)) state.activeCats.delete(key);
+    else state.activeCats.add(key);
+    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+    refresh();
   }
 
   function onPickPoi(poi) {
+    state.cardPoi = poi;
     if (MapCtl.isReady()) MapCtl.flyTo(poi.lng, poi.lat, 15);
-    UI.showInfocard($('infocard'), poi, state.city, { onAddPin: onAddPin });
+    UI.showInfocard($('infocard'), poi, state.city, {
+      onAddPin,
+      isSelected: (p) => Selection.has(p),
+      onToggleSelect,
+    });
   }
 
   async function loadCityPois(city) {
@@ -64,15 +188,21 @@
       )
     );
     state.pois = dedupe(results.flat());
-    applyView();
-    UI.setStatus('已加载 ' + state.pois.length + ' 个地点（' + city + '）');
+    refresh();
   }
 
   async function setCity(city) {
     state.city = city.name || city;
     $('current-city').textContent = state.city;
+    state.activeCats.clear();
+    state.onlySelected = false;
     if (typeof city.lng === 'number' && MapCtl.isReady()) {
       MapCtl.flyTo(city.lng, city.lat, 11);
+    }
+    try {
+      await Selection.load(state.city);
+    } catch (err) {
+      /* 选中加载失败不阻塞主流程 */
     }
     await loadCityPois(state.city);
   }
@@ -108,9 +238,9 @@
     try {
       const results = await API.searchPoi({ city: state.city, keywords });
       state.pois = dedupe(results);
-      state.selected.clear();
-      UI.renderChips($('chips'), Cats.all(), state.selected, onToggleChip);
-      applyView();
+      state.activeCats.clear();
+      UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+      refresh();
       if (state.pois.length && MapCtl.isReady()) {
         MapCtl.flyTo(state.pois[0].lng, state.pois[0].lat, 15);
       }
@@ -173,6 +303,31 @@
     }
   }
 
+  function bind() {
+    $('city-search-btn').onclick = doCitySearch;
+    $('city-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doCitySearch();
+    });
+    $('poi-search-btn').onclick = doPoiSearch;
+    $('poi-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doPoiSearch();
+    });
+    $('only-selected-btn').onclick = onToggleOnlySelected;
+    $('plan-btn').onclick = onPlan;
+    $('itinerary-back').onclick = () => setView('list');
+    $('itinerary-copy').onclick = onCopyItinerary;
+    $('itinerary-download').onclick = onDownloadItinerary;
+    $('trip-new-btn').onclick = async () => {
+      state.trip = null;
+      try {
+        await ensureTrip();
+        UI.setStatus('已新建行程');
+      } catch (err) {
+        UI.setStatus('新建行程失败：' + err.message);
+      }
+    };
+  }
+
   async function boot() {
     UI.setStatus('正在获取配置…');
     try {
@@ -184,7 +339,11 @@
     }
 
     Cats.init(state.config.categories);
-    UI.renderChips($('chips'), Cats.all(), state.selected, onToggleChip);
+    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+
+    Selection.subscribe(() => refresh({ fit: false }));
+
+    bind();
 
     try {
       await MapCtl.init('map', {
@@ -209,28 +368,5 @@
     }
   }
 
-  function bind() {
-    $('city-search-btn').onclick = doCitySearch;
-    $('city-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doCitySearch();
-    });
-    $('poi-search-btn').onclick = doPoiSearch;
-    $('poi-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doPoiSearch();
-    });
-    $('trip-new-btn').onclick = async () => {
-      state.trip = null;
-      try {
-        await ensureTrip();
-        UI.setStatus('已新建行程');
-      } catch (err) {
-        UI.setStatus('新建行程失败：' + err.message);
-      }
-    };
-  }
-
-  window.addEventListener('DOMContentLoaded', () => {
-    bind();
-    boot();
-  });
+  window.addEventListener('DOMContentLoaded', boot);
 })();

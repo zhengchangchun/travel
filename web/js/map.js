@@ -15,14 +15,16 @@
     return poi.id || poi.name + '@' + poi.lng + ',' + poi.lat;
   }
 
-  function flagHtml(poi) {
+  function flagHtml(poi, selected) {
     const color = window.TravelCategories.colorOf(poi.category);
     const label = window.TravelCategories.labelOf(poi.category);
     return (
-      '<div class="flag" data-category="' + esc(poi.category) + '" ' +
+      '<div class="flag' + (selected ? ' selected' : '') + '" data-category="' +
+      esc(poi.category) + '" ' +
       'style="--flag-color:' + esc(color) + '" title="' + esc(poi.name) + '">' +
       '<div class="flag-head"><span class="flag-icon">' + esc(label.slice(0, 1)) + '</span></div>' +
       '<div class="flag-tail"></div>' +
+      (selected ? '<span class="flag-star">★</span>' : '') +
       '</div>'
     );
   }
@@ -84,16 +86,16 @@
     markers.clear();
   }
 
-  function addMarker(poi) {
+  function addMarker(poi, selected) {
     if (!map) return null;
     const key = poiKey(poi);
     if (markers.has(key)) return markers.get(key);
     const marker = new AMap.Marker({
       position: [poi.lng, poi.lat],
-      content: flagHtml(poi),
+      content: flagHtml(poi, selected),
       offset: new AMap.Pixel(-13, -34),
       extData: { poi },
-      zIndex: 100,
+      zIndex: selected ? 200 : 100,
     });
     marker.on('click', () => {
       if (clickHandler) clickHandler(poi);

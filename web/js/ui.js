@@ -42,7 +42,18 @@
     });
   }
 
-  function renderResults(container, pois, onPick) {
+  function starButton(selected, color) {
+    return (
+      '<button class="star' + (selected ? ' active' : '') + '" ' +
+      'title="' + (selected ? '取消选中' : '选中') + '" ' +
+      'style="--star-color:' + esc(color) + '">' +
+      (selected ? '★' : '☆') +
+      '</button>'
+    );
+  }
+
+  function renderResults(container, pois, onPick, handlers) {
+    handlers = handlers || {};
     container.innerHTML = '';
     if (!pois.length) {
       container.innerHTML = '<li class="empty">没有结果</li>';
@@ -55,6 +66,7 @@
         poi.rating ? '★ ' + poi.rating : '',
         poi.cost ? '¥' + poi.cost : '',
       ].filter(Boolean).join(' · ');
+      const selected = handlers.isSelected ? handlers.isSelected(poi) : false;
 
       const li = document.createElement('li');
       li.className = 'poi-item';
@@ -63,10 +75,50 @@
         '<span class="dot" style="background:' + esc(color) + '"></span>' +
         '<b class="poi-name">' + esc(poi.name) + '</b>' +
         '<span class="poi-tag">' + esc(label) + '</span>' +
+        starButton(selected, color) +
         '</div>' +
         '<div class="poi-addr">' + esc(poi.address || '（无详细地址）') + '</div>' +
         (meta ? '<div class="poi-meta">' + esc(meta) + '</div>' : '');
       li.onclick = () => onPick(poi);
+      const star = li.querySelector('.star');
+      if (star && handlers.onToggleSelect) {
+        star.onclick = (e) => {
+          e.stopPropagation();
+          handlers.onToggleSelect(poi);
+        };
+      }
+      container.appendChild(li);
+    });
+  }
+
+  function renderSelectionPanel(container, pins, handlers) {
+    container.innerHTML = '';
+    if (!pins.length) {
+      container.innerHTML =
+        '<li class="empty">点列表里的 ★ 把想去的地方挑出来</li>';
+      return;
+    }
+    pins.forEach((pin) => {
+      const color = window.TravelCategories.colorOf(pin.category);
+      const label = window.TravelCategories.labelOf(pin.category);
+      const li = document.createElement('li');
+      li.className = 'poi-item sel-item';
+      li.innerHTML =
+        '<div class="poi-head">' +
+        '<span class="dot" style="background:' + esc(color) + '"></span>' +
+        '<b class="poi-name">' + esc(pin.name) + '</b>' +
+        '<span class="poi-tag">' + esc(label) + '</span>' +
+        '</div>' +
+        '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
+        '<div class="sel-actions">' +
+        '<button class="locate">定位</button>' +
+        '<button class="del">移除</button>' +
+        '</div>';
+      li.onclick = () => handlers.onLocate(pin);
+      const locate = li.querySelector('.locate');
+      const del = li.querySelector('.del');
+      if (locate) locate.onclick = (e) => { e.stopPropagation(); handlers.onLocate(pin); };
+      if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
       container.appendChild(li);
     });
   }
@@ -123,6 +175,7 @@
       '<span class="dot" style="background:' + esc(color) + '"></span>' +
       '<b>' + esc(poi.name) + '</b>' +
       '<span class="poi-tag">' + esc(label) + '</span>' +
+      starButton(!!(handlers && handlers.isSelected && handlers.isSelected(poi)), color) +
       '<button class="card-close" title="关闭">×</button>' +
       '</div>' +
       '<div class="card-addr">' +
@@ -143,6 +196,23 @@
 
     const close = card.querySelector('.card-close');
     if (close) close.onclick = () => card.classList.add('hidden');
+
+    const star = card.querySelector('.star');
+    if (star && handlers && handlers.onToggleSelect) {
+      star.onclick = async (e) => {
+        e.stopPropagation();
+        star.disabled = true;
+        try {
+          await handlers.onToggleSelect(poi);
+        } finally {
+          star.disabled = false;
+        }
+        const on = handlers.isSelected ? handlers.isSelected(poi) : false;
+        star.classList.toggle('active', on);
+        star.textContent = on ? '★' : '☆';
+        star.title = on ? '取消选中' : '选中';
+      };
+    }
 
     const copy = card.querySelector('.copy-addr');
     if (copy) copy.onclick = async () => {
@@ -169,6 +239,7 @@
     hideMapError,
     renderChips,
     renderResults,
+    renderSelectionPanel,
     renderTripPins,
     showInfocard,
   };
