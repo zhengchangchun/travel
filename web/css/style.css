@@ -248,13 +248,59 @@ button.danger:hover { background: #ad2102; }
 /* 地图旗子选中态 */
 .flag.selected { transform: scale(1.12); transform-origin: bottom center; }
 .flag.selected .flag-head {
-  border-color: #ffb400;
-  box-shadow: 0 0 0 3px rgba(255, 180, 0, .55), 0 1px 6px rgba(0, 0, 0, .5);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .95), 0 0 0 5px rgba(22, 119, 255, .6), 0 1px 6px rgba(0, 0, 0, .5);
 }
 .flag-star {
   position: absolute; top: -8px; right: -8px; font-size: 13px;
   color: #ffb400; text-shadow: 0 0 2px #fff, 0 0 3px #fff;
 }
+
+/* ---------- 评分色阶（T4） ---------- */
+.sub-head { font-size: 13px; margin: 10px 0 4px; color: #374151; }
+.rating-chips { margin-top: 2px; }
+.rating-chip.active {
+  border-color: #f59e0b;
+  background: #fff7e6;
+  color: #b45309;
+  font-weight: 600;
+}
+.collect-progress { font-size: 12px; color: #1677ff; margin-top: 6px; min-height: 16px; }
+
+/* 满分金色星徽（列表 / 信息卡） */
+.top-star {
+  color: #f5a623; font-size: 14px; flex: none;
+  text-shadow: 0 0 2px rgba(245, 166, 35, .55);
+}
+
+/* 评分色阶图例 */
+.score-legend {
+  position: absolute; right: 12px; bottom: 12px; z-index: 15;
+  width: 150px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .96); border: 1px solid #e5e6eb; border-radius: 10px;
+  font-size: 11px; color: #374151;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
+}
+.legend-title { font-weight: 600; margin-bottom: 4px; }
+.legend-bar {
+  height: 10px; border-radius: 5px;
+  background: linear-gradient(to right, #d9d9d9 0%, #9aa0aa 50%, #1f2937 100%);
+}
+.legend-scale { display: flex; justify-content: space-between; color: #8b8f98; margin-top: 2px; }
+.legend-top { margin-top: 4px; color: #b45309; font-weight: 600; }
+.legend-star { color: #f5a623; }
+
+/* 满分旗子：金色描边 + 星徽；无评分：灰边 */
+.flag-crown {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; color: #f5a623;
+  text-shadow: 0 0 2px #fff, 0 0 3px #fff;
+}
+.flag.top .flag-head {
+  border-color: #f5a623;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, .6), 0 1px 5px rgba(0, 0, 0, .4);
+}
+.flag.no-rating .flag-head { border-color: #b8bcc4; }
 
 /* ---------- 路线连线（T3） ---------- */
 .route-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }

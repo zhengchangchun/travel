@@ -92,5 +92,12 @@
     // 路线（T3）
     route: (params) => request('/api/route?' + qs(params)),
     itineraryRoute: (city, mode) => request('/api/itinerary/route?' + qs({ city, mode })),
+
+    // POI 缓存与采集（T4）
+    listPois: (params) => request('/api/pois?' + qs(params)),
+    poisStats: (city) => request('/api/pois/stats?' + qs({ city })),
+    collect: (payload) => request('/api/collect', post(payload)),
+    collectStatus: (runId) => request('/api/collect/status?' + qs({ runId })),
+    collectRuns: (city) => request('/api/collect/runs?' + qs({ city })),
   };
 })();

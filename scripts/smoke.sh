@@ -456,6 +456,83 @@ SY_TITLE="$(printf '%s' "${T_SY}" | jget '.data[0].title')"
 [ "${SY_TITLE}" = "三亚市 · 我的行程" ] || fail "P46 标题去重失败：${SY_TITLE}"
 ok "P46 城市行程标题去重（三亚市 · 我的行程，不含重复城市名）"
 
+# ================= T4 POI 取全 · 分类纯净 · 评分色阶（P39–P57） =================
+# 说明：T6 占用过 P39–P46，故 T4 检查统一以 T4-Pxx 命名，避免编号冲突。
+IDX_T4="$(req_body /)"
+A_API="$(req_body /js/api.js)"
+A_APP="$(req_body /js/app.js)"
+A_SC="$(req_body /js/score-color.js)"
+A_MAP="$(req_body /js/map.js)"
+A_UI="$(req_body /js/ui.js)"
+CSS_T4="$(req_body /css/style.css)"
+
+# T4 mock：采集器 / 缓存接口 / 配额 / 二级分片（不烧高德配额）
+if T4_OUT="$(node scripts/t4-smoke.cjs)"; then
+  printf '%s\n' "${T4_OUT}"
+  T4_N="$(printf '%s\n' "${T4_OUT}" | grep -c '^PASS')"
+  PASS=$((PASS + T4_N))
+else
+  printf '%s\n' "${T4_OUT}"
+  fail "T4 mock 检查未全绿"
+fi
+
+# T4-P48 分类过滤 + 数据源切缓存
+[[ "${A_API}" == *listPois* ]] || fail "T4-P48 api.js 缺 listPois"
+[[ "${A_APP}" == *API.listPois* ]] || fail "T4-P48 app.js 未切缓存数据源"
+[[ "${IDX_T4}" == *'id="chips"'* ]] || fail "T4-P48 index 缺分类 chip"
+ok "T4-P48 前端分类过滤 + 数据源切缓存（listPois / chips）"
+
+# T4-P49 色阶 + 图例
+[[ "${A_SC}" == *colorFor* ]] || fail "T4-P49 score-color.js 缺 colorFor"
+[[ "${A_MAP}" == *colorFor* ]] || fail "T4-P49 map.js 旗子未用评分色阶"
+[[ "${IDX_T4}" == *'id="score-legend"'* ]] || fail "T4-P49 index 缺色阶图例"
+[[ "${CSS_T4}" == *legend-bar* ]] || fail "T4-P49 css 缺图例渐变条"
+ok "T4-P49 评分色阶 + 图例就绪（colorFor / score-legend / legend-bar）"
+
+# T4-P50 采集入口与进度
+[[ "${IDX_T4}" == *'id="collect-btn"'* ]] || fail "T4-P50 index 缺采集按钮"
+[[ "${IDX_T4}" == *'id="collect-progress"'* ]] || fail "T4-P50 index 缺进度容器"
+[[ "${A_APP}" == *pollCollect* ]] || fail "T4-P50 app.js 缺进度轮询"
+ok "T4-P50 采集入口与进度资产就绪（collect-btn / collect-progress / pollCollect）"
+
+# T4-P51 工程约束：key 未硬编码（node_modules / dependencies / 脚本卫生见 P28）
+if node -e '
+  const fs=require("node:fs"), path=require("node:path");
+  const keyFile="config/local.json";
+  if (!fs.existsSync(keyFile)) process.exit(0);
+  const key=(JSON.parse(fs.readFileSync(keyFile,"utf8")).amap||{}).webServiceKey||"";
+  if (!key) process.exit(0);
+  const hits=[];
+  const walk=(d)=>{ for (const f of fs.readdirSync(d,{withFileTypes:true})) {
+    const p=path.join(d,f.name);
+    if (f.isDirectory()) { if (f.name!=="node_modules") walk(p); continue; }
+    if (!/\.(js|cjs|mjs|html|css|sh|json)$/.test(f.name)) continue;
+    if (p==="config/local.json") continue;
+    if (fs.readFileSync(p,"utf8").includes(key)) hits.push(p);
+  }};
+  ["server","web","scripts","tests","config"].forEach((d)=>{ if (fs.existsSync(d)) walk(d); });
+  if (hits.length) { console.log("key 泄漏: "+hits.join(",")); process.exit(1); }
+  process.exit(0);
+'; then
+  ok "T4-P51 工程约束：key 未硬编码（node_modules/dependencies/脚本卫生见 P28）"
+else
+  fail "T4-P51 工程约束不满足（key 疑似硬编码）"
+fi
+
+# T4-P54 满分特殊标识资产
+[[ "${A_SC}" == *TOP_RATING* ]] || fail "T4-P54 缺 TOP_RATING 常量"
+[[ "${A_MAP}" == *flag-crown* ]] || fail "T4-P54 地图旗子缺满分星徽"
+[[ "${A_UI}" == *top-star* ]] || fail "T4-P54 列表缺金色星徽"
+[[ "${CSS_T4}" == *".flag.top"* ]] || fail "T4-P54 CSS 缺满分金边"
+ok "T4-P54 满分标识资产就绪（TOP_RATING / flag-crown / top-star）"
+
+# T4-P55 三层叠加（色阶深浅 / 满分金 / 选中白边）+ 评分过滤 chip
+[[ "${CSS_T4}" == *".flag.selected .flag-head"* ]] || fail "T4-P55 缺选中态样式"
+[[ "${CSS_T4}" == *"#ffffff"* ]] || fail "T4-P55 选中态应为白边"
+[[ "${IDX_T4}" == *'id="rating-chips"'* ]] || fail "T4-P55 index 缺评分过滤 chip"
+[[ "${A_APP}" == *ratingFilter* ]] || fail "T4-P55 app.js 缺评分过滤逻辑"
+ok "T4-P55 三层叠加 + 评分过滤资产就绪（色阶 / 满分金 / 选中白边 / rating-chips）"
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0

@@ -17,7 +17,18 @@
     onlySelected: false,
     view: 'list',
     cardPoi: null,
+    ratingFilter: 'all',
+    collecting: false,
+    collectTimer: null,
   };
+
+  const RATING_OPTIONS = [
+    { key: 'all', label: '全部' },
+    { key: '3.5', label: '≥3.5' },
+    { key: '4.0', label: '≥4.0' },
+    { key: '4.5', label: '≥4.5' },
+    { key: 'top', label: '★满分' },
+  ];
 
   function $(id) {
     return document.getElementById(id);
@@ -60,10 +71,23 @@
     return out;
   }
 
+  function passesRating(p) {
+    const f = state.ratingFilter;
+    if (!f || f === 'all') return true;
+    const SC = window.TravelScoreColor;
+    if (f === 'top') return SC ? SC.isTop(p.rating) : false;
+    const min = Number(f);
+    const n = Number(p.rating);
+    return Number.isFinite(n) && n >= min;
+  }
+
   function currentList() {
     let list = state.onlySelected ? Selection.list() : state.pois;
     if (state.activeCats.size) {
       list = list.filter((p) => state.activeCats.has(p.category));
+    }
+    if (state.ratingFilter !== 'all') {
+      list = list.filter(passesRating);
     }
     return list;
   }
@@ -242,14 +266,99 @@
   }
 
   async function loadCityPois(city) {
-    UI.setStatus('加载 ' + city + ' 推荐地点…');
-    const results = await Promise.all(
-      Cats.all().map((cat) =>
-        API.searchPoi({ city, category: cat.key }).catch(() => [])
-      )
-    );
-    state.pois = dedupe(results.flat());
+    UI.setStatus('读取 ' + city + ' 已收录地点…');
+    try {
+      const data = await API.listPois({ city, limit: 5000 });
+      state.pois = data.items || [];
+    } catch (err) {
+      state.pois = [];
+      UI.showLegend(false);
+      UI.setStatus('读取缓存失败：' + err.message);
+      refresh();
+      return;
+    }
+    state.pois = dedupe(state.pois);
+    UI.showLegend(state.pois.length > 0);
     refresh();
+    if (!state.pois.length) {
+      UI.setStatus('该城市还没采集，点左侧「开始采集」');
+    } else {
+      UI.setStatus('已收录 ' + state.pois.length + ' 个地点（' + city + '）');
+    }
+  }
+
+  function onPickRating(key) {
+    state.ratingFilter = key;
+    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    refresh();
+  }
+
+  // 采集入口：后台任务 + 轮询进度；完成后自动刷新列表
+  async function onCollect() {
+    if (state.collecting) return;
+    const btn = $('collect-btn');
+    try {
+      state.collecting = true;
+      if (btn) btn.disabled = true;
+      $('collect-progress').textContent = '正在提交采集任务…';
+      const res = await API.collect({ city: state.city, category: 'all' });
+      pollCollect(res.runIds || [res.runId]);
+    } catch (err) {
+      state.collecting = false;
+      if (btn) btn.disabled = false;
+      if (err.status === 409) {
+        $('collect-progress').textContent = '该城市正在采集中，等待完成…';
+        pollCollect();
+      } else {
+        UI.setStatus('采集失败：' + err.message);
+        $('collect-progress').textContent = '采集失败：' + err.message;
+      }
+    }
+  }
+
+  function pollCollect(runIds) {
+    if (state.collectTimer) clearInterval(state.collectTimer);
+    const btn = $('collect-btn');
+    const tick = async () => {
+      try {
+        let ids = runIds;
+        if (!ids || !ids.length) {
+          const runs = await API.collectRuns(state.city);
+          ids = runs.filter((r) => r.status === 'running').map((r) => r.runId);
+          if (!ids.length) {
+            finishCollect();
+            return;
+          }
+        }
+        const statuses = await Promise.all(ids.map((id) => API.collectStatus(id)));
+        const inserted = statuses.reduce((s, x) => s + (x.n_inserted || 0), 0);
+        const done = statuses.reduce((s, x) => s + (x.done_districts || 0), 0);
+        const total = statuses.reduce((s, x) => s + (x.total_districts || 0), 0);
+        const running = statuses.some((x) => x.status === 'running');
+        $('collect-progress').textContent = running
+          ? '正在采集 ' + done + '/' + total + ' 区，已入库 ' + inserted + ' 条'
+          : '采集完成：共入库 ' + inserted + ' 条';
+        if (!running) finishCollect();
+      } catch (err) {
+        clearInterval(state.collectTimer);
+        state.collectTimer = null;
+        state.collecting = false;
+        if (btn) btn.disabled = false;
+        UI.setStatus('采集状态查询失败：' + err.message);
+      }
+    };
+
+    async function finishCollect() {
+      if (state.collectTimer) clearInterval(state.collectTimer);
+      state.collectTimer = null;
+      state.collecting = false;
+      if (btn) btn.disabled = false;
+      await loadCityPois(state.city);
+      UI.setStatus('采集完成，已刷新列表');
+    }
+
+    tick();
+    state.collectTimer = setInterval(tick, 800);
   }
 
   async function setCity(city) {
@@ -257,6 +366,9 @@
     $('current-city').textContent = state.city;
     state.activeCats.clear();
     state.onlySelected = false;
+    state.ratingFilter = 'all';
+    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
     if (typeof city.lng === 'number' && MapCtl.isReady()) {
       MapCtl.flyTo(city.lng, city.lat, 11);
     }
@@ -406,6 +518,8 @@
       if (e.key === 'Enter') doPoiSearch();
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
+    $('collect-btn').onclick = onCollect;
+    $('collect-refresh-btn').onclick = () => loadCityPois(state.city);
     $('plan-btn').onclick = onPlan;
     $('panel-toggle').onclick = onTogglePanel;
     $('itinerary-back').onclick = () => setView('list');
@@ -435,6 +549,7 @@
 
     Cats.init(state.config.categories);
     UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
 
     Selection.subscribe(() => {
       refresh({ fit: false });

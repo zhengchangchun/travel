@@ -16,15 +16,22 @@
   }
 
   function flagHtml(poi, selected) {
-    const color = window.TravelCategories.colorOf(poi.category);
+    const SC = window.TravelScoreColor;
+    const color = SC
+      ? SC.colorFor(poi.category, poi.rating)
+      : window.TravelCategories.colorOf(poi.category);
     const label = window.TravelCategories.labelOf(poi.category);
+    const top = SC ? SC.isTop(poi.rating) : false;
+    const noRating = !poi.rating;
     return (
-      '<div class="flag' + (selected ? ' selected' : '') + '" data-category="' +
+      '<div class="flag' + (selected ? ' selected' : '') + (top ? ' top' : '') +
+      (noRating ? ' no-rating' : '') + '" data-category="' +
       esc(poi.category) + '" ' +
       'style="--flag-color:' + esc(color) + '" title="' + esc(poi.name) + '">' +
       '<div class="flag-head"><span class="flag-icon">' + esc(label.slice(0, 1)) + '</span></div>' +
       '<div class="flag-tail"></div>' +
       (selected ? '<span class="flag-star">★</span>' : '') +
+      (top ? '<span class="flag-crown">★</span>' : '') +
       '</div>'
     );
   }

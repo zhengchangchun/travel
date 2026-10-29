@@ -37,6 +37,18 @@
         <h2>分类过滤</h2>
         <div id="chips" class="chips"></div>
         <p class="hint">可多选；全部取消 = 显示全部</p>
+        <h2 class="sub-head">评分过滤</h2>
+        <div id="rating-chips" class="chips rating-chips"></div>
+      </section>
+
+      <section class="card">
+        <h2>数据采集</h2>
+        <div class="row">
+          <button id="collect-btn" class="primary">开始采集</button>
+          <button id="collect-refresh-btn" class="ghost">刷新列表</button>
+        </div>
+        <div id="collect-progress" class="collect-progress"></div>
+        <p class="hint">按行政区逐区翻页取全；结果落库缓存，二次采集只补新增（省配额）。</p>
       </section>
 
       <section class="card">
@@ -50,6 +62,12 @@
       <div id="map"></div>
       <div id="map-status" class="map-status">地图加载中…</div>
       <div id="map-error" class="map-error hidden"></div>
+      <aside id="score-legend" class="score-legend hidden">
+        <div class="legend-title">评分由浅入深</div>
+        <div class="legend-bar"></div>
+        <div class="legend-scale"><span>3.0</span><span>4.0</span><span>5.0</span></div>
+        <div class="legend-top"><span class="legend-star">★</span> 满分 5.0</div>
+      </aside>
       <aside id="infocard" class="infocard hidden"></aside>
     </main>
 
@@ -110,6 +128,7 @@
   <script src="/js/categories.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/selection.js"></script>
+  <script src="/js/score-color.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/ui.js"></script>
   <script src="/js/itinerary.js"></script>

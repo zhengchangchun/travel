@@ -42,6 +42,31 @@
     });
   }
 
+  // 评分过滤 chip：与分类 chip、只看选中可叠加
+  function renderRatingChips(container, options, active, onPick) {
+    if (!container) return;
+    container.innerHTML = '';
+    options.forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.className = 'chip rating-chip' + (active === opt.key ? ' active' : '');
+      btn.dataset.key = opt.key;
+      btn.textContent = opt.label;
+      btn.onclick = () => onPick(opt.key);
+      container.appendChild(btn);
+    });
+  }
+
+  function topStarHtml(poi) {
+    const SC = window.TravelScoreColor;
+    if (!SC || !SC.isTop(poi.rating)) return '';
+    return '<span class="top-star" title="满分 ' + esc(poi.rating) + '">★</span>';
+  }
+
+  function showLegend(show) {
+    const el = $('score-legend');
+    if (el) el.classList.toggle('hidden', !show);
+  }
+
   function starButton(selected, color) {
     return (
       '<button class="star' + (selected ? ' active' : '') + '" ' +
@@ -74,6 +99,7 @@
         '<div class="poi-head">' +
         '<span class="dot" style="background:' + esc(color) + '"></span>' +
         '<b class="poi-name">' + esc(poi.name) + '</b>' +
+        topStarHtml(poi) +
         '<span class="poi-tag">' + esc(label) + '</span>' +
         starButton(selected, color) +
         '</div>' +
@@ -174,6 +200,7 @@
       '<div class="card-head">' +
       '<span class="dot" style="background:' + esc(color) + '"></span>' +
       '<b>' + esc(poi.name) + '</b>' +
+      topStarHtml(poi) +
       '<span class="poi-tag">' + esc(label) + '</span>' +
       starButton(!!(handlers && handlers.isSelected && handlers.isSelected(poi)), color) +
       '<button class="card-close" title="关闭">×</button>' +
@@ -238,6 +265,8 @@
     showMapError,
     hideMapError,
     renderChips,
+    renderRatingChips,
+    showLegend,
     renderResults,
     renderSelectionPanel,
     renderTripPins,
