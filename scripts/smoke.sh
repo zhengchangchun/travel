@@ -555,6 +555,17 @@ else
   fail "T7 mock 检查未全绿"
 fi
 
+# ================= T8 按视野自动采集（T8-P77–T8-P86） =================
+# 覆盖格（mock 高德）＋ 按视野采集接口 ＋ 配额保护 ＋ 渐进补旗前端资产 ＋ N20，见 scripts/t8-smoke.cjs
+if T8_OUT="$(node scripts/t8-smoke.cjs)"; then
+  printf '%s\n' "${T8_OUT}"
+  T8_N="$(printf '%s\n' "${T8_OUT}" | grep -c '^PASS')"
+  PASS=$((PASS + T8_N))
+else
+  printf '%s\n' "${T8_OUT}"
+  fail "T8 mock 检查未全绿"
+fi
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0
