@@ -52,3 +52,14 @@ test('双口径计数：当前视野 N 条 · 全城已收录 M 条', () => {
   assert.match(HTML, /id="view-count"/, 'index 缺 #view-count 容器');
   assert.match(CSS, /\.view-count/, 'css 缺 .view-count 样式');
 });
+
+test('L12 筛选不得动地图：分类/评分/只看选中后不 fitView、不改中心与比例', () => {
+  assert.match(APP, /const\s+fit\s*=\s*!!\(\s*opts\s*&&\s*opts\.fit\s*\)/, 'refresh 默认不应 fit');
+  assert.match(APP, /function\s+onToggleChip[\s\S]*?refresh\(\);/, '分类筛选不应触发 fit');
+  assert.match(APP, /function\s+onPickRating[\s\S]*?refresh\(\);/, '评分筛选不应触发 fit');
+  assert.match(APP, /function\s+onToggleOnlySelected[\s\S]*?refresh\(\);/, '只看选中不应触发 fit');
+  assert.ok(!/setFitView/.test(APP), 'app.js 不应调用 setFitView');
+  // 筛选路径不得出现 setZoomAndCenter：仅 setCity 允许
+  const zoomCenterCalls = (APP.match(/setZoomAndCenter/g) || []).length;
+  assert.strictEqual(zoomCenterCalls, 1, 'app.js 只应在切城市处调用一次 setZoomAndCenter');
+});

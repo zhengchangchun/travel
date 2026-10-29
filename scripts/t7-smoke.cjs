@@ -206,6 +206,14 @@ check('T7-P75', '双口径计数资产：app 用 setViewCount/poisStats；ui 有
   assert.ok(css.includes('.view-count'), 'css 缺 .view-count 样式');
 });
 
+check('T7-P76', 'L12 筛选不得改变地图：refresh 默认不 fit，筛选路径无 setZoomAndCenter/setFitView', () => {
+  const app = readFile('web/js/app.js');
+  assert.match(app, /const\s+fit\s*=\s*!!\(\s*opts\s*&&\s*opts\.fit\s*\)/, 'refresh 默认不应 fit');
+  assert.ok(!/setFitView/.test(app), '不应调用 setFitView');
+  const n = (app.match(/setZoomAndCenter/g) || []).length;
+  assert.strictEqual(n, 1, '仅切城市处调用一次 setZoomAndCenter');
+});
+
 async function main() {
   for (const c of CHECKS) {
     try {
