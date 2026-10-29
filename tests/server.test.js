@@ -448,3 +448,25 @@ test('PATCH /api/pins/:id 改备注', async () => {
     await done();
   }
 });
+
+// ---------- T6b F1 静态资源禁缓存 ----------
+
+test('静态资源禁缓存：/、JS、CSS 均带 no-store/no-cache/Pragma/Expires（F1）', async () => {
+  const { base, close: done } = await start();
+  try {
+    const paths = ['/', '/js/app.js', '/css/style.css'];
+    for (const p of paths) {
+      const res = await fetch(base + p);
+      assert.strictEqual(res.status, 200, p + ' 应 200');
+      const cc = res.headers.get('cache-control') || '';
+      assert.match(cc, /no-store/, p + ' 缺 no-store');
+      assert.match(cc, /no-cache/, p + ' 缺 no-cache');
+      assert.match(cc, /must-revalidate/, p + ' 缺 must-revalidate');
+      assert.strictEqual(res.headers.get('pragma'), 'no-cache', p + ' 缺 Pragma: no-cache');
+      assert.strictEqual(res.headers.get('expires'), '0', p + ' 缺 Expires: 0');
+    }
+  } finally {
+    await done();
+  }
+});
+

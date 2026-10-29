@@ -407,6 +407,17 @@ AJ_T6="$(req_body /js/app.js)"
 [[ "${AJ_T6}" == *"resize"* ]] || fail "P42 app.js 折叠后未调 resize"
 ok "P42 地图自适应就绪（map resize + app 折叠调用）"
 
+# ================= T6b F1 静态资源禁缓存（P43） =================
+HDR_IDX="$(curl -s -D - -o /dev/null "${BASE}/")"
+[[ "${HDR_IDX}" == *"Cache-Control: no-cache, no-store, must-revalidate"* ]] || fail "P43 index 缺 Cache-Control no-store"
+[[ "${HDR_IDX}" == *"Pragma: no-cache"* ]] || fail "P43 index 缺 Pragma"
+[[ "${HDR_IDX}" == *"Expires: 0"* ]] || fail "P43 index 缺 Expires: 0"
+HDR_JS="$(curl -s -D - -o /dev/null "${BASE}/js/app.js")"
+[[ "${HDR_JS}" == *"Cache-Control: no-cache, no-store, must-revalidate"* ]] || fail "P43 JS 缺 Cache-Control no-store"
+HDR_CSS="$(curl -s -D - -o /dev/null "${BASE}/css/style.css")"
+[[ "${HDR_CSS}" == *"Cache-Control: no-cache, no-store, must-revalidate"* ]] || fail "P43 CSS 缺 Cache-Control no-store"
+ok "P43 静态资源禁缓存（HTML / JS / CSS 均 no-store + Pragma + Expires）"
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0
