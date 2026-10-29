@@ -87,5 +87,9 @@
       }
       return res.text();
     },
+
+    // 路线（T3）
+    route: (params) => request('/api/route?' + qs(params)),
+    itineraryRoute: (city, mode) => request('/api/itinerary/route?' + qs({ city, mode })),
   };
 })();

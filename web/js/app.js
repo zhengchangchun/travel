@@ -6,6 +6,7 @@
   const Cats = window.TravelCategories;
   const Selection = window.TravelSelection;
   const Itinerary = window.TravelItinerary;
+  const Route = window.TravelRoute;
 
   const state = {
     config: null,
@@ -71,6 +72,7 @@
     Itinerary.render($('itinerary-list'), Selection.list(), {
       onMove: onMovePin,
     });
+    if (Route) Route.draw(state.city, Selection.list());
   }
 
   function refresh(opts) {
@@ -95,6 +97,7 @@
     if (inItinerary) {
       reloadSelection().then(renderItinerary);
     } else {
+      if (Route) Route.clear();
       renderSelection();
     }
   }

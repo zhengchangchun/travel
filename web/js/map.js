@@ -123,6 +123,89 @@
     clickHandler = cb;
   }
 
+  // ---------- 路线连线（T3） ----------
+  let routeLines = [];
+  let routeLabels = [];
+
+  function routeStyle(mode) {
+    if (mode === 'walking') {
+      return { strokeColor: '#22A06B', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [2, 6] };
+    }
+    if (mode === 'transit') {
+      return { strokeColor: '#FF6B35', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [12, 8] };
+    }
+    return { strokeColor: '#1677ff', strokeWeight: 6, strokeStyle: 'solid' };
+  }
+
+  const FAILED_STYLE = {
+    strokeColor: '#9aa0aa',
+    strokeWeight: 4,
+    strokeStyle: 'dashed',
+    strokeDasharray: [6, 6],
+  };
+
+  function clearRoute() {
+    if (map) {
+      routeLines.forEach((l) => map.remove(l));
+      routeLabels.forEach((t) => map.remove(t));
+    }
+    routeLines = [];
+    routeLabels = [];
+  }
+
+  function drawRoute(legs, mode, handlers) {
+    clearRoute();
+    if (!map || !AMap) return;
+    const base = routeStyle(mode);
+    const all = [];
+    (legs || []).forEach((leg) => {
+      const failed = !leg.ok || leg.degraded;
+      let path = Array.isArray(leg.polyline) ? leg.polyline : [];
+      if (failed || path.length < 2) {
+        path = [
+          [leg.from.lng, leg.from.lat],
+          [leg.to.lng, leg.to.lat],
+        ];
+      }
+      const style = failed ? FAILED_STYLE : base;
+      const line = new AMap.Polyline({
+        path,
+        ...style,
+        lineJoin: 'round',
+        lineCap: 'round',
+        zIndex: failed ? 40 : 60,
+        cursor: 'pointer',
+      });
+      line.setMap(map);
+      line.on('click', () => {
+        if (handlers && handlers.onLegClick) handlers.onLegClick(leg);
+      });
+      routeLines.push(line);
+      path.forEach((p) => all.push(p));
+
+      if (failed) {
+        const mid = path[Math.floor(path.length / 2)] || path[0];
+        const text = new AMap.Text({
+          text: '⚠ 无法规划',
+          position: mid,
+          anchor: 'center',
+          zIndex: 120,
+          style: {
+            'background-color': '#fff2f0',
+            border: '1px solid #ffccc7',
+            'border-radius': '6px',
+            color: '#cf1322',
+            'font-size': '12px',
+            padding: '2px 6px',
+          },
+        });
+        text.setMap(map);
+        routeLabels.push(text);
+      }
+    });
+    if (routeLines.length) map.setFitView(routeLines.concat(Array.from(markers.values())));
+  }
+
   window.TravelMap = {
     init,
     isReady,
@@ -132,5 +215,8 @@
     flyTo,
     onMarkerClick,
     flagHtml,
+    routeStyle,
+    drawRoute,
+    clearRoute,
   };
 })();
