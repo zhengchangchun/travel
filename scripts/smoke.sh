@@ -533,6 +533,17 @@ ok "T4-P54 满分标识资产就绪（TOP_RATING / flag-crown / top-star）"
 [[ "${A_APP}" == *ratingFilter* ]] || fail "T4-P55 app.js 缺评分过滤逻辑"
 ok "T4-P55 三层叠加 + 评分过滤资产就绪（色阶 / 满分金 / 选中白边 / rating-chips）"
 
+# ================= T5 评价展示（P58–P67） =================
+# 单点详情接口（mock 高德）＋ 详情面板前端资产 ＋ 工程约束，见 scripts/t5-smoke.cjs
+if T5_OUT="$(node scripts/t5-smoke.cjs)"; then
+  printf '%s\n' "${T5_OUT}"
+  T5_N="$(printf '%s\n' "${T5_OUT}" | grep -c '^PASS')"
+  PASS=$((PASS + T5_N))
+else
+  printf '%s\n' "${T5_OUT}"
+  fail "T5 mock 检查未全绿"
+fi
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0
