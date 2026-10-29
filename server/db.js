@@ -41,6 +41,40 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_pins_trip ON pins(trip_id);
 CREATE INDEX IF NOT EXISTS idx_pins_poi ON pins(poi_id);
 CREATE INDEX IF NOT EXISTS idx_notes_city ON notes(city);
+
+CREATE TABLE IF NOT EXISTS pois (
+  poi_id     TEXT PRIMARY KEY,
+  city       TEXT NOT NULL,
+  adcode     TEXT,
+  category   TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  address    TEXT,
+  lng        REAL NOT NULL,
+  lat        REAL NOT NULL,
+  typecode   TEXT,
+  rating     TEXT,
+  cost       TEXT,
+  tel        TEXT,
+  photos     TEXT,
+  tags       TEXT,
+  fetched_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pois_city_cat ON pois(city, category);
+CREATE INDEX IF NOT EXISTS idx_pois_city_rating ON pois(city, category, rating);
+
+CREATE TABLE IF NOT EXISTS poi_collect_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  city        TEXT NOT NULL,
+  category    TEXT NOT NULL,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  status      TEXT NOT NULL DEFAULT 'running',
+  n_fetched   INTEGER NOT NULL DEFAULT 0,
+  n_inserted  INTEGER NOT NULL DEFAULT 0,
+  n_updated   INTEGER NOT NULL DEFAULT 0,
+  detail      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_runs_city ON poi_collect_runs(city, category);
 `;
 
 const DEFAULT_CATEGORY_LABELS = {
@@ -52,6 +86,24 @@ const DEFAULT_CATEGORY_LABELS = {
 
 function toNumber(value) {
   return typeof value === 'bigint' ? Number(value) : value;
+}
+
+function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+// 缓存行 → 前端结构：poi_id 别名 id，photos/tags 还原为数组，photo 取第一张
+function mapPoiRow(row) {
+  if (!row) return null;
+  const photos = parseJsonArray(row.photos);
+  const tags = parseJsonArray(row.tags);
+  return { ...row, id: row.poi_id, photos, tags, photo: photos[0] || '' };
 }
 
 // 标题去重：把「城市 · 城市 · …」折叠回「城市 · …」，修复历史脏标题
@@ -132,6 +184,33 @@ function createDb(filePath) {
       `UPDATE pins SET sort_order = ? WHERE poi_id = ? AND trip_id IN (SELECT id FROM trips WHERE city = ?)`
     ),
     updatePinNote: db.prepare('UPDATE pins SET note = ? WHERE id = ?'),
+
+    // ---- T4 POI 缓存表 ----
+    getPoiRow: db.prepare('SELECT * FROM pois WHERE poi_id = ?'),
+    insertPoi: db.prepare(
+      `INSERT INTO pois (poi_id, city, adcode, category, name, address, lng, lat, typecode, rating, cost, tel, photos, tags, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ),
+    updatePoi: db.prepare(
+      `UPDATE pois SET city = ?, adcode = ?, category = ?, name = ?, address = ?, lng = ?, lat = ?,
+        typecode = ?, rating = ?, cost = ?, tel = ?, photos = ?, tags = ?, fetched_at = ?
+       WHERE poi_id = ?`
+    ),
+    countPoisByCat: db.prepare(
+      'SELECT category, COUNT(*) AS c FROM pois WHERE city = ? GROUP BY category'
+    ),
+    countPoisCity: db.prepare('SELECT COUNT(*) AS c FROM pois WHERE city = ?'),
+    listRunsByCity: db.prepare(
+      'SELECT * FROM poi_collect_runs WHERE city = ? ORDER BY id DESC'
+    ),
+    insertRun: db.prepare(
+      `INSERT INTO poi_collect_runs (city, category, started_at, status) VALUES (?, ?, ?, 'running')`
+    ),
+    getRun: db.prepare('SELECT * FROM poi_collect_runs WHERE id = ?'),
+    findRunningRun: db.prepare(
+      `SELECT * FROM poi_collect_runs WHERE city = ? AND category = ? AND status = 'running'
+       ORDER BY id DESC LIMIT 1`
+    ),
   };
 
   return {
@@ -264,6 +343,160 @@ function createDb(filePath) {
     updatePinNote(id, note) {
       const info = stmts.updatePinNote.run(note, id);
       return { changes: info.changes, pin: stmts.getPin.get(id) };
+    },
+
+    // ---- T4 POI 缓存 ----
+    upsertPoi(poi) {
+      const photos = JSON.stringify(Array.isArray(poi.photos) ? poi.photos : []);
+      const tags = JSON.stringify(Array.isArray(poi.tags) ? poi.tags : []);
+      const fetchedAt = poi.fetched_at || new Date().toISOString();
+      const existing = stmts.getPoiRow.get(poi.poi_id);
+      if (existing) {
+        stmts.updatePoi.run(
+          poi.city,
+          poi.adcode || null,
+          poi.category,
+          poi.name,
+          poi.address || '',
+          Number(poi.lng),
+          Number(poi.lat),
+          poi.typecode || null,
+          poi.rating || null,
+          poi.cost || null,
+          poi.tel || null,
+          photos,
+          tags,
+          fetchedAt,
+          poi.poi_id
+        );
+        return { status: 'updated', row: stmts.getPoiRow.get(poi.poi_id) };
+      }
+      stmts.insertPoi.run(
+        poi.poi_id,
+        poi.city,
+        poi.adcode || null,
+        poi.category,
+        poi.name,
+        poi.address || '',
+        Number(poi.lng),
+        Number(poi.lat),
+        poi.typecode || null,
+        poi.rating || null,
+        poi.cost || null,
+        poi.tel || null,
+        photos,
+        tags,
+        fetchedAt
+      );
+      return { status: 'inserted', row: stmts.getPoiRow.get(poi.poi_id) };
+    },
+    getPoi(poiId) {
+      return stmts.getPoiRow.get(poiId) || null;
+    },
+    countPois(city, category) {
+      if (category) {
+        const rows = stmts.countPoisByCat.all(city);
+        const hit = rows.find((r) => r.category === category);
+        return hit ? toNumber(hit.c) : 0;
+      }
+      return toNumber(stmts.countPoisCity.get(city).c);
+    },
+    listPois({ city, category, minRating, sort, limit, offset } = {}) {
+      if (!city) return { total: 0, items: [] };
+      const where = ['city = ?'];
+      const params = [city];
+      if (category) {
+        where.push('category = ?');
+        params.push(category);
+      }
+      if (minRating !== undefined && minRating !== null && minRating !== '') {
+        where.push("rating IS NOT NULL AND rating <> '' AND CAST(rating AS REAL) >= ?");
+        params.push(Number(minRating));
+      }
+      const whereSql = 'WHERE ' + where.join(' AND ');
+      const orderSql =
+        sort === 'rating'
+          ? "ORDER BY (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC"
+          : 'ORDER BY name ASC';
+      const lim = Math.max(0, Number(limit) || 0) || 200;
+      const off = Math.max(0, Number(offset) || 0);
+      const total = toNumber(
+        db.prepare(`SELECT COUNT(*) AS c FROM pois ${whereSql}`).get(...params).c
+      );
+      const rows = db
+        .prepare(`SELECT * FROM pois ${whereSql} ${orderSql} LIMIT ? OFFSET ?`)
+        .all(...params, lim, off);
+      return { total, items: rows.map(mapPoiRow) };
+    },
+    poisStats(city) {
+      const rows = stmts.countPoisByCat.all(city);
+      const total = toNumber(stmts.countPoisCity.get(city).c);
+      const countWhere = (cond) =>
+        toNumber(
+          db.prepare(`SELECT COUNT(*) AS c FROM pois WHERE city = ? AND ${cond}`).get(city).c
+        );
+      const ratingBuckets = [
+        { label: '≥4.5', count: countWhere("rating <> '' AND CAST(rating AS REAL) >= 4.5") },
+        {
+          label: '4.0–4.5',
+          count: countWhere(
+            "rating <> '' AND CAST(rating AS REAL) >= 4.0 AND CAST(rating AS REAL) < 4.5"
+          ),
+        },
+        {
+          label: '3.5–4.0',
+          count: countWhere(
+            "rating <> '' AND CAST(rating AS REAL) >= 3.5 AND CAST(rating AS REAL) < 4.0"
+          ),
+        },
+        { label: '<3.5', count: countWhere("rating <> '' AND CAST(rating AS REAL) < 3.5") },
+        { label: '无评分', count: countWhere("rating IS NULL OR rating = ''") },
+      ];
+      return {
+        total,
+        categories: rows.map((r) => ({ key: r.category, count: toNumber(r.c) })),
+        ratingBuckets,
+      };
+    },
+    createRun({ city, category }) {
+      const info = stmts.insertRun.run(city, category, new Date().toISOString());
+      return stmts.getRun.get(toNumber(info.lastInsertRowid));
+    },
+    updateRun(id, fields = {}) {
+      const sets = [];
+      const params = [];
+      const push = (col, val) => {
+        sets.push(`${col} = ?`);
+        params.push(val);
+      };
+      if (fields.status !== undefined) push('status', fields.status);
+      if (fields.finished_at !== undefined) push('finished_at', fields.finished_at);
+      if (fields.n_fetched !== undefined) push('n_fetched', Number(fields.n_fetched) || 0);
+      if (fields.n_inserted !== undefined) push('n_inserted', Number(fields.n_inserted) || 0);
+      if (fields.n_updated !== undefined) push('n_updated', Number(fields.n_updated) || 0);
+      if (fields.detail !== undefined) push('detail', JSON.stringify(fields.detail));
+      if (sets.length) {
+        params.push(id);
+        db.prepare(`UPDATE poi_collect_runs SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      }
+      return stmts.getRun.get(id);
+    },
+    getRun(id) {
+      return stmts.getRun.get(id) || null;
+    },
+    findRunningRun(city, category) {
+      return stmts.findRunningRun.get(city, category) || null;
+    },
+    listRuns(city) {
+      const rows = stmts.listRunsByCity.all(city);
+      const seen = new Set();
+      const out = [];
+      rows.forEach((r) => {
+        if (seen.has(r.category)) return;
+        seen.add(r.category);
+        out.push(r);
+      });
+      return out;
     },
     buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS) {
       const trip = stmts.tripByCity.get(city);

@@ -75,6 +75,7 @@ function normalizePoi(raw = {}) {
     .map((t) => t.trim())
     .filter(Boolean);
 
+  const photoUrls = photos.map((p) => firstString(p && p.url)).filter(Boolean);
   const typecode = firstString(raw.typecode);
   return {
     id: firstString(raw.id),
@@ -89,9 +90,56 @@ function normalizePoi(raw = {}) {
     cost: firstString(biz.cost),
     tel: firstString(raw.tel),
     opentime: firstString(biz.opentime2) || firstString(biz.opentime),
-    photo: photos.length ? firstString(photos[0].url) : '',
+    photo: photoUrls[0] || '',
+    photos: photoUrls,
     tags,
   };
+}
+
+function clampPage(page) {
+  return Math.min(Math.max(1, Number(page) || 1), 25);
+}
+
+function mapDistrict(d) {
+  const [lng, lat] = String(d.center || '').split(',').map(Number);
+  return {
+    name: d.name,
+    adcode: d.adcode || '',
+    lng: Number.isFinite(lng) ? lng : null,
+    lat: Number.isFinite(lat) ? lat : null,
+  };
+}
+
+// 城市下辖区县：keywords=<城市> & subdistrict=1，递归收集 level=district 的项
+async function districts(city) {
+  const json = await amapGet('/v3/config/district', {
+    keywords: city,
+    subdistrict: 1,
+    extensions: 'base',
+  });
+  const top = Array.isArray(json.districts) ? json.districts : [];
+  const out = [];
+  const walk = (list) => {
+    list.forEach((d) => {
+      const subs = Array.isArray(d.districts) ? d.districts : [];
+      if (d.level === 'district') {
+        out.push(mapDistrict(d));
+        return;
+      }
+      if (subs.length) {
+        walk(subs);
+        return;
+      }
+      if (d.adcode && d.level !== 'province') out.push(mapDistrict(d));
+    });
+  };
+  walk(top);
+  if (!out.length) {
+    top.forEach((d) => {
+      if (d.adcode) out.push(mapDistrict(d));
+    });
+  }
+  return out;
 }
 
 async function amapGet(pathname, params = {}) {
@@ -169,6 +217,38 @@ async function nearbyPoi({ lng, lat, category, radius = 3000 } = {}) {
     keywords: cat ? cat.label : '',
     offset: 25,
     page: 1,
+    extensions: 'all',
+  });
+  const pois = Array.isArray(json.pois) ? json.pois : [];
+  return pois.map(normalizePoi);
+}
+
+// 按行政区（adcode）翻页搜索：分期采集主力接口
+async function searchPoiByDistrict({ adcode, city, category, keywords, page = 1 } = {}) {
+  const cat = categoryOf(category);
+  const keyword = (keywords && String(keywords).trim()) || (cat ? cat.label : '');
+  const json = await amapGet('/v3/place/text', {
+    keywords: keyword,
+    city: adcode || city,
+    citylimit: 'true',
+    offset: 25,
+    page: clampPage(page),
+    extensions: 'all',
+  });
+  const pois = Array.isArray(json.pois) ? json.pois : [];
+  return pois.map(normalizePoi);
+}
+
+// 周边分片搜索：二级分片用（可按 radius/page 递归缩小）
+async function searchPoiAround({ lng, lat, category, keywords, radius = 3000, page = 1 } = {}) {
+  const cat = categoryOf(category);
+  const keyword = (keywords && String(keywords).trim()) || (cat ? cat.label : '');
+  const json = await amapGet('/v3/place/around', {
+    location: `${lng},${lat}`,
+    radius: Number(radius) || 3000,
+    keywords: keyword,
+    offset: 25,
+    page: clampPage(page),
     extensions: 'all',
   });
   const pois = Array.isArray(json.pois) ? json.pois : [];
@@ -343,6 +423,9 @@ module.exports = {
   searchCity,
   searchPoi,
   nearbyPoi,
+  searchPoiByDistrict,
+  searchPoiAround,
+  districts,
   poiDetail,
   normalizePoi,
   classifyType,

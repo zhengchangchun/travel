@@ -9,6 +9,7 @@ const { createDb } = require('./db');
 
 const cityRoutes = require('./routes/city');
 const poiRoutes = require('./routes/poi');
+const poisRoutes = require('./routes/pois');
 const tripsRoutes = require('./routes/trips');
 const notesRoutes = require('./routes/notes');
 const selectionRoutes = require('./routes/selection');
@@ -142,6 +143,7 @@ function createApp(opts = {}) {
     },
     ...cityRoutes,
     ...poiRoutes,
+    ...poisRoutes,
     ...tripsRoutes,
     ...notesRoutes,
     ...selectionRoutes,
@@ -161,6 +163,10 @@ function createApp(opts = {}) {
       opts.routeIntervalMs !== undefined
         ? Number(opts.routeIntervalMs) || 0
         : Number(process.env.ROUTE_LEG_INTERVAL_MS || 300),
+    collectIntervalMs:
+      opts.collectIntervalMs !== undefined
+        ? Number(opts.collectIntervalMs) || 0
+        : Number(process.env.COLLECT_INTERVAL_MS || 200),
   };
 
   async function handleApi(req, res, ctx, method, pathname, query) {
