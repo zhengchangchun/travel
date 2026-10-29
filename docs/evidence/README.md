@@ -137,3 +137,21 @@ T4 复核读数：`node --test` **120 pass / 0 fail**（T1–T6b 94 + 新增 col
 真机全量采集：住宿 **3248**、美食 **1355**、景点 **397**（T4 前每类仅 25 条）；
 分类纯净度 3248/3248、1355/1355、397/397 = **100%**；
 二级分片在 `server/collect.js` 真实实现（半径 3000→对半递归，MIN_RADIUS=100 / MAX_DEPTH=8）。
+
+## T5（评价展示：用户实拍图 · 招牌菜 · 去高德看评价，2026-10-30）
+
+高德接口**不提供评价正文**（`featured_reviews` 恒空），故本期把能拿到的做成详情面板 + 直达按钮，并诚实标注缺口。
+由 Playwright/Chromium（系统 Chrome，无头）实跑：真库真接口（`data/travel.db`），仅把列表项截到 40 条（均含 `aos-comment` 实拍图 + 招牌菜标签）以保证确定性；脚本内先做 DOM 断言再截图。
+
+| 文件 | 对应判据 | 内容 |
+|---|---|---|
+| `T5-P63-详情面板.png` | P63 | 点列表项 → 详情面板：图集（首张带「**用户实拍**」角标，1/3 可左右翻）＋ 招牌菜 chip「杨枝甘露 · 珍珠奶茶 · 麻薯」＋ 评分 **★4.1 · ¥16.00** ＋ 详细地址「江南大道228号星光国际广场F1」 |
+| `T5-P64-去高德看评价按钮.png` | P64 | 动作区含「**去高德看评价**」按钮，href = `https://www.amap.com/detail/B0HKXGO3FI` |
+| `T5-P66-窄屏375-详情面板.png` | P66 | 375px 窄屏下详情面板仍可用（图集/角标/招牌菜/地址/按钮齐全） |
+
+T5 复核读数：`node --test` **130 pass / 0 fail**（T1–T4 120 + 新增 `tests/poi-detail.test.js` 10）；
+`smoke.sh` **64 项全 PASS，exit 0**（既有 54 + 新增 P58–P67）。
+DOM 断言实录（Playwright）：Vue 面板 `badgeShown=true`、`badgeText=用户实拍`、`count=1 / 3`、
+`chips=[杨枝甘露,珍珠奶茶,麻薯]`、`meta=★ 4.1 · ¥16.00`、`addr=江南大道228号星光国际广场F1`、
+`amapHref=https://www.amap.com/detail/B0HKXGO3FI`、`note=高德接口不提供评价正文…`。
+
