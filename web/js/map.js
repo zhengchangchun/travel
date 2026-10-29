@@ -138,6 +138,70 @@
     map.setZoomAndCenter(zoom || 15, [lng, lat]);
   }
 
+  // ---------- 视野（T7）：拖动/缩放 → 取当前视野 bbox ----------
+  const MOVE_DEBOUNCE_MS = 300;
+  let moveCb = null;
+  let moveTimer = null;
+
+  function getZoom() {
+    if (!map || typeof map.getZoom !== 'function') return null;
+    return map.getZoom();
+  }
+
+  function getBounds() {
+    if (!map || typeof map.getBounds !== 'function') return null;
+    const b = map.getBounds();
+    if (!b) return null;
+    const sw = b.getSouthWest();
+    const ne = b.getNorthEast();
+    return {
+      minLng: sw.getLng(),
+      minLat: sw.getLat(),
+      maxLng: ne.getLng(),
+      maxLat: ne.getLat(),
+    };
+  }
+
+  // 飞到指定中心与倍率；返回 Promise，在相机落定（moveend）后 resolve
+  function setZoomAndCenter(lng, lat, zoom) {
+    return new Promise((resolve) => {
+      if (!map) {
+        resolve();
+        return;
+      }
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (typeof map.off === 'function') map.off('moveend', finish);
+        resolve();
+      };
+      map.on('moveend', finish);
+      try {
+        map.setZoomAndCenter(zoom, [lng, lat]);
+      } catch (err) {
+        finish();
+        return;
+      }
+      setTimeout(finish, 1500);
+    });
+  }
+
+  // 视野变化（moveend / zoomend）→ 防抖 300ms → 回调 getBounds()
+  function onMoveEnd(cb) {
+    moveCb = cb;
+    if (!map) return;
+    const schedule = () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => {
+        moveTimer = null;
+        if (moveCb) moveCb(getBounds());
+      }, MOVE_DEBOUNCE_MS);
+    };
+    map.on('moveend', schedule);
+    map.on('zoomend', schedule);
+  }
+
   function onMarkerClick(cb) {
     clickHandler = cb;
   }
@@ -233,10 +297,15 @@
     addMarker,
     fitView,
     flyTo,
+    getZoom,
+    getBounds,
+    setZoomAndCenter,
+    onMoveEnd,
     onMarkerClick,
     flagHtml,
     routeStyle,
     drawRoute,
     clearRoute,
+    MOVE_DEBOUNCE_MS,
   };
 })();
