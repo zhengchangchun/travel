@@ -96,6 +96,7 @@
     // POI 缓存与采集（T4）
     listPois: (params) => request('/api/pois?' + qs(params)),
     poisStats: (city) => request('/api/pois/stats?' + qs({ city })),
+    getPoiDetail: (poiId) => request('/api/pois/' + encodeURIComponent(poiId)),
     collect: (payload) => request('/api/collect', post(payload)),
     collectStatus: (runId) => request('/api/collect/status?' + qs({ runId })),
     collectRuns: (city) => request('/api/collect/runs?' + qs({ city })),

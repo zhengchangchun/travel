@@ -258,7 +258,7 @@
   function onPickPoi(poi) {
     state.cardPoi = poi;
     if (MapCtl.isReady()) MapCtl.flyTo(poi.lng, poi.lat, 15);
-    UI.showInfocard($('infocard'), poi, state.city, {
+    window.TravelDetail.show($('infocard'), poi, state.city, {
       onAddPin,
       isSelected: (p) => Selection.has(p),
       onToggleSelect,

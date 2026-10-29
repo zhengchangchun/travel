@@ -179,86 +179,6 @@
     });
   }
 
-  function showInfocard(card, poi, currentCity, handlers) {
-    const color = window.TravelCategories.colorOf(poi.category);
-    const label = window.TravelCategories.labelOf(poi.category);
-    const navUrl =
-      'https://uri.amap.com/marker?position=' +
-      poi.lng + ',' + poi.lat + '&name=' + encodeURIComponent(poi.name);
-    const xhsUrl =
-      'https://www.xiaohongshu.com/search_result?keyword=' +
-      encodeURIComponent((currentCity || '') + poi.name);
-
-    const rows = [];
-    if (poi.rating) rows.push(['评分', '★ ' + poi.rating]);
-    if (poi.cost) rows.push(['人均', '¥' + poi.cost]);
-    if (poi.tel) rows.push(['电话', poi.tel]);
-    if (poi.opentime) rows.push(['营业时间', poi.opentime]);
-
-    card.innerHTML =
-      (poi.photo ? '<img class="card-photo" src="' + esc(poi.photo) + '" alt="" />' : '') +
-      '<div class="card-head">' +
-      '<span class="dot" style="background:' + esc(color) + '"></span>' +
-      '<b>' + esc(poi.name) + '</b>' +
-      topStarHtml(poi) +
-      '<span class="poi-tag">' + esc(label) + '</span>' +
-      starButton(!!(handlers && handlers.isSelected && handlers.isSelected(poi)), color) +
-      '<button class="card-close" title="关闭">×</button>' +
-      '</div>' +
-      '<div class="card-addr">' +
-      '<span class="addr-text">' + esc(poi.address || '（无详细地址）') + '</span>' +
-      '<button class="copy-addr" title="复制地址">复制</button>' +
-      '</div>' +
-      (rows.length
-        ? '<dl class="card-rows">' +
-          rows.map((r) => '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>').join('') +
-          '</dl>'
-        : '') +
-      '<div class="card-actions">' +
-      '<a class="btn" href="' + esc(navUrl) + '" target="_blank" rel="noopener">导航</a>' +
-      '<a class="btn xhs" href="' + esc(xhsUrl) + '" target="_blank" rel="noopener">去小红书看笔记</a>' +
-      '<button class="btn primary add-pin">加入行程</button>' +
-      '</div>';
-    card.classList.remove('hidden');
-
-    const close = card.querySelector('.card-close');
-    if (close) close.onclick = () => card.classList.add('hidden');
-
-    const star = card.querySelector('.star');
-    if (star && handlers && handlers.onToggleSelect) {
-      star.onclick = async (e) => {
-        e.stopPropagation();
-        star.disabled = true;
-        try {
-          await handlers.onToggleSelect(poi);
-        } finally {
-          star.disabled = false;
-        }
-        const on = handlers.isSelected ? handlers.isSelected(poi) : false;
-        star.classList.toggle('active', on);
-        star.textContent = on ? '★' : '☆';
-        star.title = on ? '取消选中' : '选中';
-      };
-    }
-
-    const copy = card.querySelector('.copy-addr');
-    if (copy) copy.onclick = async () => {
-      const text = poi.address || '';
-      try {
-        await navigator.clipboard.writeText(text);
-        copy.textContent = '已复制';
-      } catch (err) {
-        window.prompt('复制地址：', text);
-      }
-      setTimeout(() => (copy.textContent = '复制'), 1500);
-    };
-
-    const add = card.querySelector('.add-pin');
-    if (add && handlers && handlers.onAddPin) {
-      add.onclick = () => handlers.onAddPin(poi);
-    }
-  }
-
   window.TravelUI = {
     esc,
     setStatus,
@@ -270,6 +190,5 @@
     renderResults,
     renderSelectionPanel,
     renderTripPins,
-    showInfocard,
   };
 })();

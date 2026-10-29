@@ -359,3 +359,57 @@ button.danger:hover { background: #ad2102; }
   .right-body { overflow-y: visible; }
   .infocard { width: auto; left: 12px; right: 12px; }
 }
+
+/* ---------- 详情面板：图集 / 招牌菜 / 诚实标注（T5） ---------- */
+.gallery { position: relative; margin-bottom: 8px; }
+.gallery-main {
+  position: relative; min-height: 150px; border-radius: 8px;
+  overflow: hidden; background: #f0f1f3;
+}
+.gallery-img { width: 100%; height: 160px; object-fit: cover; display: block; }
+.gallery-main.img-failed::after {
+  content: '图片加载失败'; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #9aa0aa; font-size: 12px; background: #f7f8fa;
+}
+.badge-comment {
+  position: absolute; left: 8px; top: 8px; z-index: 2;
+  background: #1677ff; color: #fff; font-size: 11px;
+  padding: 2px 8px; border-radius: 999px;
+}
+.gallery-prev, .gallery-next {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 26px; height: 26px; border-radius: 50%; border: none;
+  background: rgba(0, 0, 0, .45); color: #fff; font-size: 15px; line-height: 1;
+  cursor: pointer; padding: 0;
+}
+.gallery-prev { left: 6px; }
+.gallery-next { right: 6px; }
+.gallery-count {
+  position: absolute; right: 8px; bottom: 8px; z-index: 2;
+  background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px;
+  padding: 1px 7px; border-radius: 999px;
+}
+.gallery-empty {
+  min-height: 120px; display: flex; align-items: center; justify-content: center;
+  color: #9aa0aa; font-size: 12px; background: #f7f8fa;
+  border: 1px dashed #d7d9e0; border-radius: 8px;
+}
+.dish-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.dish-chip {
+  font-size: 12px; color: #b45309; background: #fff7e6;
+  border: 1px solid #ffe0a3; border-radius: 999px; padding: 2px 10px;
+}
+.detail-meta { color: #1677ff; font-size: 13px; margin: 6px 0; }
+.detail-note {
+  font-size: 11px; color: #8b8f98; line-height: 1.5;
+  margin: 8px 0 0; border-top: 1px dashed #e8eaed; padding-top: 6px;
+}
+.card-actions .btn.amap { color: #0b6bcb; border-color: #a9cdf7; }
+
+/* 超窄屏（<=480px）：详情面板仍可用 */
+@media (max-width: 480px) {
+  .infocard { top: 8px; left: 8px; right: 8px; padding: 10px; }
+  .gallery-img { height: 130px; }
+  .card-actions .btn { flex: 1 1 45%; }
+}
