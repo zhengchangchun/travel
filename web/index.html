@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>城市旅行规划器 · Travel</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header class="brand">
+        <h1>🧭 城市旅行规划器</h1>
+        <p class="sub">选城 → 看推荐 → 按分类过滤 → 地图落旗 → 存行程</p>
+      </header>
+
+      <section class="card">
+        <h2>城市</h2>
+        <div class="row">
+          <input id="city-input" placeholder="搜索城市，如 杭州" autocomplete="off" />
+          <button id="city-search-btn" class="primary">搜索</button>
+        </div>
+        <div id="city-results" class="result-list"></div>
+        <div class="current-city">当前城市：<b id="current-city">—</b></div>
+      </section>
+
+      <section class="card">
+        <h2>搜索地点</h2>
+        <div class="row">
+          <input id="poi-input" placeholder="如 西湖 / 火锅" autocomplete="off" />
+          <button id="poi-search-btn" class="primary">搜索</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>分类过滤</h2>
+        <div id="chips" class="chips"></div>
+        <p class="hint">可多选；全部取消 = 显示全部</p>
+      </section>
+
+      <section class="card">
+        <h2>结果 <span id="result-count" class="count">0</span></h2>
+        <ul id="result-list" class="poi-list"></ul>
+      </section>
+
+      <section class="card">
+        <h2>我的行程</h2>
+        <div class="row">
+          <button id="trip-new-btn" class="ghost">新建行程</button>
+          <span id="trip-name" class="trip-name">未创建</span>
+        </div>
+        <ul id="trip-list" class="poi-list"></ul>
+      </section>
+    </aside>
+
+    <main id="map-wrap">
+      <div id="map"></div>
+      <div id="map-status" class="map-status">地图加载中…</div>
+      <div id="map-error" class="map-error hidden"></div>
+      <aside id="infocard" class="infocard hidden"></aside>
+    </main>
+  </div>
+
+  <script src="/js/categories.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
