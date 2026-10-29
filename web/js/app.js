@@ -395,19 +395,21 @@
         UI.setViewHint('');
         return;
       }
+      // 采集进行中也渐进补旗：每轮询重读缓存，采到多少补多少
+      if (seq === state.viewSeq) await mergeViewFromCache(seq, false);
       if (st.status === 'running') return;
       if (state.viewportTimer) clearInterval(state.viewportTimer);
       state.viewportTimer = null;
       release();
       UI.setViewHint('');
-      if (seq === state.viewSeq) await mergeViewFromCache(seq);
+      if (seq === state.viewSeq) await mergeViewFromCache(seq, true);
     };
     tick();
     state.viewportTimer = setInterval(tick, 700);
   }
 
-  // 采集完成后重读 bbox 缓存 → 增量补旗（不整体重画）
-  async function mergeViewFromCache(seq) {
+  // 重读 bbox 缓存 → 增量补旗（不整体重画）；updateTotals 时同步「全城已收录」
+  async function mergeViewFromCache(seq, updateTotals = true) {
     if (!MapCtl.isReady()) return;
     const zoom = MapCtl.getZoom();
     if (zoom != null && zoom < MIN_COLLECT_ZOOM) return;
@@ -421,7 +423,7 @@
     }
     if (seq !== state.viewSeq) return;
     mergeNewItems(dedupe(data.items || []));
-    await loadCityTotals(state.city);
+    if (updateTotals) await loadCityTotals(state.city);
   }
 
   // 把新采到的点并入当前视野：地图只补新旗，列表/计数刷新（不动已有旗）
