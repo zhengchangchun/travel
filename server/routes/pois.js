@@ -1,4 +1,9 @@
-const { collectCityCategory } = require('../collect');
+const {
+  collectCityCategory,
+  collectViewport,
+  bboxToGrids,
+  MAX_VIEWPORT_GRIDS,
+} = require('../collect');
 const { toDetail } = require('../poi-detail');
 
 function requireCity(ctx, value) {
@@ -28,6 +33,21 @@ function parseBbox(ctx, raw) {
     throw new ctx.HttpError(400, 'BAD_REQUEST', 'bbox 需满足 minLng<maxLng 且 minLat<maxLat');
   }
   return { minLng, minLat, maxLng, maxLat };
+}
+
+// 视野 bbox → 网格列表（含上限校验）；缺 bbox / 非法 / 过大 → 400
+function requireViewportGrids(ctx, raw) {
+  const bbox = parseBbox(ctx, raw);
+  if (!bbox) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 bbox');
+  const grids = bboxToGrids(bbox);
+  if (grids.length > MAX_VIEWPORT_GRIDS) {
+    throw new ctx.HttpError(
+      400,
+      'BAD_REQUEST',
+      `bbox 过大（${grids.length} 格 > 上限 ${MAX_VIEWPORT_GRIDS}），请放大地图后重试`
+    );
+  }
+  return { bbox, grids };
 }
 
 function parseDetail(detail) {
@@ -204,6 +224,104 @@ module.exports = [
         n_inserted: num(r.n_inserted),
         n_updated: num(r.n_updated),
       }));
+    },
+  },
+  // 采集覆盖查询（T8）：返回 bbox 内已覆盖 / 未覆盖的格
+  {
+    method: 'GET',
+    path: '/api/coverage',
+    handler(ctx) {
+      const city = requireCity(ctx, ctx.query.city);
+      const category = (ctx.query.category && String(ctx.query.category).trim()) || 'all';
+      const { grids } = requireViewportGrids(ctx, ctx.query.bbox);
+      const gxs = grids.map((g) => g.gx);
+      const gys = grids.map((g) => g.gy);
+      const rows = ctx.db.listCoverageRange(
+        city,
+        category,
+        Math.min(...gxs),
+        Math.max(...gxs),
+        Math.min(...gys),
+        Math.max(...gys)
+      );
+      const coveredSet = new Set(rows.map((r) => r.gx + ',' + r.gy));
+      const covered = grids.filter((g) => coveredSet.has(g.gx + ',' + g.gy));
+      const uncovered = grids.filter((g) => !coveredSet.has(g.gx + ',' + g.gy));
+      return { city, category, grids, covered, uncovered };
+    },
+  },
+  // 按视野采集（T8）：只采未覆盖格；异步，进度走 /api/collect/status
+  {
+    method: 'POST',
+    path: '/api/collect/viewport',
+    handler(ctx) {
+      const body = ctx.body || {};
+      const city = requireCity(ctx, body.city || ctx.query.city);
+      const category = (body.category && String(body.category).trim()) || 'all';
+      const { bbox, grids } = requireViewportGrids(ctx, body.bbox);
+      const uncovered = grids.filter(
+        (g) => !ctx.db.isCovered(city, category, g.gx, g.gy)
+      );
+      const skipped = grids.length - uncovered.length;
+      if (!uncovered.length) {
+        return { city, category, runId: null, grids: [], total_grids: 0, skipped };
+      }
+      const run = ctx.db.createRun({ city, category });
+      const safeUpdate = (fields) => {
+        try {
+          ctx.db.updateRun(run.id, fields);
+        } catch (err) {
+          /* 库已关闭等场景：不影响主流程 */
+        }
+      };
+      (async () => {
+        try {
+          const res = await collectViewport({
+            city,
+            category,
+            bbox,
+            amap: ctx.amap,
+            db: ctx.db,
+            intervalMs: ctx.collectIntervalMs,
+            rateLimiter: ctx.viewportRateLimiter,
+            onProgress: (p) =>
+              safeUpdate({
+                n_fetched: p.n_fetched,
+                n_inserted: p.n_inserted,
+                n_updated: p.n_updated,
+                detail: {
+                  total_districts: p.total_grids,
+                  done_districts: p.done_grids,
+                },
+              }),
+          });
+          safeUpdate({
+            status: 'done',
+            finished_at: new Date().toISOString(),
+            n_fetched: res.n_fetched,
+            n_inserted: res.n_inserted,
+            n_updated: res.n_updated,
+            detail: {
+              total_districts: uncovered.length,
+              done_districts: res.collected.length,
+            },
+          });
+        } catch (err) {
+          safeUpdate({
+            status: 'failed',
+            finished_at: new Date().toISOString(),
+            detail: { error: (err && err.message) || '采集失败' },
+          });
+        }
+      })();
+      return {
+        city,
+        category,
+        runId: run.id,
+        grids: uncovered,
+        total_grids: uncovered.length,
+        skipped,
+      };
     },
   },
   // 单点详情（T5）：优先读缓存；缓存没有 → 高德现取一次（不落库）；都没有 → 404

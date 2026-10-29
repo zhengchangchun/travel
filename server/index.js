@@ -6,6 +6,7 @@ const { loadConfig, loadCategories, ROOT } = require('./config');
 const { createCache } = require('./cache');
 const defaultAmap = require('./amap');
 const { createDb } = require('./db');
+const { createRateLimiter } = require('./collect');
 
 const cityRoutes = require('./routes/city');
 const poiRoutes = require('./routes/poi');
@@ -167,6 +168,12 @@ function createApp(opts = {}) {
       opts.collectIntervalMs !== undefined
         ? Number(opts.collectIntervalMs) || 0
         : Number(process.env.COLLECT_INTERVAL_MS || 200),
+    viewportRateLimiter:
+      opts.viewportRateLimiter !== undefined
+        ? opts.viewportRateLimiter
+        : createRateLimiter({
+            maxPerMin: Number(process.env.VIEWPORT_RATE_PER_MIN || 60) || 60,
+          }),
   };
 
   async function handleApi(req, res, ctx, method, pathname, query) {

@@ -75,6 +75,16 @@ CREATE TABLE IF NOT EXISTS poi_collect_runs (
   detail      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_city ON poi_collect_runs(city, category);
+
+CREATE TABLE IF NOT EXISTS poi_coverage (
+  city         TEXT NOT NULL,
+  category     TEXT NOT NULL,
+  gx           INTEGER NOT NULL,
+  gy           INTEGER NOT NULL,
+  collected_at TEXT NOT NULL,
+  n_inserted   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (city, category, gx, gy)
+);
 `;
 
 const DEFAULT_CATEGORY_LABELS = {
@@ -210,6 +220,22 @@ function createDb(filePath) {
     findRunningRun: db.prepare(
       `SELECT * FROM poi_collect_runs WHERE city = ? AND category = ? AND status = 'running'
        ORDER BY id DESC LIMIT 1`
+    ),
+
+    // ---- T8 采集覆盖格 ----
+    isCovered: db.prepare(
+      'SELECT 1 AS hit FROM poi_coverage WHERE city = ? AND category = ? AND gx = ? AND gy = ? LIMIT 1'
+    ),
+    markCovered: db.prepare(
+      `INSERT OR REPLACE INTO poi_coverage (city, category, gx, gy, collected_at, n_inserted)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ),
+    listCoverage: db.prepare(
+      'SELECT * FROM poi_coverage WHERE city = ? AND category = ? ORDER BY gx, gy'
+    ),
+    listCoverageRange: db.prepare(
+      `SELECT gx, gy FROM poi_coverage
+       WHERE city = ? AND category = ? AND gx BETWEEN ? AND ? AND gy BETWEEN ? AND ?`
     ),
   };
 
@@ -500,6 +526,26 @@ function createDb(filePath) {
     },
     findRunningRun(city, category) {
       return stmts.findRunningRun.get(city, category) || null;
+    },
+    // ---- T8 采集覆盖格 ----
+    isCovered(city, category, gx, gy) {
+      return !!stmts.isCovered.get(city, category, gx, gy);
+    },
+    markCovered(city, category, gx, gy, nInserted = 0) {
+      stmts.markCovered.run(
+        city,
+        category,
+        gx,
+        gy,
+        new Date().toISOString(),
+        Number(nInserted) || 0
+      );
+    },
+    listCoverage(city, category) {
+      return stmts.listCoverage.all(city, category);
+    },
+    listCoverageRange(city, category, minGx, maxGx, minGy, maxGy) {
+      return stmts.listCoverageRange.all(city, category, minGx, maxGx, minGy, maxGy);
     },
     listRuns(city) {
       const rows = stmts.listRunsByCity.all(city);
