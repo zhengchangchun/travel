@@ -83,7 +83,7 @@ async function postJson(base, p, payload) {
   return { status: res.status, body: await res.json() };
 }
 
-function seedPoi(db, { id, city = '杭州', category = 'stay', rating = null, typecode = '100000' }) {
+function seedPoi(db, { id, city = '杭州', category = 'stay', rating = null, typecode = '100000', lng = 120.1, lat = 30.1 }) {
   db.upsertPoi({
     poi_id: id,
     city,
@@ -91,8 +91,8 @@ function seedPoi(db, { id, city = '杭州', category = 'stay', rating = null, ty
     category,
     name: '店' + id,
     address: 'addr',
-    lng: 120.1,
-    lat: 30.1,
+    lng,
+    lat,
     typecode,
     rating,
     cost: null,
@@ -277,6 +277,86 @@ test('GET /api/collect/status?runId=不存在 → 404', async () => {
   try {
     const { status } = await getJson(base, '/api/collect/status?runId=999999');
     assert.strictEqual(status, 404);
+  } finally {
+    await close();
+  }
+});
+
+// ---------- T7 bbox 过滤与参数校验 ----------
+
+test('T7 db.listPois bbox 只返回框内的点', () => {
+  const db = createDb(':memory:');
+  seedPoi(db, { id: 'IN1', lng: 120.15, lat: 30.25 });
+  seedPoi(db, { id: 'IN2', lng: 120.18, lat: 30.28 });
+  seedPoi(db, { id: 'OUT1', lng: 121.0, lat: 30.25 });
+  seedPoi(db, { id: 'OUT2', lng: 120.15, lat: 31.0 });
+  const { items } = db.listPois({
+    city: '杭州',
+    bbox: { minLng: 120.1, minLat: 30.2, maxLng: 120.2, maxLat: 30.3 },
+  });
+  assert.deepStrictEqual(items.map((i) => i.id).sort(), ['IN1', 'IN2']);
+  db.close();
+});
+
+test('T7 GET /api/pois bbox 返回的点全部落在框内', async () => {
+  const db = createDb(':memory:');
+  seedPoi(db, { id: 'B1', lng: 120.15, lat: 30.25 });
+  seedPoi(db, { id: 'B2', lng: 120.18, lat: 30.28 });
+  seedPoi(db, { id: 'B3', lng: 121.0, lat: 30.25 });
+  const { base, close } = await start({ db });
+  try {
+    const { status, body } = await getJson(
+      base,
+      '/api/pois?city=' + encodeURIComponent('杭州') + '&bbox=120.1,30.2,120.2,30.3'
+    );
+    assert.strictEqual(status, 200);
+    assert.ok(body.data.items.length >= 2);
+    body.data.items.forEach((i) => {
+      assert.ok(i.lng >= 120.1 && i.lng <= 120.2, 'lng 越界 ' + i.lng);
+      assert.ok(i.lat >= 30.2 && i.lat <= 30.3, 'lat 越界 ' + i.lat);
+    });
+    assert.ok(!body.data.items.some((i) => i.id === 'B3'), '框外点不应返回');
+  } finally {
+    await close();
+  }
+});
+
+test('T7 bbox 缺段 / 非数字 / min>=max → 400', async () => {
+  const { base, close } = await start({ db: createDb(':memory:') });
+  try {
+    const CITY = encodeURIComponent('杭州');
+    const bads = ['120.1,30.2,120.2', '120.1,30.2,120.2,x', '120.2,30.2,120.1,30.3', '120.1,30.3,120.2,30.2'];
+    for (const bad of bads) {
+      const { status } = await getJson(base, '/api/pois?city=' + CITY + '&bbox=' + encodeURIComponent(bad));
+      assert.strictEqual(status, 400, '应 400: ' + bad);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('T7 无 bbox 时行为不变：不给 limit 仍封顶 200', async () => {
+  const db = createDb(':memory:');
+  for (let i = 0; i < 205; i += 1) seedPoi(db, { id: 'C' + i });
+  const { base, close } = await start({ db });
+  try {
+    const { body } = await getJson(base, '/api/pois?city=' + encodeURIComponent('杭州'));
+    assert.strictEqual(body.data.items.length, 200);
+  } finally {
+    await close();
+  }
+});
+
+test('T7 有 bbox 且不给 limit → 框内全量返回（不封顶）', async () => {
+  const db = createDb(':memory:');
+  for (let i = 0; i < 300; i += 1) seedPoi(db, { id: 'D' + i, lng: 120.15, lat: 30.25 });
+  const { base, close } = await start({ db });
+  try {
+    const { body } = await getJson(
+      base,
+      '/api/pois?city=' + encodeURIComponent('杭州') + '&bbox=120,30,121,31'
+    );
+    assert.strictEqual(body.data.items.length, 300);
   } finally {
     await close();
   }

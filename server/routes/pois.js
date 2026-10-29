@@ -12,6 +12,24 @@ function num(v) {
   return typeof v === 'bigint' ? Number(v) : Number(v) || 0;
 }
 
+// bbox=minLng,minLat,maxLng,maxLat → {minLng,minLat,maxLng,maxLat}；非法（缺段/非数字/min>=max）→ 400
+function parseBbox(ctx, raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return undefined;
+  const parts = String(raw).split(',');
+  if (parts.length !== 4) {
+    throw new ctx.HttpError(400, 'BAD_REQUEST', 'bbox 需为 minLng,minLat,maxLng,maxLat 四段');
+  }
+  const nums = parts.map((p) => (String(p).trim() === '' ? NaN : Number(p)));
+  if (nums.some((n) => !Number.isFinite(n))) {
+    throw new ctx.HttpError(400, 'BAD_REQUEST', 'bbox 四段必须都是数字');
+  }
+  const [minLng, minLat, maxLng, maxLat] = nums;
+  if (!(minLng < maxLng) || !(minLat < maxLat)) {
+    throw new ctx.HttpError(400, 'BAD_REQUEST', 'bbox 需满足 minLng<maxLng 且 minLat<maxLat');
+  }
+  return { minLng, minLat, maxLng, maxLat };
+}
+
 function parseDetail(detail) {
   if (!detail) return {};
   if (typeof detail === 'object') return detail;
@@ -81,7 +99,7 @@ module.exports = [
     path: '/api/pois',
     handler(ctx) {
       const city = requireCity(ctx, ctx.query.city);
-      const { category, minRating, sort, limit, offset } = ctx.query;
+      const { category, minRating, sort, limit, offset, bbox } = ctx.query;
       return ctx.db.listPois({
         city,
         category: category || undefined,
@@ -89,6 +107,7 @@ module.exports = [
         sort,
         limit,
         offset,
+        bbox: parseBbox(ctx, bbox),
       });
     },
   },

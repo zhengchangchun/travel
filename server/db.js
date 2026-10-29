@@ -401,7 +401,7 @@ function createDb(filePath) {
       }
       return toNumber(stmts.countPoisCity.get(city).c);
     },
-    listPois({ city, category, minRating, sort, limit, offset } = {}) {
+    listPois({ city, category, minRating, sort, limit, offset, bbox } = {}) {
       if (!city) return { total: 0, items: [] };
       const where = ['city = ?'];
       const params = [city];
@@ -413,19 +413,33 @@ function createDb(filePath) {
         where.push("rating IS NOT NULL AND rating <> '' AND CAST(rating AS REAL) >= ?");
         params.push(Number(minRating));
       }
+      if (bbox) {
+        where.push('lng BETWEEN ? AND ? AND lat BETWEEN ? AND ?');
+        params.push(
+          Number(bbox.minLng),
+          Number(bbox.maxLng),
+          Number(bbox.minLat),
+          Number(bbox.maxLat)
+        );
+      }
       const whereSql = 'WHERE ' + where.join(' AND ');
       const orderSql =
         sort === 'rating'
           ? "ORDER BY (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC"
           : 'ORDER BY name ASC';
-      const lim = Math.max(0, Number(limit) || 0) || 200;
       const off = Math.max(0, Number(offset) || 0);
+      // 有 bbox（视野加载）且不给 limit → 框内全量返回；其余情况保持既有默认封顶 200
+      const hasLimit = limit !== undefined && limit !== null && limit !== '';
+      const lim = hasLimit ? Math.max(0, Number(limit) || 0) || 200 : bbox ? null : 200;
       const total = toNumber(
         db.prepare(`SELECT COUNT(*) AS c FROM pois ${whereSql}`).get(...params).c
       );
-      const rows = db
-        .prepare(`SELECT * FROM pois ${whereSql} ${orderSql} LIMIT ? OFFSET ?`)
-        .all(...params, lim, off);
+      const rows =
+        lim === null
+          ? db.prepare(`SELECT * FROM pois ${whereSql} ${orderSql}`).all(...params)
+          : db
+              .prepare(`SELECT * FROM pois ${whereSql} ${orderSql} LIMIT ? OFFSET ?`)
+              .all(...params, lim, off);
       return { total, items: rows.map(mapPoiRow) };
     },
     poisStats(city) {
