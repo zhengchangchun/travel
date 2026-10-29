@@ -11,6 +11,7 @@ const cityRoutes = require('./routes/city');
 const poiRoutes = require('./routes/poi');
 const tripsRoutes = require('./routes/trips');
 const notesRoutes = require('./routes/notes');
+const selectionRoutes = require('./routes/selection');
 
 class HttpError extends Error {
   constructor(status, code, msg) {
@@ -137,6 +138,7 @@ function createApp(opts = {}) {
     ...poiRoutes,
     ...tripsRoutes,
     ...notesRoutes,
+    ...selectionRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));

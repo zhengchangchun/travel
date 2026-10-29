@@ -45,19 +45,24 @@ module.exports = [
     path: '/api/pins',
     handler(ctx) {
       const b = ctx.body || {};
-      if (
-        b.trip_id === undefined ||
-        b.name === undefined ||
-        b.lng === undefined ||
-        b.lat === undefined
-      ) {
-        throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 trip_id/name/lng/lat');
+      if (b.name === undefined || b.lng === undefined || b.lat === undefined) {
+        throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 name/lng/lat');
       }
-      if (!ctx.db.getTrip(Number(b.trip_id))) {
-        throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${b.trip_id} 不存在`);
+      // trip_id 仍可传入（向后兼容）；省略时按 city 自动归集到「我的行程」
+      let tripId;
+      if (b.trip_id !== undefined && b.trip_id !== null) {
+        tripId = Number(b.trip_id);
+        if (!ctx.db.getTrip(tripId)) {
+          throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${b.trip_id} 不存在`);
+        }
+      } else {
+        if (!b.city || !String(b.city).trim()) {
+          throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 trip_id 时必须提供 city');
+        }
+        tripId = ctx.db.getOrCreateCityTrip(String(b.city).trim()).id;
       }
       return ctx.db.addPin({
-        trip_id: Number(b.trip_id),
+        trip_id: tripId,
         poi_id: b.poi_id,
         name: b.name,
         address: b.address,
@@ -70,6 +75,18 @@ module.exports = [
         photo: b.photo,
         note: b.note,
       });
+    },
+  },
+  {
+    method: 'PATCH',
+    path: '/api/pins/:id',
+    handler(ctx) {
+      const id = Number(ctx.params.id);
+      if (!ctx.db.getPin(id)) {
+        throw new ctx.HttpError(404, 'NOT_FOUND', `点 ${id} 不存在`);
+      }
+      const { note } = ctx.body || {};
+      return ctx.db.updatePinNote(id, note === undefined ? null : note).pin;
     },
   },
   {
