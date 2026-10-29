@@ -8,6 +8,10 @@
   const Itinerary = window.TravelItinerary;
   const Route = window.TravelRoute;
 
+  // 切城市落主城区用的倍率；倍率阈值是「是否加载视野内地点」的唯一门控
+  const CITY_ZOOM = 13;
+  const MIN_MARKER_ZOOM = 13;
+
   const state = {
     config: null,
     city: null,
@@ -20,6 +24,9 @@
     ratingFilter: 'all',
     collecting: false,
     collectTimer: null,
+    viewSeq: 0,
+    cityTotal: 0,
+    suppressView: false,
   };
 
   const RATING_OPTIONS = [
@@ -105,12 +112,17 @@
     );
   }
 
+  // 双口径计数：当前视野 N 条 · 全城已收录 M 条
+  function updateViewCount() {
+    UI.setViewCount(state.pois.length, state.cityTotal);
+  }
+
   function renderSelection() {
     $('selection-count').textContent = String(Selection.count());
     $('only-selected-btn').classList.toggle('active', state.onlySelected);
     UI.renderSelectionPanel($('selection-list'), Selection.list(), {
       onLocate(pin) {
-        if (MapCtl.isReady()) MapCtl.flyTo(pin.lng, pin.lat, 15);
+        flyTo(pin.lng, pin.lat, 15);
         onPickPoi(pin);
       },
       onRemove: onRemoveSelected,
@@ -126,7 +138,7 @@
   }
 
   function refresh(opts) {
-    const fit = !opts || opts.fit !== false;
+    const fit = !!(opts && opts.fit);
     const list = currentList();
     UI.renderResults($('result-list'), list, onPickPoi, {
       isSelected: (p) => Selection.has(p),
@@ -134,6 +146,7 @@
     });
     $('result-count').textContent = String(list.length);
     updateStatus(list);
+    updateViewCount();
     renderMap(list, fit);
     renderSelection();
     if (state.view === 'itinerary') renderItinerary();
@@ -257,7 +270,7 @@
 
   function onPickPoi(poi) {
     state.cardPoi = poi;
-    if (MapCtl.isReady()) MapCtl.flyTo(poi.lng, poi.lat, 15);
+    flyTo(poi.lng, poi.lat, 15);
     window.TravelDetail.show($('infocard'), poi, state.city, {
       onAddPin,
       isSelected: (p) => Selection.has(p),
@@ -265,26 +278,82 @@
     });
   }
 
-  async function loadCityPois(city) {
-    UI.setStatus('读取 ' + city + ' 已收录地点…');
+  function fmtCoord(n) {
+    return Number(n).toFixed(6);
+  }
+
+  // 全城已收录条数（M）：读缓存统计，不打高德
+  async function loadCityTotals(city) {
     try {
-      const data = await API.listPois({ city, limit: 5000 });
-      state.pois = data.items || [];
+      const stats = await API.poisStats(city);
+      state.cityTotal = stats.total || 0;
     } catch (err) {
+      state.cityTotal = 0;
+    }
+    updateViewCount();
+  }
+
+  // 视野加载：取当前 bounds → bbox → 拉该视野内 POI（无数量限制，点多少拉多少）
+  async function fetchPoisInView() {
+    if (!MapCtl.isReady()) return;
+    const zoom = MapCtl.getZoom();
+    if (zoom != null && zoom < MIN_MARKER_ZOOM) {
+      // 倍率阈值是唯一门控：不请求、不画点，只提示
       state.pois = [];
+      MapCtl.clearMarkers();
       UI.showLegend(false);
-      UI.setStatus('读取缓存失败：' + err.message);
       refresh();
+      UI.setStatus('放大地图以加载本区域地点');
       return;
     }
-    state.pois = dedupe(state.pois);
-    UI.showLegend(state.pois.length > 0);
-    refresh();
-    if (!state.pois.length) {
-      UI.setStatus('该城市还没采集，点左侧「开始采集」');
-    } else {
-      UI.setStatus('已收录 ' + state.pois.length + ' 个地点（' + city + '）');
+    const bounds = MapCtl.getBounds();
+    if (!bounds) return;
+    const seq = (state.viewSeq += 1);
+    const bbox = [bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat]
+      .map(fmtCoord)
+      .join(',');
+    UI.setStatus('加载视野内地点…');
+    let data;
+    try {
+      data = await API.listPois({ city: state.city, bbox });
+    } catch (err) {
+      if (seq !== state.viewSeq) return;
+      UI.setStatus('读取视野内地点失败：' + err.message);
+      return;
     }
+    if (seq !== state.viewSeq) return; // 丢弃过期响应，只应用最后一次
+    state.pois = dedupe(data.items || []);
+    UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
+    refresh();
+  }
+
+  // 切城 / 刷新按钮：先刷「全城已收录」，再按当前视野加载
+  async function loadCityView(city) {
+    UI.setStatus('读取 ' + city + ' 已收录地点…');
+    await loadCityTotals(city);
+    await fetchPoisInView();
+    if (!state.cityTotal && !state.pois.length) {
+      UI.setStatus('该城市还没采集，点左侧「开始采集」');
+    }
+  }
+
+  // 地图视野变化（拖动/缩放）→ 防抖后自动加载；定位引发的移动跳过
+  function onViewChanged() {
+    if (state.suppressView) {
+      state.suppressView = false;
+      return;
+    }
+    fetchPoisInView();
+  }
+
+  // 程序化飞行（点列表/定位）：不触发视野重载，避免冲掉当前列表
+  function flyTo(lng, lat, zoom) {
+    if (!MapCtl.isReady()) return;
+    state.suppressView = true;
+    MapCtl.flyTo(lng, lat, zoom);
+    setTimeout(() => {
+      state.suppressView = false;
+    }, 800);
   }
 
   function onPickRating(key) {
@@ -353,7 +422,7 @@
       state.collectTimer = null;
       state.collecting = false;
       if (btn) btn.disabled = false;
-      await loadCityPois(state.city);
+      await loadCityView(state.city);
       UI.setStatus('采集完成，已刷新列表');
     }
 
@@ -361,23 +430,39 @@
     state.collectTimer = setInterval(tick, 800);
   }
 
+  // 切城市：清旧旗 → 提示「定位中…」→ 落主城区 + CITY_ZOOM → 等 moveend → 才请求 POI
   async function setCity(city) {
     state.city = city.name || city;
     $('current-city').textContent = state.city;
     state.activeCats.clear();
     state.onlySelected = false;
     state.ratingFilter = 'all';
+    state.pois = [];
+    state.cityTotal = 0;
     UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
-    if (typeof city.lng === 'number' && MapCtl.isReady()) {
-      MapCtl.flyTo(city.lng, city.lat, 11);
+    if (MapCtl.isReady()) MapCtl.clearMarkers();
+    refresh();
+
+    const center =
+      typeof city.lng === 'number' && typeof city.lat === 'number'
+        ? { lng: city.lng, lat: city.lat }
+        : null;
+    if (center && MapCtl.isReady()) {
+      UI.setStatus('定位中…');
+      state.suppressView = true; // 定位引发的 moveend 不重复触发视野加载
+      await MapCtl.setZoomAndCenter(center.lng, center.lat, CITY_ZOOM); // 等相机落定
+      setTimeout(() => {
+        state.suppressView = false;
+      }, 700);
     }
+
     try {
       await Selection.load(state.city);
     } catch (err) {
       /* 选中加载失败不阻塞主流程 */
     }
-    await loadCityPois(state.city);
+    await loadCityView(state.city);
   }
 
   async function doCitySearch() {
@@ -415,7 +500,7 @@
       UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
       refresh();
       if (state.pois.length && MapCtl.isReady()) {
-        MapCtl.flyTo(state.pois[0].lng, state.pois[0].lat, 15);
+        flyTo(state.pois[0].lng, state.pois[0].lat, 15);
       }
       UI.setStatus('「' + keywords + '」找到 ' + state.pois.length + ' 个结果');
     } catch (err) {
@@ -440,7 +525,7 @@
       $('trip-list'),
       pins,
       (pin) => {
-        if (MapCtl.isReady()) MapCtl.flyTo(pin.lng, pin.lat, 15);
+        flyTo(pin.lng, pin.lat, 15);
       },
       async (pin) => {
         try {
@@ -519,7 +604,7 @@
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
     $('collect-btn').onclick = onCollect;
-    $('collect-refresh-btn').onclick = () => loadCityPois(state.city);
+    $('collect-refresh-btn').onclick = () => loadCityView(state.city);
     $('plan-btn').onclick = onPlan;
     $('panel-toggle').onclick = onTogglePanel;
     $('itinerary-back').onclick = () => setView('list');
@@ -564,13 +649,22 @@
         jsApiSecurityCode: state.config.jsApiSecurityCode,
       });
       MapCtl.onMarkerClick((poi) => onPickPoi(poi));
+      MapCtl.onMoveEnd(() => onViewChanged());
       UI.hideMapError();
     } catch (err) {
       UI.showMapError(err.message);
       UI.setStatus('地图加载失败：' + err.message);
     }
 
-    await setCity({ name: state.config.defaultCity });
+    // 默认城市：用城市搜索拿到主城区 center（高德 city center 就是主城区）
+    let bootCity = { name: state.config.defaultCity };
+    try {
+      const found = await API.searchCity(state.config.defaultCity);
+      if (Array.isArray(found) && found.length) bootCity = found[0];
+    } catch (err) {
+      /* 拿不到 center 时退化为仅城市名 */
+    }
+    await setCity(bootCity);
 
     try {
       const trips = await API.listTrips(state.city);

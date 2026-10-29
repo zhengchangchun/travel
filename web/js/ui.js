@@ -15,6 +15,13 @@
     if (el) el.textContent = text;
   }
 
+  // 双口径计数：当前视野 N 条 · 全城已收录 M 条
+  function setViewCount(viewN, total) {
+    const el = $('view-count');
+    if (!el) return;
+    el.textContent = '当前视野 ' + viewN + ' 条 · 全城已收录 ' + total + ' 条';
+  }
+
   function showMapError(msg) {
     const el = $('map-error');
     if (!el) return;
@@ -182,6 +189,7 @@
   window.TravelUI = {
     esc,
     setStatus,
+    setViewCount,
     showMapError,
     hideMapError,
     renderChips,
