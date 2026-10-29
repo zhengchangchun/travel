@@ -181,6 +181,163 @@ async function poiDetail(id) {
   return pois.length ? normalizePoi(pois[0]) : null;
 }
 
+// ---------- 路径规划（T3） ----------
+
+function parsePolyline(str) {
+  if (str == null || str === '') return [];
+  return String(str)
+    .split(';')
+    .map((pair) => pair.split(',').map(Number))
+    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+}
+
+function parseSteps(steps) {
+  const list = Array.isArray(steps) ? steps : [];
+  return list
+    .map((s) => ({
+      instruction: firstString(s.instruction),
+      distance: Number(s.distance) || 0,
+      duration: Number(s.duration) || 0,
+      polyline: parsePolyline(s.polyline),
+    }))
+    .filter((s) => s.polyline.length > 0 || s.instruction);
+}
+
+function joinPolylines(polylines) {
+  const out = [];
+  polylines.forEach((line) => {
+    line.forEach((pt) => {
+      const last = out[out.length - 1];
+      if (last && last[0] === pt[0] && last[1] === pt[1]) return;
+      out.push(pt);
+    });
+  });
+  return out;
+}
+
+// 驾车 / 步行：route.paths[0] → 统一形状
+function normalizePathRoute(json, mode) {
+  const route = json.route || {};
+  const paths = Array.isArray(route.paths) ? route.paths : [];
+  if (!paths.length) throw new AmapError(`未找到${mode}路径`);
+  const path = paths[0] || {};
+  const steps = parseSteps(path.steps);
+  const polyline = steps.length
+    ? joinPolylines(steps.map((s) => s.polyline))
+    : parsePolyline(path.polyline);
+  return {
+    mode,
+    distance: Number(path.distance) || 0,
+    duration: Number(path.duration) || 0,
+    polyline,
+    steps,
+    transit: null,
+    degraded: false,
+  };
+}
+
+// 公交：route.transits[0].segments[] 把 walking / bus 折线按序拼成一条完整折线
+function normalizeTransitRoute(json) {
+  const route = json.route || {};
+  const transits = Array.isArray(route.transits) ? route.transits : [];
+  if (!transits.length) throw new AmapError('未找到公交方案');
+  const transit = transits[0] || {};
+  const segments = Array.isArray(transit.segments) ? transit.segments : [];
+  const summary = [];
+  const lines = [];
+
+  segments.forEach((seg) => {
+    if (seg.walking) {
+      const walkSteps = Array.isArray(seg.walking.steps) ? seg.walking.steps : [];
+      const line = walkSteps.map((s) => parsePolyline(s.polyline));
+      lines.push(...line);
+      summary.push({
+        type: 'walking',
+        distance: Number(seg.walking.distance) || 0,
+        duration: Number(seg.walking.duration) || 0,
+        name: '步行',
+        instruction: `步行 ${Number(seg.walking.distance) || 0} 米`,
+        polyline: joinPolylines(line),
+      });
+    }
+    if (seg.bus) {
+      const buslines = Array.isArray(seg.bus.buslines) ? seg.bus.buslines : [];
+      buslines.forEach((b) => {
+        const line = parsePolyline(b.polyline);
+        lines.push(line);
+        summary.push({
+          type: 'bus',
+          name: firstString(b.name) || '公交',
+          distance: Number(b.distance) || 0,
+          duration: Number(b.duration) || 0,
+          via_num: firstString(b.via_num),
+          instruction: `乘坐${firstString(b.name) || '公交'}`,
+          polyline: line,
+        });
+      });
+    }
+  });
+
+  const polyline = joinPolylines(lines);
+  const totalDistance =
+    Number(transit.distance) || summary.reduce((sum, s) => sum + s.distance, 0);
+  const totalDuration =
+    Number(transit.duration) || summary.reduce((sum, s) => sum + s.duration, 0);
+
+  return {
+    mode: 'transit',
+    distance: totalDistance,
+    duration: totalDuration,
+    polyline,
+    steps: summary.map((s) => ({
+      instruction: s.instruction,
+      distance: s.distance,
+      duration: s.duration,
+      polyline: s.polyline,
+    })),
+    transit: {
+      distance: totalDistance,
+      duration: totalDuration,
+      cost: Number(transit.cost) || 0,
+      segments: summary.map((s) => ({
+        type: s.type,
+        name: s.name,
+        distance: s.distance,
+        duration: s.duration,
+        via_num: s.via_num,
+      })),
+    },
+    degraded: false,
+  };
+}
+
+async function planWalking(origin, destination) {
+  const json = await amapGet('/v3/direction/walking', { origin, destination });
+  return normalizePathRoute(json, 'walking');
+}
+
+async function planDriving(origin, destination, strategy) {
+  const json = await amapGet('/v3/direction/driving', {
+    origin,
+    destination,
+    strategy: strategy === undefined || strategy === null ? 0 : strategy,
+    extensions: 'all',
+  });
+  return normalizePathRoute(json, 'driving');
+}
+
+async function planTransit(origin, destination, city) {
+  const json = await amapGet('/v3/direction/transit/integrated', {
+    origin,
+    destination,
+    city,
+    cityd: city,
+    strategy: 0,
+    extensions: 'all',
+  });
+  return normalizeTransitRoute(json);
+}
+
 module.exports = {
   amapGet,
   searchCity,
@@ -189,6 +346,10 @@ module.exports = {
   poiDetail,
   normalizePoi,
   classifyType,
+  parsePolyline,
+  planWalking,
+  planDriving,
+  planTransit,
   setConfig,
   setCategories,
   AmapError,
