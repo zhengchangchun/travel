@@ -297,13 +297,35 @@ test('T8b 细分合并：父格取满后子格数据并入同一 (city,category)
   db.close();
 });
 
-test('T8b 格内高德报错 ⇒ 该格不标覆盖（可重试）且不中断其它格', async () => {
+test('T8b 高德瞬时报错 ⇒ 重试成功后仍标覆盖（errored=0）', async () => {
   const db = createDb(':memory:');
   let n = 0;
   const amap = {
     async searchPoiAround() {
       n += 1;
       if (n === 1) {
+        const e = new Error('CUQPS_HAS_EXCEEDED_THE_LIMIT');
+        e.code = 'AMAP_ERROR';
+        throw e;
+      }
+      return [mkPoi('OK', '050000')];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 }; // 1 格
+  const res = await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  assert.strictEqual(res.errored, 0, '瞬时错误应被重试吸收');
+  assert.strictEqual(db.isCovered('杭州', 'food', 12010, 3020), true);
+  db.close();
+});
+
+test('T8b 格内高德持续报错 ⇒ 该格不标覆盖（可重试）且不中断其它格', async () => {
+  const db = createDb(':memory:');
+  let n = 0;
+  const amap = {
+    async searchPoiAround() {
+      n += 1;
+      if (n <= 3) {
+        // 首格 3 次尝试全部报错（重试耗尽）
         const e = new Error('CUQPS_HAS_EXCEEDED_THE_LIMIT');
         e.code = 'AMAP_ERROR';
         throw e;

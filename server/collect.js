@@ -12,6 +12,8 @@ const MAX_VIEWPORT_GRIDS = 400; // 单次视野最多采的格数，防超大 bb
 const GRID_RADIUS_M = 800; // 以格中心周边搜索的起始半径（米），略大于格对角半径
 const MIN_GRID_DEG = 0.00125; // 细分到该边长即停（约 140m），防死循环
 const DEFAULT_VIEWPORT_RATE_PER_MIN = 60; // 单位时间高德调用上限（默认 60/分钟）
+const VIEWPORT_MAX_RETRIES = 2; // 高德瞬时错误（如 QPS 超限）重试次数
+const RETRY_BACKOFF_MS = 800; // 重试退避基数（× 次数）
 
 // 正在采集中的格（内存内，防同格重复起）。键：city\0category\0gx,gy
 const activeGrids = new Set();
@@ -307,6 +309,7 @@ async function collectCell({
   classify,
   minGridDeg,
   maxDepth,
+  maxRetries,
 }) {
   const center = { lng: minLng + size / 2, lat: minLat + size / 2 };
   let fetched = 0;
@@ -316,14 +319,23 @@ async function collectCell({
   let errored = 0;
 
   for (let page = 1; page <= MAX_PAGE; page += 1) {
-    if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
-    if (intervalMs) await sleep(intervalMs);
-    let pois;
-    try {
-      pois = await amap.searchPoiAround({ lng: center.lng, lat: center.lat, category, radius, page });
-    } catch (err) {
-      // 高德报错（如 QPS 超限）：停止该格，交由上层决定不标覆盖以便重试
-      errored += 1;
+    // 高德瞬时错误（如 QPS 超限）→ 退避重试；耗尽仍失败才放弃该格
+    let pois = null;
+    let lastErr = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
+      if (intervalMs) await sleep(intervalMs);
+      try {
+        pois = await amap.searchPoiAround({ lng: center.lng, lat: center.lat, category, radius, page });
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxRetries) await sleep(RETRY_BACKOFF_MS * (attempt + 1));
+      }
+    }
+    if (lastErr) {
+      errored += 1; // 该格放弃，交由上层决定不标覆盖以便下次重试
       break;
     }
     fetched += pois.length;
@@ -361,6 +373,7 @@ async function collectCell({
           classify,
           minGridDeg,
           maxDepth,
+          maxRetries,
         });
         fetched += sub.fetched;
         inserted += sub.inserted;
@@ -392,6 +405,7 @@ async function collectViewport({
   onProgress,
   minGridDeg = MIN_GRID_DEG,
   maxDepth = MAX_DEPTH,
+  maxRetries = VIEWPORT_MAX_RETRIES,
 } = {}) {
   const grids = bboxToGrids(bbox);
   if (grids.length > MAX_VIEWPORT_GRIDS) {
@@ -441,6 +455,7 @@ async function collectViewport({
         classify,
         minGridDeg,
         maxDepth,
+        maxRetries,
       });
       fetched += cell.fetched;
       inserted += cell.inserted;

@@ -314,13 +314,13 @@ check('T8b-P90', 'poi_coverage 含 truncated 列（幂等迁移 + 默认 0）', 
   db.close();
 });
 
-check('T8b-P92', '格内高德报错 ⇒ 不误标覆盖（可重试）且不中断其它格', async () => {
+check('T8b-P92', '格内高德持续报错 ⇒ 不误标覆盖（可重试）且不中断其它格', async () => {
   const db = createDb(':memory:');
   let n = 0;
   const amap = {
     async searchPoiAround() {
       n += 1;
-      if (n === 1) {
+      if (n <= 3) {
         const e = new Error('CUQPS_HAS_EXCEEDED_THE_LIMIT');
         e.code = 'AMAP_ERROR';
         throw e;
