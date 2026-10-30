@@ -246,6 +246,81 @@ check('T8-P86', 'L19 采集按钮改名 + N20 切城市重置行程', () => {
   assert.match(m[0], /API\.listTrips\(state\.city\)/, 'setCity 未重取行程');
 });
 
+// ---------- T8b：格内翻页取全 / 超额细分 / truncated ----------
+
+function fullPageOf(prefix, typecode) {
+  return Array.from({ length: 25 }, (_, k) => mkPoi(`${prefix}-${k}`, typecode));
+}
+
+check('T8b-P87', 'P1 格内翻页到不满 25（3 满 + 1 半 → 4 次调用、85 条、非 truncated）', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround({ page }) {
+      calls += 1;
+      if (page <= 3) return fullPageOf(`F${page}`, '050000');
+      if (page === 4) return fullPageOf('F4', '050000').slice(0, 10);
+      return [];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 };
+  const res = await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  assert.strictEqual(calls, 4, '应翻到第 4 页，实际 ' + calls);
+  assert.strictEqual(res.n_inserted, 85);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 0);
+  db.close();
+});
+
+check('T8b-P88', 'P2 格内取满 200 ⇒ 细分；子格取完则 truncated=0', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround({ radius }) {
+      calls += 1;
+      if (radius >= 500) return fullPageOf(`T${calls}`, '050000');
+      return [];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 };
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  assert.strictEqual(calls, 12, '顶格 8 页 + 4 子格各 1 页，实际 ' + calls);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 0);
+  db.close();
+});
+
+check('T8b-P89', 'P3 细分到底仍满 ⇒ 仍标覆盖但 truncated=1', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround() {
+      calls += 1;
+      return fullPageOf(`S${calls}`, '050000');
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 };
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0, maxDepth: 1 });
+  assert.strictEqual(calls, 8 + 4 * 8, '实际 ' + calls);
+  assert.strictEqual(db.isCovered('杭州', 'food', 12010, 3020), true);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 1);
+  db.close();
+});
+
+check('T8b-P90', 'poi_coverage 含 truncated 列（幂等迁移 + 默认 0）', () => {
+  const db = createDb(':memory:');
+  const cols = db.raw.prepare('PRAGMA table_info(poi_coverage)').all().map((c) => c.name);
+  assert.ok(cols.includes('truncated'), '缺 truncated 列');
+  db.markCovered('杭州', 'food', 1, 1);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 0);
+  db.close();
+});
+
+check('T8b-P91', 'P4 配额节流仍在：collectCell 每次高德调用前 acquire', () => {
+  const src = readFile('server/collect.js');
+  assert.ok(src.includes('rateLimiter.acquire'), 'collectCell 未接入 rateLimiter');
+  assert.ok(!/VIEWPORT_MAX_PAGE\s*=\s*1/.test(src), '仍残留每格 1 页限制');
+  assert.match(src, /for\s*\(\s*let\s+page\s*=\s*1;\s*page\s*<=\s*MAX_PAGE/, '格内未沿用 MAX_PAGE');
+});
+
 async function main() {
   for (const c of CHECKS) {
     try {
