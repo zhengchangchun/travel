@@ -9,8 +9,8 @@ const MAX_DEPTH = 8; // 递归深度上限，防御死循环
 // ---- T8 按视野采集：网格覆盖 ----
 const GRID_DEG = 0.01; // 网格边长（度），约 1km
 const MAX_VIEWPORT_GRIDS = 400; // 单次视野最多采的格数，防超大 bbox
-const GRID_RADIUS_M = 800; // 以格中心周边搜索的半径（米），略大于格对角半径
-const VIEWPORT_MAX_PAGE = 1; // 按视野采集每格只翻 1 页，严格省配额（补全走「采集全城」）
+const GRID_RADIUS_M = 800; // 以格中心周边搜索的起始半径（米），略大于格对角半径
+const MIN_GRID_DEG = 0.00125; // 细分到该边长即停（约 140m），防死循环
 const DEFAULT_VIEWPORT_RATE_PER_MIN = 60; // 单位时间高德调用上限（默认 60/分钟）
 
 // 正在采集中的格（内存内，防同格重复起）。键：city\0category\0gx,gy
@@ -290,7 +290,90 @@ async function collectCityCategory({ city, category, amap, db, intervalMs = 0, c
   };
 }
 
-// 按视野采集：只采 bbox 内【未覆盖】的格；逐格周边搜索 + 间隔 + 每格采完标覆盖。
+// 单元格采集（递归）：格内翻页到某页不满 25 条为止；若取满 200 则对半切 4 子格递归（半径对半）。
+// 返回 truncated=true 表示「细分到底仍满 200」（防无限重采，仍标覆盖）。
+async function collectCell({
+  amap,
+  db,
+  city,
+  category,
+  minLng,
+  minLat,
+  size,
+  radius,
+  depth,
+  intervalMs,
+  rateLimiter,
+  classify,
+  minGridDeg,
+  maxDepth,
+}) {
+  const center = { lng: minLng + size / 2, lat: minLat + size / 2 };
+  let fetched = 0;
+  let inserted = 0;
+  let updated = 0;
+  let saturated = false;
+
+  for (let page = 1; page <= MAX_PAGE; page += 1) {
+    if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
+    if (intervalMs) await sleep(intervalMs);
+    const pois = await amap.searchPoiAround({
+      lng: center.lng,
+      lat: center.lat,
+      category,
+      radius,
+      page,
+    });
+    fetched += pois.length;
+    const r = storePois(db, city, null, category, pois, classify);
+    inserted += r.inserted;
+    updated += r.updated;
+    if (!pois.length) break;
+    if (!isFullPage(pois)) break; // 最后一页不满 25 → 真取完
+    if (page === MAX_PAGE) saturated = true;
+  }
+
+  let truncated = false;
+  if (saturated) {
+    const halfSize = size / 2;
+    const halfRadius = Math.floor(radius / 2);
+    if (halfSize >= minGridDeg && depth < maxDepth && halfRadius >= MIN_RADIUS) {
+      for (const [dx, dy] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ]) {
+        const sub = await collectCell({
+          amap,
+          db,
+          city,
+          category,
+          minLng: minLng + dx * halfSize,
+          minLat: minLat + dy * halfSize,
+          size: halfSize,
+          radius: halfRadius,
+          depth: depth + 1,
+          intervalMs,
+          rateLimiter,
+          classify,
+          minGridDeg,
+          maxDepth,
+        });
+        fetched += sub.fetched;
+        inserted += sub.inserted;
+        updated += sub.updated;
+        if (sub.truncated) truncated = true;
+      }
+    } else {
+      truncated = true; // 细分到底仍满 200
+    }
+  }
+
+  return { fetched, inserted, updated, truncated };
+}
+
+// 按视野采集：只采 bbox 内【未覆盖】的格；逐格取全（格内翻页 + 超额细分），采完标覆盖。
 // 同格并发调用会被合并（activeGrids），不重复起高德请求。
 async function collectViewport({
   city,
@@ -302,6 +385,8 @@ async function collectViewport({
   rateLimiter,
   classify,
   onProgress,
+  minGridDeg = MIN_GRID_DEG,
+  maxDepth = MAX_DEPTH,
 } = {}) {
   const grids = bboxToGrids(bbox);
   if (grids.length > MAX_VIEWPORT_GRIDS) {
@@ -334,28 +419,28 @@ async function collectViewport({
 
   for (let i = 0; i < claimed.length; i += 1) {
     const g = claimed[i];
-    const center = gridCenter(g.gx, g.gy);
-    let gridInserted = 0;
     try {
-      for (let page = 1; page <= VIEWPORT_MAX_PAGE; page += 1) {
-        if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
-        if (intervalMs) await sleep(intervalMs);
-        const pois = await amap.searchPoiAround({
-          lng: center.lng,
-          lat: center.lat,
-          category,
-          radius: GRID_RADIUS_M,
-          page,
-        });
-        fetched += pois.length;
-        const r = storePois(db, city, null, category, pois, classify);
-        inserted += r.inserted;
-        updated += r.updated;
-        gridInserted += r.inserted;
-        if (!pois.length) break;
-        if (!isFullPage(pois)) break;
-      }
-      db.markCovered(city, category, g.gx, g.gy, gridInserted);
+      const cell = await collectCell({
+        amap,
+        db,
+        city,
+        category,
+        minLng: g.gx * GRID_DEG,
+        minLat: g.gy * GRID_DEG,
+        size: GRID_DEG,
+        radius: GRID_RADIUS_M,
+        depth: 0,
+        intervalMs,
+        rateLimiter,
+        classify,
+        minGridDeg,
+        maxDepth,
+      });
+      fetched += cell.fetched;
+      inserted += cell.inserted;
+      updated += cell.updated;
+      // 覆盖标记：真取完或（细分到底仍满→截断）都标，后者记 truncated 防无限重采
+      db.markCovered(city, category, g.gx, g.gy, cell.inserted, cell.truncated);
       collected.push(g);
     } finally {
       activeGrids.delete(gridKey(city, category, g));

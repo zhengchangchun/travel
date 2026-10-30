@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS poi_coverage (
   gy           INTEGER NOT NULL,
   collected_at TEXT NOT NULL,
   n_inserted   INTEGER NOT NULL DEFAULT 0,
+  truncated    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (city, category, gx, gy)
 );
 `;
@@ -146,6 +147,7 @@ function createDb(filePath) {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
   ensureColumn(db, 'pins', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'poi_coverage', 'truncated', 'truncated INTEGER NOT NULL DEFAULT 0');
 
   const stmts = {
     insertTrip: db.prepare('INSERT INTO trips (city, title) VALUES (?, ?)'),
@@ -227,8 +229,8 @@ function createDb(filePath) {
       'SELECT 1 AS hit FROM poi_coverage WHERE city = ? AND category = ? AND gx = ? AND gy = ? LIMIT 1'
     ),
     markCovered: db.prepare(
-      `INSERT OR REPLACE INTO poi_coverage (city, category, gx, gy, collected_at, n_inserted)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO poi_coverage (city, category, gx, gy, collected_at, n_inserted, truncated)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     ),
     listCoverage: db.prepare(
       'SELECT * FROM poi_coverage WHERE city = ? AND category = ? ORDER BY gx, gy'
@@ -531,14 +533,15 @@ function createDb(filePath) {
     isCovered(city, category, gx, gy) {
       return !!stmts.isCovered.get(city, category, gx, gy);
     },
-    markCovered(city, category, gx, gy, nInserted = 0) {
+    markCovered(city, category, gx, gy, nInserted = 0, truncated = false) {
       stmts.markCovered.run(
         city,
         category,
         gx,
         gy,
         new Date().toISOString(),
-        Number(nInserted) || 0
+        Number(nInserted) || 0,
+        truncated ? 1 : 0
       );
     },
     listCoverage(city, category) {
