@@ -14,6 +14,7 @@ const MIN_GRID_DEG = 0.00125; // 细分到该边长即停（约 140m），防死
 const DEFAULT_VIEWPORT_RATE_PER_MIN = 60; // 单位时间高德调用上限（默认 60/分钟）
 const VIEWPORT_MAX_RETRIES = 2; // 高德瞬时错误（如 QPS 超限）重试次数
 const RETRY_BACKOFF_MS = 800; // 重试退避基数（× 次数）
+const MAX_GRID_CALLS = 48; // 单格高德调用预算（含细分），防 QPS 打爆；超预算记 truncated
 
 // 正在采集中的格（内存内，防同格重复起）。键：city\0category\0gx,gy
 const activeGrids = new Set();
@@ -310,6 +311,7 @@ async function collectCell({
   minGridDeg,
   maxDepth,
   maxRetries,
+  budget,
 }) {
   const center = { lng: minLng + size / 2, lat: minLat + size / 2 };
   let fetched = 0;
@@ -317,12 +319,22 @@ async function collectCell({
   let updated = 0;
   let saturated = false;
   let errored = 0;
+  let truncated = false;
 
   for (let page = 1; page <= MAX_PAGE; page += 1) {
+    if (budget && budget.left <= 0) {
+      truncated = true; // 配额预算耗尽（P4 保护 QPS）
+      break;
+    }
     // 高德瞬时错误（如 QPS 超限）→ 退避重试；耗尽仍失败才放弃该格
     let pois = null;
     let lastErr = null;
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      if (budget && budget.left <= 0) {
+        lastErr = new Error('VIEWPORT_BUDGET');
+        break;
+      }
+      if (budget) budget.left -= 1;
       if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
       if (intervalMs) await sleep(intervalMs);
       try {
@@ -335,7 +347,8 @@ async function collectCell({
       }
     }
     if (lastErr) {
-      errored += 1; // 该格放弃，交由上层决定不标覆盖以便下次重试
+      if (lastErr.message === 'VIEWPORT_BUDGET') truncated = true;
+      else errored += 1; // 该格放弃，交由上层决定不标覆盖以便下次重试
       break;
     }
     fetched += pois.length;
@@ -347,11 +360,15 @@ async function collectCell({
     if (page === MAX_PAGE) saturated = true;
   }
 
-  let truncated = false;
-  if (saturated && errored === 0) {
+  if (saturated && errored === 0 && !truncated) {
     const halfSize = size / 2;
     const halfRadius = Math.floor(radius / 2);
-    if (halfSize >= minGridDeg && depth < maxDepth && halfRadius >= MIN_RADIUS) {
+    const canSplit =
+      halfSize >= minGridDeg &&
+      depth < maxDepth &&
+      halfRadius >= MIN_RADIUS &&
+      (!budget || budget.left > 0);
+    if (canSplit) {
       for (const [dx, dy] of [
         [0, 0],
         [1, 0],
@@ -374,6 +391,7 @@ async function collectCell({
           minGridDeg,
           maxDepth,
           maxRetries,
+          budget,
         });
         fetched += sub.fetched;
         inserted += sub.inserted;
@@ -382,7 +400,7 @@ async function collectCell({
         if (sub.truncated) truncated = true;
       }
     } else {
-      truncated = true; // 细分到底仍满 200
+      truncated = true; // 细分到底（或预算耗尽）仍满 200
     }
   } else if (saturated) {
     truncated = true; // 取满但中途报错：无法继续细分，本次截断
@@ -406,6 +424,7 @@ async function collectViewport({
   minGridDeg = MIN_GRID_DEG,
   maxDepth = MAX_DEPTH,
   maxRetries = VIEWPORT_MAX_RETRIES,
+  maxGridCalls = MAX_GRID_CALLS,
 } = {}) {
   const grids = bboxToGrids(bbox);
   if (grids.length > MAX_VIEWPORT_GRIDS) {
@@ -439,6 +458,7 @@ async function collectViewport({
 
   for (let i = 0; i < claimed.length; i += 1) {
     const g = claimed[i];
+    const budget = { left: maxGridCalls }; // 每格独立预算
     try {
       const cell = await collectCell({
         amap,
@@ -456,6 +476,7 @@ async function collectViewport({
         minGridDeg,
         maxDepth,
         maxRetries,
+        budget,
       });
       fetched += cell.fetched;
       inserted += cell.inserted;

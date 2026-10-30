@@ -297,6 +297,23 @@ test('T8b 细分合并：父格取满后子格数据并入同一 (city,category)
   db.close();
 });
 
+test('T8b 单格预算用尽 ⇒ truncated=1 且仍标覆盖（防 QPS 打爆）', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround() {
+      calls += 1;
+      return fullPageOf('B' + calls, '050000'); // 永远满 200
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 }; // 1 格
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0, maxGridCalls: 10 });
+  assert.strictEqual(calls, 10, '预算应封顶 10，实际 ' + calls);
+  assert.strictEqual(db.isCovered('杭州', 'food', 12010, 3020), true);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 1);
+  db.close();
+});
+
 test('T8b 高德瞬时报错 ⇒ 重试成功后仍标覆盖（errored=0）', async () => {
   const db = createDb(':memory:');
   let n = 0;
