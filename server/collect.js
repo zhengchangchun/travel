@@ -313,17 +313,19 @@ async function collectCell({
   let inserted = 0;
   let updated = 0;
   let saturated = false;
+  let errored = 0;
 
   for (let page = 1; page <= MAX_PAGE; page += 1) {
     if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
     if (intervalMs) await sleep(intervalMs);
-    const pois = await amap.searchPoiAround({
-      lng: center.lng,
-      lat: center.lat,
-      category,
-      radius,
-      page,
-    });
+    let pois;
+    try {
+      pois = await amap.searchPoiAround({ lng: center.lng, lat: center.lat, category, radius, page });
+    } catch (err) {
+      // 高德报错（如 QPS 超限）：停止该格，交由上层决定不标覆盖以便重试
+      errored += 1;
+      break;
+    }
     fetched += pois.length;
     const r = storePois(db, city, null, category, pois, classify);
     inserted += r.inserted;
@@ -334,7 +336,7 @@ async function collectCell({
   }
 
   let truncated = false;
-  if (saturated) {
+  if (saturated && errored === 0) {
     const halfSize = size / 2;
     const halfRadius = Math.floor(radius / 2);
     if (halfSize >= minGridDeg && depth < maxDepth && halfRadius >= MIN_RADIUS) {
@@ -363,14 +365,17 @@ async function collectCell({
         fetched += sub.fetched;
         inserted += sub.inserted;
         updated += sub.updated;
+        errored += sub.errored;
         if (sub.truncated) truncated = true;
       }
     } else {
       truncated = true; // 细分到底仍满 200
     }
+  } else if (saturated) {
+    truncated = true; // 取满但中途报错：无法继续细分，本次截断
   }
 
-  return { fetched, inserted, updated, truncated };
+  return { fetched, inserted, updated, truncated, errored };
 }
 
 // 按视野采集：只采 bbox 内【未覆盖】的格；逐格取全（格内翻页 + 超额细分），采完标覆盖。
@@ -416,6 +421,7 @@ async function collectViewport({
   let fetched = 0;
   let inserted = 0;
   let updated = 0;
+  let errored = 0;
 
   for (let i = 0; i < claimed.length; i += 1) {
     const g = claimed[i];
@@ -439,9 +445,13 @@ async function collectViewport({
       fetched += cell.fetched;
       inserted += cell.inserted;
       updated += cell.updated;
-      // 覆盖标记：真取完或（细分到底仍满→截断）都标，后者记 truncated 防无限重采
-      db.markCovered(city, category, g.gx, g.gy, cell.inserted, cell.truncated);
-      collected.push(g);
+      errored += cell.errored;
+      if (cell.errored === 0) {
+        // 覆盖标记：真取完或（细分到底仍满→截断）都标，后者记 truncated 防无限重采
+        db.markCovered(city, category, g.gx, g.gy, cell.inserted, cell.truncated);
+        collected.push(g);
+      }
+      // 报错的格不标覆盖 → 下次进入会重试
     } finally {
       activeGrids.delete(gridKey(city, category, g));
     }
@@ -465,6 +475,7 @@ async function collectViewport({
     n_fetched: fetched,
     n_inserted: inserted,
     n_updated: updated,
+    errored,
   };
 }
 

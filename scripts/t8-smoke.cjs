@@ -314,6 +314,29 @@ check('T8b-P90', 'poi_coverage 含 truncated 列（幂等迁移 + 默认 0）', 
   db.close();
 });
 
+check('T8b-P92', '格内高德报错 ⇒ 不误标覆盖（可重试）且不中断其它格', async () => {
+  const db = createDb(':memory:');
+  let n = 0;
+  const amap = {
+    async searchPoiAround() {
+      n += 1;
+      if (n === 1) {
+        const e = new Error('CUQPS_HAS_EXCEEDED_THE_LIMIT');
+        e.code = 'AMAP_ERROR';
+        throw e;
+      }
+      return [mkPoi('OK', '050000')];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.11, maxLat: 30.2 };
+  const res = await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  const covered = db.listCoverage('杭州', 'food').map((r) => r.gx + ',' + r.gy);
+  assert.ok(!covered.includes('12010,3020'), '报错格不应标覆盖');
+  assert.ok(covered.includes('12011,3020'), '后续格仍应采到');
+  assert.ok(res.errored >= 1, '应记录 errored');
+  db.close();
+});
+
 check('T8b-P91', 'P4 配额节流仍在：collectCell 每次高德调用前 acquire', () => {
   const src = readFile('server/collect.js');
   assert.ok(src.includes('rateLimiter.acquire'), 'collectCell 未接入 rateLimiter');

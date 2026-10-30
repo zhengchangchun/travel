@@ -282,10 +282,11 @@ test('T8b-P3 细分到底仍满 ⇒ 仍标覆盖但 truncated=1（防无限重�
 
 test('T8b 细分合并：父格取满后子格数据并入同一 (city,category)', async () => {
   const db = createDb(':memory:');
+  let c = 0;
   const amap = {
     async searchPoiAround({ radius, page }) {
       if (radius >= 500 && page <= 8) return fullPageOf(`P${radius}-${page}`, '050000');
-      if (radius < 500 && page === 1) return [mkPoi(`SUB-${radius}`, '050000')];
+      if (radius < 500 && page === 1) return [mkPoi(`SUB-${(c += 1)}`, '050000')];
       return [];
     },
   };
@@ -293,6 +294,29 @@ test('T8b 细分合并：父格取满后子格数据并入同一 (city,category)
   await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
   const { total } = db.listPois({ city: '杭州', category: 'food', limit: 1 });
   assert.strictEqual(total, 200 + 4, '顶格 200 + 4 子格各 1，实际 ' + total);
+  db.close();
+});
+
+test('T8b 格内高德报错 ⇒ 该格不标覆盖（可重试）且不中断其它格', async () => {
+  const db = createDb(':memory:');
+  let n = 0;
+  const amap = {
+    async searchPoiAround() {
+      n += 1;
+      if (n === 1) {
+        const e = new Error('CUQPS_HAS_EXCEEDED_THE_LIMIT');
+        e.code = 'AMAP_ERROR';
+        throw e;
+      }
+      return [mkPoi('OK', '050000')];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.11, maxLat: 30.2 }; // 2 格
+  const res = await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  const covered = db.listCoverage('杭州', 'food').map((r) => r.gx + ',' + r.gy);
+  assert.ok(!covered.includes('12010,3020'), '报错格不应标覆盖（留待重试）');
+  assert.ok(covered.includes('12011,3020'), '后续格仍应采到');
+  assert.ok(res.errored >= 1, '应记录 errored，实际 ' + res.errored);
   db.close();
 });
 
