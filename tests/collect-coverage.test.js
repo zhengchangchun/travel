@@ -216,6 +216,120 @@ test('collectViewport：同格并发合并，不重复起', async () => {
   db.close();
 });
 
+// ---------- T8b：格内翻页到没有 + 超额细分 + 覆盖时机 ----------
+
+function fullPageOf(prefix, typecode) {
+  return Array.from({ length: 25 }, (_, k) => mkPoi(`${prefix}-${k}`, typecode));
+}
+
+test('T8b-P1 格内翻页到不满 25：3 满页 + 1 半页 → 4 次调用、85 条、真取完覆盖', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround({ page }) {
+      calls += 1;
+      if (page <= 3) return fullPageOf(`F${page}`, '050000');
+      if (page === 4) return fullPageOf('F4', '050000').slice(0, 10);
+      return [];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 }; // 1 格
+  const res = await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  assert.strictEqual(calls, 4, '应翻到第 4 页（不满 25 才停），实际 ' + calls);
+  assert.strictEqual(res.n_inserted, 85);
+  assert.strictEqual(db.isCovered('杭州', 'food', 12010, 3020), true);
+  const row = db.listCoverage('杭州', 'food')[0];
+  assert.strictEqual(row.truncated, 0);
+  db.close();
+});
+
+test('T8b-P2 格内取满 200 ⇒ 细分；子格取完则 truncated=0', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround({ radius, page }) {
+      calls += 1;
+      if (radius >= 500) return fullPageOf(`T${calls}`, '050000'); // 顶格永远满 200
+      return []; // 子格空 → 取完
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 };
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  // 顶格 8 页 + 4 个子格各 1 页（空）= 12
+  assert.strictEqual(calls, 12, '应细分 4 个子格，实际调用 ' + calls);
+  const row = db.listCoverage('杭州', 'food')[0];
+  assert.strictEqual(row.truncated, 0, '子格取完 → 非 truncated');
+  db.close();
+});
+
+test('T8b-P3 细分到底仍满 ⇒ 仍标覆盖但 truncated=1（防无限重采）', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround() {
+      calls += 1;
+      return fullPageOf(`S${calls}`, '050000'); // 永远满 200
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 };
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0, maxDepth: 1 });
+  assert.strictEqual(calls, 8 + 4 * 8, '顶格 8 页 + 4 子格各 8 页，实际 ' + calls);
+  assert.strictEqual(db.isCovered('杭州', 'food', 12010, 3020), true);
+  const row = db.listCoverage('杭州', 'food')[0];
+  assert.strictEqual(row.truncated, 1);
+  db.close();
+});
+
+test('T8b 细分合并：父格取满后子格数据并入同一 (city,category)', async () => {
+  const db = createDb(':memory:');
+  const amap = {
+    async searchPoiAround({ radius, page }) {
+      if (radius >= 500 && page <= 8) return fullPageOf(`P${radius}-${page}`, '050000');
+      if (radius < 500 && page === 1) return [mkPoi(`SUB-${radius}`, '050000')];
+      return [];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.1, maxLat: 30.2 };
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  const { total } = db.listPois({ city: '杭州', category: 'food', limit: 1 });
+  assert.strictEqual(total, 200 + 4, '顶格 200 + 4 子格各 1，实际 ' + total);
+  db.close();
+});
+
+test('T8b poi_coverage 增列 truncated（幂等迁移 + 默认 0）', () => {
+  const db = createDb(':memory:');
+  const cols = db.raw.prepare('PRAGMA table_info(poi_coverage)').all().map((c) => c.name);
+  assert.ok(cols.includes('truncated'), 'poi_coverage 缺 truncated 列');
+  db.markCovered('杭州', 'food', 1, 1);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 0);
+  db.markCovered('杭州', 'food', 1, 1, 0, true);
+  assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 1);
+  db.close();
+});
+
+test('T8b 旧库 poi_coverage 无 truncated → 自动补列且幂等', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { DatabaseSync } = require('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-cov-'));
+  const file = path.join(dir, 'travel.db');
+  const raw = new DatabaseSync(file);
+  raw.exec(
+    `CREATE TABLE poi_coverage (city TEXT NOT NULL, category TEXT NOT NULL, gx INTEGER NOT NULL,
+     gy INTEGER NOT NULL, collected_at TEXT NOT NULL, n_inserted INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (city, category, gx, gy));`
+  );
+  raw.close();
+  const d1 = createDb(file);
+  const cols = d1.raw.prepare('PRAGMA table_info(poi_coverage)').all().map((c) => c.name);
+  assert.ok(cols.includes('truncated'), '旧库未补 truncated');
+  d1.close();
+  const d2 = createDb(file); // 连跑两次不报错
+  d2.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // ---------- 速率限制 ----------
 
 test('createRateLimiter：超过 maxPerMin 需等待窗口释放', async () => {
