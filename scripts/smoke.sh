@@ -566,6 +566,30 @@ else
   fail "T8 mock 检查未全绿"
 fi
 
+# ================= T9 实时加载优化（T9-P93–T9-P100） =================
+# R1 轮转分类 / R2 单飞+superseded / R3 速率 180 / R4 进度可见 / R5 中心优先，见 scripts/t9-smoke.cjs
+if T9_OUT="$(node scripts/t9-smoke.cjs)"; then
+  printf '%s\n' "${T9_OUT}"
+  T9_N="$(printf '%s\n' "${T9_OUT}" | grep -c '^PASS')"
+  PASS=$((PASS + T9_N))
+else
+  printf '%s\n' "${T9_OUT}"
+  fail "T9 mock 检查未全绿"
+fi
+
+# T9-P101 速率上限常量已上调且仍保留限流（防封 key）
+if node -e '
+  const { DEFAULT_VIEWPORT_RATE_PER_MIN, createRateLimiter } = require("./server/collect");
+  if (DEFAULT_VIEWPORT_RATE_PER_MIN !== 180) { console.log("rate!=180"); process.exit(1); }
+  const l = createRateLimiter({ maxPerMin: DEFAULT_VIEWPORT_RATE_PER_MIN });
+  if (typeof l.acquire !== "function" || l.maxPerMin !== 180) { console.log("limiter 缺失"); process.exit(2); }
+  process.exit(0);
+'; then
+  ok "T9-P101 速率常量 180 且仍保留限流"
+else
+  fail "T9-P101 速率常量/限流不符"
+fi
+
 echo "-----------------------------------------"
 echo "smoke 全部通过：${PASS} 项"
 exit 0

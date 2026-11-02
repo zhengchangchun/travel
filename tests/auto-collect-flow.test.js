@@ -62,3 +62,29 @@ test('API 资产：coverage 与 collectViewport', () => {
   assert.match(API, /coverage:/, 'api.js 缺 coverage');
   assert.match(API, /collectViewport:/, 'api.js 缺 collectViewport');
 });
+
+// ---------- T9 实时加载优化前端资产 ----------
+
+test('T9 R1 前端一次只采一个分类（轮转，不再传 all）', () => {
+  assert.match(APP, /CATEGORY_ROTATION/, 'app.js 缺分类轮转表');
+  assert.match(APP, /pickCollectCategory/, 'app.js 缺单分类选择函数');
+  assert.match(APP, /categoryRotation/, 'app.js 未使用配置里的轮转顺序');
+  // coverage / collectViewport 都应以单分类调用（由 pickCollectCategory 产出）
+  assert.match(APP, /API\.coverage\([^)]*category\s*:\s*collectCategory/, 'coverage 未传单分类');
+  assert.match(
+    APP,
+    /API\.collectViewport\([^)]*category\s*:\s*collectCategory/,
+    'collectViewport 未传单分类'
+  );
+});
+
+test('T9 R2 前端切视野时停旧轮询并释放旧认领', () => {
+  assert.match(APP, /stopViewportPoll/, 'app.js 缺停止旧视野采集轮询');
+});
+
+test('T9 R4 进度可见：显示本区域已采 x / y 格', () => {
+  assert.match(APP, /UI\.setViewProgress/, 'app.js 未更新已采格进度');
+  assert.match(UI, /setViewProgress/, 'ui.js 缺 setViewProgress');
+  assert.match(UI, /本区域已采/, 'ui.js 缺「本区域已采」文案');
+  assert.match(HTML, /id="view-progress"/, 'index 缺 #view-progress 容器');
+});

@@ -11,6 +11,10 @@ const {
   bboxToGrids,
   createRateLimiter,
   collectViewport,
+  DEFAULT_VIEWPORT_RATE_PER_MIN,
+  CATEGORY_ROTATION,
+  nextCategory,
+  createViewportRunRegistry,
 } = require('../server/collect');
 
 const CATEGORIES = [
@@ -502,4 +506,134 @@ test('POST /api/collect/viewport：已覆盖格直接跳过（不产生高德调
     assert.strictEqual(post.body.data.grids.length, 0);
     assert.strictEqual(amap.calls.around, 0);
   });
+});
+
+// ---------- T9：实时加载优化（R1 轮转 / R2 单飞 / R3 速率 / R4 进度 / R5 中心优先） ----------
+
+test('T9 R1 分类轮转顺序 food→stay→sight→play→food', () => {
+  assert.deepStrictEqual(CATEGORY_ROTATION, ['food', 'stay', 'sight', 'play']);
+  assert.strictEqual(nextCategory('food'), 'stay');
+  assert.strictEqual(nextCategory('stay'), 'sight');
+  assert.strictEqual(nextCategory('sight'), 'play');
+  assert.strictEqual(nextCategory('play'), 'food');
+  assert.strictEqual(nextCategory(undefined), 'food');
+  assert.strictEqual(nextCategory('unknown'), 'food');
+});
+
+test('T9 R1 /api/config 暴露分类轮转顺序（前端据此轮转）', async () => {
+  await withApp({}, async (api) => {
+    const { status, body } = await api.get('/api/config');
+    assert.strictEqual(status, 200);
+    assert.deepStrictEqual(body.data.categoryRotation, ['food', 'stay', 'sight', 'play']);
+  });
+});
+
+test('T9 R2 单飞注册表：同 (city,category) 新 run 顶替旧 run', () => {
+  const reg = createViewportRunRegistry();
+  assert.strictEqual(reg.start('杭州', 'food', 1), null);
+  assert.strictEqual(reg.isCancelled('杭州', 'food', 1), false);
+  assert.strictEqual(reg.start('杭州', 'food', 2), 1, '应返回被顶替的旧 runId');
+  assert.strictEqual(reg.isCancelled('杭州', 'food', 1), true, '旧 run 应立即停止');
+  assert.strictEqual(reg.isCancelled('杭州', 'food', 2), false);
+  // 不同分类互不影响
+  assert.strictEqual(reg.start('杭州', 'stay', 3), null);
+  assert.strictEqual(reg.isCancelled('杭州', 'food', 2), false);
+  reg.finish('杭州', 'food', 2);
+  assert.strictEqual(reg.isCancelled('杭州', 'food', 2), true, 'finish 后视为已取消');
+  assert.strictEqual(reg.start('杭州', 'food', 4), null, 'finish 后无旧 run 可顶替');
+});
+
+test('T9 R2 collectViewport 响应 isCancelled 立即停（不再采后续格、不误标覆盖）', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  let cancelled = false;
+  const amap = {
+    async searchPoiAround() {
+      calls += 1;
+      cancelled = true; // 首个请求后即被作废（模拟新视野到来）
+      return [mkPoi('C' + calls, '050000')];
+    },
+  };
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.12, maxLat: 30.2 }; // 3 格
+  const res = await collectViewport({
+    city: '杭州',
+    category: 'food',
+    bbox,
+    amap,
+    db,
+    intervalMs: 0,
+    isCancelled: () => cancelled,
+  });
+  assert.strictEqual(res.cancelled, true);
+  assert.strictEqual(calls, 1, '作废后不应再采后续格，实际 ' + calls);
+  assert.strictEqual(db.listCoverage('杭州', 'food').length, 0, '被作废的格不应标覆盖');
+  db.close();
+});
+
+test('T9 R2 HTTP：新视野顶替旧 run（旧 run 标 superseded，新 run done）', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiAround() {
+      calls += 1;
+      await new Promise((r) => setTimeout(r, 40));
+      return [mkPoi('S' + calls, '050000')];
+    },
+  };
+  await withApp({ db, amap }, async (api) => {
+    const bbox = '120.1,30.2,120.11,30.21'; // 4 格
+    const r1 = await api.post('/api/collect/viewport', { city: '杭州', category: 'food', bbox });
+    assert.ok(r1.body.data.runId > 0, '首次应起 run');
+    const r2 = await api.post('/api/collect/viewport', { city: '杭州', category: 'food', bbox });
+    assert.ok(r2.body.data.runId > 0, '新视野应起新 run');
+    assert.notStrictEqual(r1.body.data.runId, r2.body.data.runId);
+    const s1 = await waitDone(api, r1.body.data.runId);
+    const s2 = await waitDone(api, r2.body.data.runId);
+    assert.strictEqual(s1.status, 'superseded', '旧 run 应标 superseded');
+    assert.strictEqual(s2.status, 'done', '新 run 应正常完成');
+  });
+});
+
+test('T9 R3 默认速率上调为 180/分钟（仍保留限流）', () => {
+  assert.strictEqual(DEFAULT_VIEWPORT_RATE_PER_MIN, 180);
+});
+
+test('T9 R4 采集状态返回本区域已采格数 done_grids/total_grids', async () => {
+  const db = createDb(':memory:');
+  const amap = makeAmap({
+    async searchPoiAround() {
+      amap.calls.around += 1;
+      return [mkPoi('G' + amap.calls.around, '050000')];
+    },
+  });
+  await withApp({ db, amap }, async (api) => {
+    const post = await api.post('/api/collect/viewport', {
+      city: '杭州',
+      category: 'food',
+      bbox: '120.1,30.2,120.11,30.21', // 4 格
+    });
+    const done = await waitDone(api, post.body.data.runId);
+    assert.strictEqual(done.total_grids, 4);
+    assert.strictEqual(done.done_grids, 4);
+  });
+});
+
+test('T9 R5 视野中心格优先（按格中心到 bbox 中心距离排序）', async () => {
+  const db = createDb(':memory:');
+  const order = [];
+  const amap = {
+    async searchPoiAround({ lng }) {
+      order.push(lng);
+      return [];
+    },
+  };
+  // gx=12010/12011/12012 三格，bbox 中心 120.1125 → 最近为中心格 12011
+  const bbox = { minLng: 120.1, minLat: 30.2, maxLng: 120.125, maxLat: 30.2 };
+  await collectViewport({ city: '杭州', category: 'food', bbox, amap, db, intervalMs: 0 });
+  assert.strictEqual(order.length, 3);
+  assert.ok(
+    Math.abs(order[0] - (12011 + 0.5) * 0.01) < 1e-9,
+    '应先采中心格 12011，实际首采 ' + order[0]
+  );
+  db.close();
 });
