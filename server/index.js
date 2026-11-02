@@ -6,7 +6,12 @@ const { loadConfig, loadCategories, ROOT } = require('./config');
 const { createCache } = require('./cache');
 const defaultAmap = require('./amap');
 const { createDb } = require('./db');
-const { createRateLimiter } = require('./collect');
+const {
+  createRateLimiter,
+  createViewportRunRegistry,
+  DEFAULT_VIEWPORT_RATE_PER_MIN,
+  CATEGORY_ROTATION,
+} = require('./collect');
 
 const cityRoutes = require('./routes/city');
 const poiRoutes = require('./routes/poi');
@@ -140,6 +145,7 @@ function createApp(opts = {}) {
         jsApiSecurityCode: ctx.config.amap.jsApiSecurityCode,
         defaultCity: ctx.config.defaultCity,
         categories: ctx.categories,
+        categoryRotation: CATEGORY_ROTATION,
       }),
     },
     ...cityRoutes,
@@ -172,8 +178,12 @@ function createApp(opts = {}) {
       opts.viewportRateLimiter !== undefined
         ? opts.viewportRateLimiter
         : createRateLimiter({
-            maxPerMin: Number(process.env.VIEWPORT_RATE_PER_MIN || 60) || 60,
+            maxPerMin:
+              Number(process.env.VIEWPORT_RATE_PER_MIN || DEFAULT_VIEWPORT_RATE_PER_MIN) ||
+              DEFAULT_VIEWPORT_RATE_PER_MIN,
           }),
+    // T9 R2：同一 (city,category) 单飞 + 作废旧 run
+    viewportRuns: opts.viewportRuns || createViewportRunRegistry(),
   };
 
   async function handleApi(req, res, ctx, method, pathname, query) {

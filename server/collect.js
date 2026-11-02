@@ -11,15 +11,60 @@ const GRID_DEG = 0.01; // 网格边长（度），约 1km
 const MAX_VIEWPORT_GRIDS = 400; // 单次视野最多采的格数，防超大 bbox
 const GRID_RADIUS_M = 800; // 以格中心周边搜索的起始半径（米），略大于格对角半径
 const MIN_GRID_DEG = 0.00125; // 细分到该边长即停（约 140m），防死循环
-const DEFAULT_VIEWPORT_RATE_PER_MIN = 60; // 单位时间高德调用上限（默认 60/分钟）
+const DEFAULT_VIEWPORT_RATE_PER_MIN = 180; // 单位时间高德调用上限（默认 180/分钟 ≈ 3 次/秒，仍保留限流防封 key）
 const VIEWPORT_MAX_RETRIES = 2; // 高德瞬时错误（如 QPS 超限）重试次数
 const RETRY_BACKOFF_MS = 800; // 重试退避基数（× 次数）
 const MAX_GRID_CALLS = 48; // 单格高德调用预算（含细分），防 QPS 打爆；超预算记 truncated
 
-// 正在采集中的格（内存内，防同格重复起）。键：city\0category\0gx,gy
-const activeGrids = new Set();
+// 分类轮转顺序（T9 R1）：视野变化时一次只采一个分类，四类轮转，单次调用量降到 1/4
+const CATEGORY_ROTATION = ['food', 'stay', 'sight', 'play'];
+function nextCategory(prev) {
+  const idx = CATEGORY_ROTATION.indexOf(prev);
+  if (idx < 0) return CATEGORY_ROTATION[0];
+  return CATEGORY_ROTATION[(idx + 1) % CATEGORY_ROTATION.length];
+}
+
+// 单飞注册表（T9 R2）：同一 (city, category) 同时只允许 1 个 run；
+// 新 run 顶替旧 run 时把旧 run 标 cancelled，旧 run 立即停止（不再抢限流令牌）。
+function createViewportRunRegistry() {
+  const runs = new Map();
+  const keyOf = (city, category) => city + '\u0000' + category;
+  return {
+    // 起一个 run；返回被顶替的旧 runId（无则 null）
+    start(city, category, runId) {
+      const k = keyOf(city, category);
+      const prev = runs.get(k);
+      if (prev) prev.cancelled = true;
+      runs.set(k, { runId, cancelled: false });
+      return prev ? prev.runId : null;
+    },
+    isCancelled(city, category, runId) {
+      const cur = runs.get(keyOf(city, category));
+      return !cur || cur.runId !== runId || cur.cancelled;
+    },
+    finish(city, category, runId) {
+      const k = keyOf(city, category);
+      const cur = runs.get(k);
+      if (cur && cur.runId === runId) runs.delete(k);
+    },
+    active(city, category) {
+      return runs.get(keyOf(city, category)) || null;
+    },
+  };
+}
+
+// 正在采集中的格（内存内，防同格重复起）。键：city\0category\0gx,gy → 认领令牌
+const activeGrids = new Map();
 function gridKey(city, category, g) {
   return city + '\u0000' + category + '\u0000' + g.gx + ',' + g.gy;
+}
+
+// 作废旧 run 时按 (city,category) 释放其认领的格，避免新 run 被旧认领挡住（T9 R2）
+function releaseViewportGrids(city, category) {
+  const prefix = city + '\u0000' + category + '\u0000';
+  for (const k of Array.from(activeGrids.keys())) {
+    if (k.startsWith(prefix)) activeGrids.delete(k);
+  }
 }
 
 function sleep(ms) {
@@ -312,6 +357,7 @@ async function collectCell({
   maxDepth,
   maxRetries,
   budget,
+  isCancelled,
 }) {
   const center = { lng: minLng + size / 2, lat: minLat + size / 2 };
   let fetched = 0;
@@ -320,8 +366,13 @@ async function collectCell({
   let saturated = false;
   let errored = 0;
   let truncated = false;
+  let cancelled = false;
 
   for (let page = 1; page <= MAX_PAGE; page += 1) {
+    if (isCancelled && isCancelled()) {
+      cancelled = true; // 格被作废：立即停，且不标覆盖（留待下次重试）
+      break;
+    }
     if (budget && budget.left <= 0) {
       truncated = true; // 配额预算耗尽（P4 保护 QPS）
       break;
@@ -360,7 +411,7 @@ async function collectCell({
     if (page === MAX_PAGE) saturated = true;
   }
 
-  if (saturated && errored === 0 && !truncated) {
+  if (saturated && errored === 0 && !truncated && !cancelled) {
     const halfSize = size / 2;
     const halfRadius = Math.floor(radius / 2);
     const canSplit =
@@ -375,6 +426,10 @@ async function collectCell({
         [0, 1],
         [1, 1],
       ]) {
+        if (isCancelled && isCancelled()) {
+          cancelled = true;
+          break;
+        }
         const sub = await collectCell({
           amap,
           db,
@@ -392,21 +447,26 @@ async function collectCell({
           maxDepth,
           maxRetries,
           budget,
+          isCancelled,
         });
         fetched += sub.fetched;
         inserted += sub.inserted;
         updated += sub.updated;
         errored += sub.errored;
         if (sub.truncated) truncated = true;
+        if (sub.cancelled) {
+          cancelled = true;
+          break;
+        }
       }
     } else {
       truncated = true; // 细分到底（或预算耗尽）仍满 200
     }
-  } else if (saturated) {
+  } else if (saturated && !cancelled) {
     truncated = true; // 取满但中途报错：无法继续细分，本次截断
   }
 
-  return { fetched, inserted, updated, truncated, errored };
+  return { fetched, inserted, updated, truncated, errored, cancelled };
 }
 
 // 按视野采集：只采 bbox 内【未覆盖】的格；逐格取全（格内翻页 + 超额细分），采完标覆盖。
@@ -425,6 +485,7 @@ async function collectViewport({
   maxDepth = MAX_DEPTH,
   maxRetries = VIEWPORT_MAX_RETRIES,
   maxGridCalls = MAX_GRID_CALLS,
+  isCancelled,
 } = {}) {
   const grids = bboxToGrids(bbox);
   if (grids.length > MAX_VIEWPORT_GRIDS) {
@@ -435,6 +496,7 @@ async function collectViewport({
 
   const skipped = [];
   const claimed = [];
+  const token = {}; // 本次调用的认领令牌：释放时校验，防误删新 run 的认领
   // 同步认领阶段：覆盖判定 + 同格合并，全部在首个 await 之前完成（并发安全）
   grids.forEach((g) => {
     if (db.isCovered(city, category, g.gx, g.gy)) {
@@ -446,8 +508,19 @@ async function collectViewport({
       skipped.push(g);
       return;
     }
-    activeGrids.add(key);
+    activeGrids.set(key, token);
     claimed.push(g);
+  });
+
+  // T9 R5：优先视野中心格（按格中心到 bbox 中心距离升序）
+  const centerLng = (Number(bbox.minLng) + Number(bbox.maxLng)) / 2;
+  const centerLat = (Number(bbox.minLat) + Number(bbox.maxLat)) / 2;
+  claimed.sort((a, b) => {
+    const ca = gridCenter(a.gx, a.gy);
+    const cb = gridCenter(b.gx, b.gy);
+    const da = (ca.lng - centerLng) ** 2 + (ca.lat - centerLat) ** 2;
+    const db2 = (cb.lng - centerLng) ** 2 + (cb.lat - centerLat) ** 2;
+    return da - db2;
   });
 
   const collected = [];
@@ -455,8 +528,13 @@ async function collectViewport({
   let inserted = 0;
   let updated = 0;
   let errored = 0;
+  let cancelled = false;
 
   for (let i = 0; i < claimed.length; i += 1) {
+    if (isCancelled && isCancelled()) {
+      cancelled = true; // 被新视野顶替：立即停，不再抢限流令牌
+      break;
+    }
     const g = claimed[i];
     const budget = { left: maxGridCalls }; // 每格独立预算
     try {
@@ -477,11 +555,16 @@ async function collectViewport({
         maxDepth,
         maxRetries,
         budget,
+        isCancelled,
       });
       fetched += cell.fetched;
       inserted += cell.inserted;
       updated += cell.updated;
       errored += cell.errored;
+      if (isCancelled && isCancelled()) {
+        cancelled = true;
+        break; // 采到一半被作废：该格不标覆盖，留待下次重试
+      }
       if (cell.errored === 0) {
         // 覆盖标记：真取完或（细分到底仍满→截断）都标，后者记 truncated 防无限重采
         db.markCovered(city, category, g.gx, g.gy, cell.inserted, cell.truncated);
@@ -489,7 +572,9 @@ async function collectViewport({
       }
       // 报错的格不标覆盖 → 下次进入会重试
     } finally {
-      activeGrids.delete(gridKey(city, category, g));
+      if (activeGrids.get(gridKey(city, category, g)) === token) {
+        activeGrids.delete(gridKey(city, category, g));
+      }
     }
     if (typeof onProgress === 'function') {
       onProgress({
@@ -502,6 +587,12 @@ async function collectViewport({
     }
   }
 
+  // 提前 break（被作废）时，剩余已认领格必须一并释放，避免泄漏挡住后续 run
+  for (const g of claimed) {
+    const k = gridKey(city, category, g);
+    if (activeGrids.get(k) === token) activeGrids.delete(k);
+  }
+
   return {
     city,
     category,
@@ -512,6 +603,7 @@ async function collectViewport({
     n_inserted: inserted,
     n_updated: updated,
     errored,
+    cancelled,
   };
 }
 
@@ -520,6 +612,10 @@ module.exports = {
   collectDistrict,
   collectViewport,
   createRateLimiter,
+  createViewportRunRegistry,
+  releaseViewportGrids,
+  nextCategory,
+  CATEGORY_ROTATION,
   gridOf,
   gridCenter,
   bboxToGrids,

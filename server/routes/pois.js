@@ -2,6 +2,7 @@ const {
   collectCityCategory,
   collectViewport,
   bboxToGrids,
+  releaseViewportGrids,
   MAX_VIEWPORT_GRIDS,
 } = require('../collect');
 const { toDetail } = require('../poi-detail');
@@ -191,7 +192,16 @@ module.exports = [
       const detail = parseDetail(run.detail);
       const total = num(detail.total_districts);
       const done = num(detail.done_districts);
-      const percent = total ? Math.round((done / total) * 100) : run.status === 'running' ? 0 : 100;
+      // T9 R4：视野采集进度以「格」为单位暴露（本区域已采 x / y 格）
+      const totalGrids = num(detail.total_grids != null ? detail.total_grids : detail.total_districts);
+      const doneGrids = num(detail.done_grids != null ? detail.done_grids : detail.done_districts);
+      const percentBase = totalGrids || total;
+      const percentDone = totalGrids ? doneGrids : done;
+      const percent = percentBase
+        ? Math.round((percentDone / percentBase) * 100)
+        : run.status === 'running'
+          ? 0
+          : 100;
       return {
         runId: run.id,
         city: run.city,
@@ -204,6 +214,8 @@ module.exports = [
         n_updated: num(run.n_updated),
         done_districts: done,
         total_districts: total,
+        done_grids: doneGrids,
+        total_grids: totalGrids,
         percent,
       };
     },
@@ -274,6 +286,20 @@ module.exports = [
           /* 库已关闭等场景：不影响主流程 */
         }
       };
+      // T9 R2 单飞：同 (city,category) 新视野顶替旧 run；旧 run 标 superseded 并立即停
+      const supersededRunId = ctx.viewportRuns.start(city, category, run.id);
+      if (supersededRunId != null) {
+        releaseViewportGrids(city, category); // 释放旧 run 认领的格，交由新 run 接管
+        try {
+          ctx.db.updateRun(supersededRunId, {
+            status: 'superseded',
+            finished_at: new Date().toISOString(),
+          });
+        } catch (err) {
+          /* 旧 run 更新失败不影响新 run */
+        }
+      }
+      const isCancelled = () => ctx.viewportRuns.isCancelled(city, category, run.id);
       (async () => {
         try {
           const res = await collectViewport({
@@ -284,34 +310,42 @@ module.exports = [
             db: ctx.db,
             intervalMs: ctx.collectIntervalMs,
             rateLimiter: ctx.viewportRateLimiter,
+            isCancelled,
             onProgress: (p) =>
               safeUpdate({
                 n_fetched: p.n_fetched,
                 n_inserted: p.n_inserted,
                 n_updated: p.n_updated,
                 detail: {
-                  total_districts: p.total_grids,
-                  done_districts: p.done_grids,
+                  total_grids: p.total_grids,
+                  done_grids: p.done_grids,
                 },
               }),
           });
+          const cancelled = !!res.cancelled || isCancelled();
           safeUpdate({
-            status: 'done',
+            status: cancelled ? 'superseded' : 'done',
             finished_at: new Date().toISOString(),
             n_fetched: res.n_fetched,
             n_inserted: res.n_inserted,
             n_updated: res.n_updated,
             detail: {
-              total_districts: uncovered.length,
-              done_districts: res.collected.length,
+              total_grids: uncovered.length,
+              done_grids: res.collected.length,
             },
           });
         } catch (err) {
-          safeUpdate({
-            status: 'failed',
-            finished_at: new Date().toISOString(),
-            detail: { error: (err && err.message) || '采集失败' },
-          });
+          if (isCancelled()) {
+            safeUpdate({ status: 'superseded', finished_at: new Date().toISOString() });
+          } else {
+            safeUpdate({
+              status: 'failed',
+              finished_at: new Date().toISOString(),
+              detail: { error: (err && err.message) || '采集失败' },
+            });
+          }
+        } finally {
+          ctx.viewportRuns.finish(city, category, run.id);
         }
       })();
       return {
