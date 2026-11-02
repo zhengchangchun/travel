@@ -13,6 +13,8 @@
   const MIN_MARKER_ZOOM = 13;
   // 按视野自动采集的最低倍率（默认 13）；与落点阈值同值
   const MIN_COLLECT_ZOOM = 13;
+  // T9 R1：一次只采一个分类；筛选为「全部」时按此顺序轮转（可被 config.categoryRotation 覆盖）
+  const CATEGORY_ROTATION = ['food', 'stay', 'sight', 'play'];
 
   const state = {
     config: null,
@@ -31,6 +33,7 @@
     suppressView: false,
     gridFlight: new Set(), // 正在采集的格（前端去重，防重复触发）
     viewportTimer: null, // 视野采集轮询定时器
+    rotateIndex: 0, // T9 R1：分类轮转游标（筛选为「全部」时用）
   };
 
   const RATING_OPTIONS = [
@@ -345,12 +348,38 @@
     autoCollectViewport(bbox, seq);
   }
 
+  // T9 R1：本次视野该采哪个分类。筛选单一分类 → 就用它；筛选为「全部」→ 按顺序轮转
+  function categoryRotationOrder() {
+    const order = state.config && state.config.categoryRotation;
+    return Array.isArray(order) && order.length ? order : CATEGORY_ROTATION;
+  }
+
+  function pickCollectCategory() {
+    if (state.activeCats.size === 1) return Array.from(state.activeCats)[0];
+    const order = categoryRotationOrder();
+    const cat = order[state.rotateIndex % order.length];
+    state.rotateIndex += 1;
+    return cat;
+  }
+
+  // T9 R2：切视野时停掉旧采集轮询、释放旧认领（服务端会作废旧 run）
+  function stopViewportPoll() {
+    if (state.viewportTimer) {
+      clearInterval(state.viewportTimer);
+      state.viewportTimer = null;
+    }
+    state.gridFlight.clear();
+    UI.setViewProgress(0, 0);
+  }
+
   // 自动按视野采集：查覆盖 → 有未覆盖且未在采的格 → 触发采集 → 轮询 → 增量补旗
   async function autoCollectViewport(bbox, seq) {
     if (!state.city) return;
+    stopViewportPoll(); // 新视野：旧 run 交给服务端作废，前端不再跟踪
+    const collectCategory = pickCollectCategory(); // T9 R1：一次只采一个分类
     let cov;
     try {
-      cov = await API.coverage({ city: state.city, bbox, category: 'all' });
+      cov = await API.coverage({ city: state.city, bbox, category: collectCategory });
     } catch (err) {
       return; // 覆盖查询失败不阻塞已显示的缓存
     }
@@ -358,28 +387,32 @@
     const uncovered = (cov.uncovered || []).filter((g) => !state.gridFlight.has(gridKeyOf(g)));
     if (!uncovered.length) return;
     uncovered.forEach((g) => state.gridFlight.add(gridKeyOf(g))); // 认领，防重复触发
+    const total = uncovered.length;
     UI.setViewHint('本区域加载中…');
+    UI.setViewProgress(0, total); // T9 R4：本区域已采 0 / total 格
     UI.setStatus('本区域加载中…');
     const release = () => uncovered.forEach((g) => state.gridFlight.delete(gridKeyOf(g)));
     let res;
     try {
-      res = await API.collectViewport({ city: state.city, bbox, category: 'all' });
+      res = await API.collectViewport({ city: state.city, bbox, category: collectCategory });
     } catch (err) {
       release();
       UI.setViewHint('');
+      UI.setViewProgress(0, 0);
       UI.setStatus('采集失败：' + err.message);
       return;
     }
     if (seq !== state.viewSeq || !res || !res.runId) {
       release();
       UI.setViewHint('');
+      UI.setViewProgress(0, 0);
       return;
     }
-    pollViewportCollect(res.runId, seq, release);
+    pollViewportCollect(res.runId, seq, release, total);
   }
 
-  // 轮询按视野采集进度；完成后重读缓存增量补旗
-  function pollViewportCollect(runId, seq, release) {
+  // 轮询按视野采集进度；进行中显示「本区域已采 x / y 格」，完成后重读缓存增量补旗
+  function pollViewportCollect(runId, seq, release, total) {
     if (state.viewportTimer) {
       clearInterval(state.viewportTimer);
       state.viewportTimer = null;
@@ -393,15 +426,22 @@
         state.viewportTimer = null;
         release();
         UI.setViewHint('');
+        UI.setViewProgress(0, 0);
         return;
       }
       // 采集进行中也渐进补旗：每轮询重读缓存，采到多少补多少
       if (seq === state.viewSeq) await mergeViewFromCache(seq, false);
-      if (st.status === 'running') return;
+      if (st.status === 'running') {
+        if (seq === state.viewSeq) {
+          UI.setViewProgress(st.done_grids, st.total_grids || total);
+        }
+        return;
+      }
       if (state.viewportTimer) clearInterval(state.viewportTimer);
       state.viewportTimer = null;
       release();
       UI.setViewHint('');
+      UI.setViewProgress(0, 0);
       if (seq === state.viewSeq) await mergeViewFromCache(seq, true);
     };
     tick();
@@ -560,7 +600,9 @@
     state.cityTotal = 0;
     state.trip = null; // N20：切城市必须重置当前行程，避免残留上一城市的行程
     state.gridFlight.clear();
+    state.rotateIndex = 0; // T9 R1：新城市从轮转起点开始
     UI.setViewHint('');
+    UI.setViewProgress(0, 0);
     UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
     if (MapCtl.isReady()) MapCtl.clearMarkers();

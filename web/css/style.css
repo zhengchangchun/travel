@@ -150,6 +150,12 @@ button.primary:hover { background: #0958d9; }
   color: #0958d9; font-size: 12px; padding: 6px 10px; border-radius: 8px;
   max-width: 70%; pointer-events: none; z-index: 11;
 }
+.view-progress {
+  position: absolute; top: 90px; left: 12px;
+  background: rgba(34, 160, 107, .14); border: 1px solid rgba(34, 160, 107, .4);
+  color: #0f7a4c; font-size: 12px; padding: 6px 10px; border-radius: 8px;
+  max-width: 70%; pointer-events: none; z-index: 11;
+}
 .map-error {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
   background: #fff2f0; border: 1px solid #ffccc7; color: #cf1322;
