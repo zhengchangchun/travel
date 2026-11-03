@@ -24,8 +24,9 @@ test('F3 行程卡片有「删除行程」入口', () => {
   assert.match(HTML, /id="trip-delete-btn"/, 'index 缺删除行程按钮');
 });
 
-test('F3 删行程走 DELETE /api/trips/:id（API.deleteTrip）且二次确认', () => {
-  assert.match(APP, /deleteTrip/, 'app.js 应调用 API.deleteTrip');
+test('F3 删行程走后端 DELETE（整城删）+ 二次确认', () => {
+  // 2026-11-03：改为「按城市删干净」（同城多条历史行程只删一条会留幽灵星标）
+  assert.match(APP, /clearCityTrips/, 'app.js 应调用 API.clearCityTrips（整城删）');
   assert.match(APP, /confirmDialog\(/, '删行程前应二次确认');
 });
 

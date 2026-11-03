@@ -423,7 +423,8 @@
     try {
       await Selection.load(state.city);
     } catch (err) {
-      /* 离线时保留本地视图 */
+      // 读不到就清空：留着旧选中会在列表里显示误导人的“幽灵星标”
+      if (Selection.reset) Selection.reset();
     }
   }
 
@@ -872,19 +873,28 @@
 
   // 删除整个行程：二次确认 → DELETE /api/trips/:id → 踢出守卫并重选/置空
   async function onDeleteTrip() {
-    if (!state.trip) {
-      UI.setStatus('尚未创建行程');
+    if (!state.city) {
+      UI.setStatus('先选城市');
       return;
     }
-    if (!(await confirmDialog('删除行程「' + state.trip.title + '」及其全部地点？此操作不可恢复'))) return;
+    const n = Selection.count();
+    const title = state.trip ? state.trip.title : state.city + ' 的行程';
+    if (
+      !(await confirmDialog(
+        '删除「' + title + '」及其全部地点（共 ' + n + ' 个）？此操作不可恢复'
+      ))
+    )
+      return;
     try {
-      await API.deleteTrip(state.trip.id);
+      // 按城市删干净（同一城市可能因历史原因有多条行程，只删一条会留“幽灵星标”）
+      await API.clearCityTrips(state.city);
       state.trip = null;
+      if (Selection.reset) Selection.reset(); // 先本地清星，再跟后端对齐
+      if (state.view === 'itinerary') setView('list');
       await reloadSelection();
-      const trips = await API.listTrips(state.city);
-      state.trip = trips[0] || null;
-      await refreshTrips();
-      UI.setStatus('行程已删除');
+      await syncTripFromServer();
+      refresh();
+      UI.setStatus('已删除「' + state.city + '」的全部行程与地点（' + n + ' 个）');
     } catch (err) {
       UI.setStatus('删除行程失败：' + err.message);
     }
@@ -965,6 +975,11 @@
     $('itinerary-copy').onclick = onCopyItinerary;
     $('itinerary-download').onclick = onDownloadItinerary;
     $('trip-new-btn').onclick = async () => {
+      // 同一城市只保留一个行程：已有就复用，避免“两条行程的 pin 并集”导致删了还有星标
+      if (state.trip) {
+        UI.setStatus('已有行程：' + state.trip.title + '（同城只保留一个；要重来请先删除行程）');
+        return;
+      }
       state.trip = null;
       try {
         await ensureTrip();

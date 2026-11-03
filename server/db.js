@@ -161,6 +161,10 @@ function createDb(filePath) {
     updateTripTitle: db.prepare('UPDATE trips SET title = ? WHERE id = ?'),
     deleteTrip: db.prepare('DELETE FROM trips WHERE id = ?'),
     deletePinsOfTrip: db.prepare('DELETE FROM pins WHERE trip_id = ?'),
+    deleteCityPins: db.prepare(
+      'DELETE FROM pins WHERE trip_id IN (SELECT id FROM trips WHERE city = ?)'
+    ),
+    deleteCityTrips: db.prepare('DELETE FROM trips WHERE city = ?'),
     insertPin: db.prepare(
       `INSERT INTO pins (trip_id, poi_id, name, address, lng, lat, category, rating, cost, tel, photo, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -270,6 +274,23 @@ function createDb(filePath) {
         const info = stmts.deleteTrip.run(id);
         db.exec('COMMIT');
         return { changes: info.changes };
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
+    // 删除该城市的全部行程与地点（同一城市只保留一个行程的口径；删干净才不会有“幽灵星标”）
+    deleteCityTrips(city) {
+      db.exec('BEGIN');
+      try {
+        const pins = stmts.deleteCityPins.run(city);
+        const trips = stmts.deleteCityTrips.run(city);
+        db.exec('COMMIT');
+        return {
+          city,
+          trips: toNumber(trips.changes),
+          pins: toNumber(pins.changes),
+        };
       } catch (err) {
         db.exec('ROLLBACK');
         throw err;

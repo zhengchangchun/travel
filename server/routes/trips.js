@@ -20,6 +20,18 @@ module.exports = [
   },
   {
     method: 'DELETE',
+    path: '/api/trips',
+    handler(ctx) {
+      const city = ctx.query && ctx.query.city;
+      if (!city || !String(city).trim()) {
+        throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 city');
+      }
+      const res = ctx.db.deleteCityTrips(String(city).trim());
+      return { city: res.city, trips: res.trips, pins: res.pins, deleted: true };
+    },
+  },
+  {
+    method: 'DELETE',
     path: '/api/trips/:id',
     handler(ctx) {
       const id = Number(ctx.params.id);

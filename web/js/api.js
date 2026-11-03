@@ -64,6 +64,8 @@
     addPin: (payload) => request('/api/pins', post(payload)),
     deletePin: (id) => request('/api/pins/' + id, { method: 'DELETE' }),
     deleteTrip: (id) => request('/api/trips/' + id, { method: 'DELETE' }),
+    // 删除该城市的全部行程与地点（同一城市一个行程的口径；删干净才不留“幽灵星标”）
+    clearCityTrips: (city) => request('/api/trips?' + qs({ city }), { method: 'DELETE' }),
     listNotes: (city) => request('/api/notes' + (city ? '?' + qs({ city }) : '')),
     addNote: (payload) => request('/api/notes', post(payload)),
     updatePinNote: (id, note) =>

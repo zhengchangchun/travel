@@ -75,6 +75,15 @@
     return pins.slice();
   }
 
+  // 清空本地选中态（删除行程后必须调，否则列表里会留“幽灵星标”）
+  function reset() {
+    pins = [];
+    ids = new Set();
+    tripId = null;
+    notify();
+    return snapshot();
+  }
+
   function count() {
     return ids.size;
   }
@@ -187,6 +196,7 @@
     toggle,
     move,
     reorder,
+    reset,
     subscribe,
     keyOf,
     getCity: () => city,
