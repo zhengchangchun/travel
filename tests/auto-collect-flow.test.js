@@ -37,10 +37,14 @@ test('L16 渐进补旗：完成后重读缓存并增量补旗（addMarkers），
   assert.match(MAP, /markerCount/, 'map.js 缺 markerCount');
 });
 
-test('L19 采集全城（补全）按钮保留', () => {
-  assert.match(HTML, /id="collect-btn"[^>]*>采集全城（补全）/, '按钮文案未改');
-  assert.match(APP, /onCollect/, '全城采集入口丢失');
-  assert.match(APP, /pollCollect/, '全城采集进度轮询丢失');
+test('L19 手动采集模块已下线（用户 2026-11-03：数据采集那个模块先去掉）', () => {
+  assert.ok(!/id="collect-btn"/.test(HTML), 'index 不应再有采集按钮');
+  assert.ok(!/id="collect-progress"/.test(HTML), 'index 不应再有采集进度容器');
+  assert.ok(!/\bonCollect\b/.test(APP), 'app.js 不应再有 onCollect 入口');
+  assert.ok(!/\bpollCollect\b/.test(APP), 'app.js 不应再有 pollCollect 轮询');
+  // 自动采集（按视野）不能跟着一起删掉
+  assert.match(APP, /autoCollectViewport/, '自动采集入口丢失');
+  assert.match(APP, /API\.collectViewport/, '按视野采集接口丢失');
 });
 
 test('N20 切城市重置当前行程并重取', () => {

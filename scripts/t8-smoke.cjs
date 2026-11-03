@@ -237,9 +237,9 @@ check('T8-P85', 'L13/L14/L16 前端：门控 + 自动采集 + 渐进补旗资产
   assert.ok(idx.includes('id="view-hint"'), 'index 缺 #view-hint');
 });
 
-check('T8-P86', 'L19 采集按钮改名 + N20 切城市重置行程', () => {
+check('T8-P86', 'L19 采集模块下线 + N20 切城市重置行程', () => {
   const idx = readFile('web/index.html');
-  assert.match(idx, /id="collect-btn"[^>]*>采集全城（补全）/);
+  assert.ok(!/id="collect-btn"/.test(idx), 'index 不应再有采集按钮');
   const app = readFile('web/js/app.js');
   const m = app.match(/function\s+setCity[\s\S]*?\n  \}/);
   assert.ok(m && /state\.trip\s*=\s*null/.test(m[0]), 'setCity 未重置 state.trip');

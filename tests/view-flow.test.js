@@ -58,6 +58,32 @@ test('默认评分过滤：初始即勾选 ≥4.0，切城市保持同一默认'
   );
 });
 
+test('默认不选分类：未勾「全部」且未选分类不显示地点，选住宿只显示住宿', () => {
+  assert.match(APP, /showAll:\s*false/, '默认 showAll 应为 false');
+  assert.match(APP, /function\s+passesCat/, '缺分类过滤函数 passesCat');
+  assert.match(APP, /if\s*\(!state\.activeCats\.size\)\s*return false/, '未选分类应不显示地点');
+  assert.match(APP, /state\.activeCats\.has\(p\.category\)/, '选中分类后应只显示该分类');
+  assert.match(APP, /function\s+catFilterEmpty/, '缺空筛选态判定 catFilterEmpty');
+  assert.match(APP, /ALL_CAT_KEY/, '缺「全部」chip 常量');
+  assert.match(APP, /label:\s*'全部'/, '缺「全部」chip 文案');
+  // 只看我选中的：显式挑的点不受分类/评分过滤影响
+  assert.match(
+    APP,
+    /function\s+currentList[\s\S]*?state\.onlySelected\)\s*return Selection\.list\(\)/,
+    '只看选中应直接返回选中集'
+  );
+});
+
+test('切城市重置回「先不选中」；关键词搜索不过滤分类', () => {
+  const m = APP.match(/function\s+setCity[\s\S]*?\n  \}/);
+  assert.ok(m, '未找到 setCity');
+  assert.match(m[0], /state\.showAll\s*=\s*false/, 'setCity 未重置 showAll');
+  assert.match(m[0], /state\.activeCats\.clear\(\)/, 'setCity 未清分类');
+  const s = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/);
+  assert.ok(s, '未找到 doPoiSearch');
+  assert.match(s[0], /state\.showAll\s*=\s*true/, '关键词搜索应不过滤分类');
+});
+
 test('双口径计数：当前视野 N 条 · 全城已收录 M 条', () => {
   assert.match(APP, /setViewCount/, 'app 未调用 setViewCount');
   assert.match(APP, /poisStats/, 'app 未取全城已收录数（poisStats）');

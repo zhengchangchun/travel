@@ -13,8 +13,11 @@
   const MIN_MARKER_ZOOM = 13;
   // 按视野自动采集的最低倍率（默认 13）；与落点阈值同值
   const MIN_COLLECT_ZOOM = 13;
-  // T9 R1：一次只采一个分类；筛选为「全部」时按此顺序轮转（可被 config.categoryRotation 覆盖）
+  // T9 R1：一次只采一个分类；筛选为空时按此顺序轮转（可被 config.categoryRotation 覆盖）
   const CATEGORY_ROTATION = ['food', 'stay', 'sight', 'play'];
+
+  // 分类 chip 里的「全部」（不是真实分类 key，仅 UI 用）
+  const ALL_CAT_KEY = '__all__';
 
   // 默认评分过滤＝已勾选「≥4.0」（用户 2026-11-02：默认过滤条件勾选 4 分以上）
   // 必须在 state 之前声明：state 初始化时会读取它
@@ -30,8 +33,7 @@
     view: 'list',
     cardPoi: null,
     ratingFilter: DEFAULT_RATING_FILTER,
-    collecting: false,
-    collectTimer: null,
+    showAll: false, // 是否勾了「全部」分类；未勾且没选具体分类 ⇒ 不显示地点
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
@@ -99,16 +101,36 @@
     return Number.isFinite(n) && n >= min;
   }
 
+  // 分类过滤：默认不选中＝不显示；勾「全部」＝全部显示；否则只看选中的分类（可多选）
+  function passesCat(p) {
+    if (state.showAll) return true;
+    if (!state.activeCats.size) return false;
+    return state.activeCats.has(p.category);
+  }
+
   // 分类 / 评分过滤（不含「只看选中」）
   function passesFilters(p) {
-    if (state.activeCats.size && !state.activeCats.has(p.category)) return false;
+    if (!passesCat(p)) return false;
     if (state.ratingFilter !== 'all' && !passesRating(p)) return false;
     return true;
   }
 
+  // 未勾「全部」且未选具体分类：默认的空筛选态
+  function catFilterEmpty() {
+    return !state.showAll && state.activeCats.size === 0;
+  }
+
   function currentList() {
-    const list = state.onlySelected ? Selection.list() : state.pois;
-    return list.filter(passesFilters);
+    // 「只看我选中的」＝显式挑的点，不受分类/评分过滤影响
+    if (state.onlySelected) return Selection.list();
+    return state.pois.filter(passesFilters);
+  }
+
+  // 分类 chip：“全部”首位 + 真实分类；选中态由 showAll / activeCats 决定
+  function renderCatChips() {
+    const chips = [{ key: ALL_CAT_KEY, label: '全部', color: '#8a9099' }].concat(Cats.all());
+    const selected = state.showAll ? new Set([ALL_CAT_KEY]) : state.activeCats;
+    UI.renderChips($('chips'), chips, selected, onToggleChip);
   }
 
   function renderMap(list, fit) {
@@ -122,6 +144,10 @@
   }
 
   function updateStatus(list) {
+    if (!state.onlySelected && catFilterEmpty()) {
+      UI.setStatus('未选分类：点一个分类（如 住宿）查看地点');
+      return;
+    }
     UI.setStatus(
       '已显示 ' + list.length + ' / ' + state.pois.length + ' 个地点（' + state.city + '）'
     );
@@ -156,9 +182,14 @@
     const fit = !!(opts && opts.fit);
     const drawMarkers = !opts || opts.markers !== false;
     const list = currentList();
+    const emptyText =
+      !state.onlySelected && catFilterEmpty()
+        ? '先点上面的分类（如 住宿），或勾「全部」'
+        : undefined;
     UI.renderResults($('result-list'), list, onPickPoi, {
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
+      emptyText,
     });
     $('result-count').textContent = String(list.length);
     updateStatus(list);
@@ -278,9 +309,15 @@
   }
 
   function onToggleChip(key) {
-    if (state.activeCats.has(key)) state.activeCats.delete(key);
-    else state.activeCats.add(key);
-    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+    if (key === ALL_CAT_KEY) {
+      state.showAll = !state.showAll;
+      if (state.showAll) state.activeCats.clear();
+    } else {
+      state.showAll = false;
+      if (state.activeCats.has(key)) state.activeCats.delete(key);
+      else state.activeCats.add(key);
+    }
+    renderCatChips();
     refresh();
   }
 
@@ -490,13 +527,13 @@
     refresh({ markers: false });
   }
 
-  // 切城 / 刷新按钮：先刷「全城已收录」，再按当前视野加载
+  // 切城：先刷「全城已收录」，再按当前视野加载
   async function loadCityView(city) {
     UI.setStatus('读取 ' + city + ' 已收录地点…');
     await loadCityTotals(city);
     await fetchPoisInView();
     if (!state.cityTotal && !state.pois.length) {
-      UI.setStatus('该城市还没采集，点左侧「采集全城（补全）」');
+      UI.setStatus('该城市还没采到数据：把地图放大到街道级，会自动采集本区域');
     }
   }
 
@@ -525,79 +562,13 @@
     refresh();
   }
 
-  // 采集入口：后台任务 + 轮询进度；完成后自动刷新列表
-  async function onCollect() {
-    if (state.collecting) return;
-    const btn = $('collect-btn');
-    try {
-      state.collecting = true;
-      if (btn) btn.disabled = true;
-      $('collect-progress').textContent = '正在提交采集任务…';
-      const res = await API.collect({ city: state.city, category: 'all' });
-      pollCollect(res.runIds || [res.runId]);
-    } catch (err) {
-      state.collecting = false;
-      if (btn) btn.disabled = false;
-      if (err.status === 409) {
-        $('collect-progress').textContent = '该城市正在采集中，等待完成…';
-        pollCollect();
-      } else {
-        UI.setStatus('采集失败：' + err.message);
-        $('collect-progress').textContent = '采集失败：' + err.message;
-      }
-    }
-  }
-
-  function pollCollect(runIds) {
-    if (state.collectTimer) clearInterval(state.collectTimer);
-    const btn = $('collect-btn');
-    const tick = async () => {
-      try {
-        let ids = runIds;
-        if (!ids || !ids.length) {
-          const runs = await API.collectRuns(state.city);
-          ids = runs.filter((r) => r.status === 'running').map((r) => r.runId);
-          if (!ids.length) {
-            finishCollect();
-            return;
-          }
-        }
-        const statuses = await Promise.all(ids.map((id) => API.collectStatus(id)));
-        const inserted = statuses.reduce((s, x) => s + (x.n_inserted || 0), 0);
-        const done = statuses.reduce((s, x) => s + (x.done_districts || 0), 0);
-        const total = statuses.reduce((s, x) => s + (x.total_districts || 0), 0);
-        const running = statuses.some((x) => x.status === 'running');
-        $('collect-progress').textContent = running
-          ? '正在采集 ' + done + '/' + total + ' 区，已入库 ' + inserted + ' 条'
-          : '采集完成：共入库 ' + inserted + ' 条';
-        if (!running) finishCollect();
-      } catch (err) {
-        clearInterval(state.collectTimer);
-        state.collectTimer = null;
-        state.collecting = false;
-        if (btn) btn.disabled = false;
-        UI.setStatus('采集状态查询失败：' + err.message);
-      }
-    };
-
-    async function finishCollect() {
-      if (state.collectTimer) clearInterval(state.collectTimer);
-      state.collectTimer = null;
-      state.collecting = false;
-      if (btn) btn.disabled = false;
-      await loadCityView(state.city);
-      UI.setStatus('采集完成，已刷新列表');
-    }
-
-    tick();
-    state.collectTimer = setInterval(tick, 800);
-  }
 
   // 切城市：清旧旗 → 提示「定位中…」→ 落主城区 + CITY_ZOOM → 等 moveend → 才请求 POI
   async function setCity(city) {
     state.city = city.name || city;
     $('current-city').textContent = state.city;
     state.activeCats.clear();
+    state.showAll = false; // 新城市回到「先不选中」
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.pois = [];
@@ -607,7 +578,7 @@
     state.rotateIndex = 0; // T9 R1：新城市从轮转起点开始
     UI.setViewHint('');
     UI.setViewProgress(0, 0);
-    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+    renderCatChips();
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
     if (MapCtl.isReady()) MapCtl.clearMarkers();
     refresh();
@@ -674,7 +645,8 @@
       const results = await API.searchPoi({ city: state.city, keywords });
       state.pois = dedupe(results);
       state.activeCats.clear();
-      UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+      state.showAll = true; // 关键词搜索：不过滤分类
+      renderCatChips();
       refresh();
       if (state.pois.length && MapCtl.isReady()) {
         flyTo(state.pois[0].lng, state.pois[0].lat, 15);
@@ -780,8 +752,6 @@
       if (e.key === 'Enter') doPoiSearch();
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
-    $('collect-btn').onclick = onCollect;
-    $('collect-refresh-btn').onclick = () => loadCityView(state.city);
     $('plan-btn').onclick = onPlan;
     $('panel-toggle').onclick = onTogglePanel;
     $('itinerary-back').onclick = () => setView('list');
@@ -810,7 +780,7 @@
     }
 
     Cats.init(state.config.categories);
-    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
+    renderCatChips();
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
 
     Selection.subscribe(() => {

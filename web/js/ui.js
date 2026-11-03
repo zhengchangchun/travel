@@ -115,7 +115,7 @@
     handlers = handlers || {};
     container.innerHTML = '';
     if (!pois.length) {
-      container.innerHTML = '<li class="empty">没有结果</li>';
+      container.innerHTML = '<li class="empty">' + esc(handlers.emptyText || '没有结果') + '</li>';
       return;
     }
     pois.forEach((poi) => {
