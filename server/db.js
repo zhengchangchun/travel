@@ -617,20 +617,31 @@ function createDb(filePath) {
     },
   };
 
-  // 存量行回填内容指纹（幂等；新库无行直接跳过）
-  for (;;) {
-    const rows = stmts.listMissingHashes.all();
-    if (!rows.length) break;
-    rows.forEach((row) => {
-      stmts.setPoiHash.run(
-        contentHash({
-          ...row,
-          photos: parseJsonArray(row.photos),
-          tags: parseJsonArray(row.tags),
-        }),
-        row.poi_id
-      );
-    });
+  // 存量行回填内容指纹（幂等；新库无行直接跳过）。
+  // 包在一个事务里：38k 行逐行隐式事务会慢到让启动卡住（每行一次 fsync）。
+  const missing = db.prepare('SELECT COUNT(*) AS c FROM pois WHERE content_sha256 IS NULL').get();
+  if (toNumber(missing && missing.c) > 0) {
+    db.exec('BEGIN');
+    try {
+      for (;;) {
+        const rows = stmts.listMissingHashes.all();
+        if (!rows.length) break;
+        rows.forEach((row) => {
+          stmts.setPoiHash.run(
+            contentHash({
+              ...row,
+              photos: parseJsonArray(row.photos),
+              tags: parseJsonArray(row.tags),
+            }),
+            row.poi_id
+          );
+        });
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
   }
 
   return api;
