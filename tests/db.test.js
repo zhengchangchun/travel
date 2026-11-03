@@ -97,3 +97,47 @@ test('notes CRUD：按城市过滤', () => {
   assert.strictEqual(db.listNotes('杭州').length, 0);
   db.close();
 });
+
+test('POI 内容指纹：写库时落 content_sha256；存量行重开时回填；集合指纹可对账', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-hash-'));
+  const file = path.join(dir, 'travel.db');
+  const poi = {
+    poi_id: 'H1',
+    city: '杭州',
+    adcode: '330100',
+    category: 'stay',
+    name: 'A店',
+    address: 'a',
+    lng: 120.16,
+    lat: 30.25,
+    typecode: '100000',
+    rating: '4.6',
+    cost: '88',
+    tel: 't',
+    photos: ['u1'],
+    tags: ['x'],
+  };
+  let db = createDb(file);
+  db.upsertPoi(poi);
+  const h1 = db.poiContentHash('H1');
+  assert.match(h1, /^[0-9a-f]{64}$/, '写入时应落 64 位指纹');
+
+  // 字段变了 ⇒ 指纹变
+  db.upsertPoi({ ...poi, rating: '4.9' });
+  assert.notEqual(db.poiContentHash('H1'), h1, '内容变 ⇒ 指纹变');
+
+  const digits = db.poiDigest('杭州');
+  assert.equal(digits.total, 1);
+  assert.equal(digits.hashed, 1);
+  assert.match(digits.digest, /^[0-9a-f]{64}$/);
+  db.close();
+
+  // 模拟存量库：指纹列被置空 ⇒ 重开时应回填
+  const raw = new (require('node:sqlite').DatabaseSync)(file);
+  raw.exec("UPDATE pois SET content_sha256 = NULL WHERE poi_id = 'H1'");
+  raw.close();
+  db = createDb(file);
+  assert.match(db.poiContentHash('H1'), /^[0-9a-f]{64}$/, '重开时应回填存量行指纹');
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

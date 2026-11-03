@@ -455,6 +455,11 @@
           ' · 与缓存一致 ' +
           d.same
       );
+      if (live.digest) {
+        const rs = String(live.digest).slice(0, 8);
+        const cs = String(live.cache_digest || '').slice(0, 8);
+        parts.push(live.digest_match ? '指纹 ' + rs + '（一致）' : '指纹 ' + rs + ' ≠ 缓存 ' + cs);
+      }
     } else {
       parts.push('新增 ' + (Number(live.inserted) || 0) + ' 条');
     }

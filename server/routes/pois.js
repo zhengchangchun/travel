@@ -165,6 +165,14 @@ module.exports = [
   },
   {
     method: 'GET',
+    path: '/api/pois/digest',
+    handler(ctx) {
+      const city = requireCity(ctx, ctx.query.city);
+      return ctx.db.poiDigest(city);
+    },
+  },
+  {
+    method: 'GET',
     path: '/api/pois/stats',
     handler(ctx) {
       const city = requireCity(ctx, ctx.query.city);

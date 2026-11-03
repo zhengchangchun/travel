@@ -1,4 +1,5 @@
 const { classifyType } = require('./amap');
+const { HASH_FIELDS, cmpVal, contentHash, setDigest } = require('./poi-hash');
 
 const PAGE_SIZE = 25; // 单页 25 条
 const MAX_PAGE = 8; // 25 × 8 = 200（单查询上限）
@@ -677,6 +678,15 @@ async function liveRect({
   // 落库前先对拍：远端这批点与库里的旧行比较（新增/字段变化/一致，0 额外调用）
   const storable = storableOnly(collected, category, classify);
   const diff = diffAgainstCache(db, storable);
+  // 两个集合指纹：远端这批 vs 库里同 id 的旧内容（缺失的用 MISSING 占位）
+  // 两串相等 ⇒ 这批缓存与远端逐字段一致；不等 ⇒ 有更新/新增
+  const remoteHashes = storable.map((p) => ({ poi_id: p.id, hash: contentHash(p) }));
+  const cacheHashes = storable.map((p) => ({
+    poi_id: p.id,
+    hash: (typeof db.poiContentHash === 'function' && db.poiContentHash(p.id)) || 'MISSING',
+  }));
+  const digest = setDigest(remoteHashes);
+  const cacheDigest = setDigest(cacheHashes);
   const res = storePois(db, city, null, category, storable, classify);
 
   return {
@@ -687,38 +697,16 @@ async function liveRect({
     errors,
     mode: 'rect',
     diff,
+    digest,
+    cache_digest: cacheDigest,
+    digest_match: digest === cacheDigest,
   };
 }
 
 // ---- 缓存一致性对拍：远端刚取回的点 vs 库里旧行，逐字段比 ----
 // 高德没有「变更时间/增量」接口（POI 也没有版本号）⇒ 判「缓存是不是最新的」只能重取一次再对拍。
 // 我们每次实时搜索本来就把远端结果拿回来了，落库前顺手对拍一次 ⇒ 0 额外调用。
-const DIFF_FIELDS = [
-  'name',
-  'address',
-  'lng',
-  'lat',
-  'typecode',
-  'category',
-  'rating',
-  'cost',
-  'tel',
-  'photos',
-  'tags',
-];
-
-// 把「远端 POI」与「库行」的同一个字段归一成可比字符串（null/''/缺省 视为同值）
-function cmpVal(v, field) {
-  if (field === 'photos' || field === 'tags') {
-    if (Array.isArray(v)) return JSON.stringify(v);
-    return v == null || v === '' ? '[]' : String(v);
-  }
-  if (field === 'lng' || field === 'lat') {
-    const n = Number(v);
-    return Number.isFinite(n) ? n.toFixed(6) : '';
-  }
-  return v == null ? '' : String(v);
-}
+const DIFF_FIELDS = HASH_FIELDS;
 
 // 对拍：返回 { checked, added, changed, same, changed_fields, samples }
 // added＝库里没有（首次入库）；changed＝字段有变；same＝逐字段与缓存一致
@@ -732,6 +720,13 @@ function diffAgainstCache(db, pois) {
       out.added += 1;
       return;
     }
+    // 快路径：库里已存指纹且与远端一致 ⇒ 直接判一致（不展开字段）
+    const newHash = contentHash(p);
+    if (old.content_sha256 && old.content_sha256 === newHash) {
+      out.same += 1;
+      return;
+    }
+    // 慢路径：逐字段点名
     const fields = DIFF_FIELDS.filter((f) => cmpVal(old[f], f) !== cmpVal(p[f], f));
     if (!fields.length) {
       out.same += 1;

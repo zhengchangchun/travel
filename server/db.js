@@ -1,6 +1,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const fs = require('node:fs');
 const path = require('node:path');
+const { contentHash, setDigest } = require('./poi-hash');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS trips (
@@ -57,7 +58,8 @@ CREATE TABLE IF NOT EXISTS pois (
   tel        TEXT,
   photos     TEXT,
   tags       TEXT,
-  fetched_at TEXT NOT NULL
+  fetched_at TEXT NOT NULL,
+  content_sha256 TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pois_city_cat ON pois(city, category);
 CREATE INDEX IF NOT EXISTS idx_pois_city_rating ON pois(city, category, rating);
@@ -148,6 +150,8 @@ function createDb(filePath) {
   db.exec(SCHEMA);
   ensureColumn(db, 'pins', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'poi_coverage', 'truncated', 'truncated INTEGER NOT NULL DEFAULT 0');
+  // POI 内容指纹列（存量库前滚；缺失指纹的行在下面回填）
+  ensureColumn(db, 'pois', 'content_sha256', 'content_sha256 TEXT');
 
   const stmts = {
     insertTrip: db.prepare('INSERT INTO trips (city, title) VALUES (?, ?)'),
@@ -200,14 +204,20 @@ function createDb(filePath) {
     // ---- T4 POI 缓存表 ----
     getPoiRow: db.prepare('SELECT * FROM pois WHERE poi_id = ?'),
     insertPoi: db.prepare(
-      `INSERT INTO pois (poi_id, city, adcode, category, name, address, lng, lat, typecode, rating, cost, tel, photos, tags, fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO pois (poi_id, city, adcode, category, name, address, lng, lat, typecode, rating, cost, tel, photos, tags, fetched_at, content_sha256)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     updatePoi: db.prepare(
       `UPDATE pois SET city = ?, adcode = ?, category = ?, name = ?, address = ?, lng = ?, lat = ?,
-        typecode = ?, rating = ?, cost = ?, tel = ?, photos = ?, tags = ?, fetched_at = ?
+        typecode = ?, rating = ?, cost = ?, tel = ?, photos = ?, tags = ?, fetched_at = ?, content_sha256 = ?
        WHERE poi_id = ?`
     ),
+    listPoiHashes: db.prepare('SELECT poi_id, content_sha256 FROM pois WHERE city = ?'),
+    listMissingHashes: db.prepare(
+      'SELECT * FROM pois WHERE content_sha256 IS NULL LIMIT 2000'
+    ),
+    setPoiHash: db.prepare('UPDATE pois SET content_sha256 = ? WHERE poi_id = ?'),
+    getPoiHash: db.prepare('SELECT content_sha256 FROM pois WHERE poi_id = ?'),
     countPoisByCat: db.prepare(
       'SELECT category, COUNT(*) AS c FROM pois WHERE city = ? GROUP BY category'
     ),
@@ -241,7 +251,7 @@ function createDb(filePath) {
     ),
   };
 
-  return {
+  const api = {
     raw: db,
     createTrip({ city, title }) {
       const info = stmts.insertTrip.run(city, title);
@@ -378,6 +388,7 @@ function createDb(filePath) {
       const photos = JSON.stringify(Array.isArray(poi.photos) ? poi.photos : []);
       const tags = JSON.stringify(Array.isArray(poi.tags) ? poi.tags : []);
       const fetchedAt = poi.fetched_at || new Date().toISOString();
+      const hash = contentHash({ ...poi, photos, tags: JSON.parse(tags) });
       const existing = stmts.getPoiRow.get(poi.poi_id);
       if (existing) {
         stmts.updatePoi.run(
@@ -395,6 +406,7 @@ function createDb(filePath) {
           photos,
           tags,
           fetchedAt,
+          hash,
           poi.poi_id
         );
         return { status: 'updated', row: stmts.getPoiRow.get(poi.poi_id) };
@@ -414,12 +426,28 @@ function createDb(filePath) {
         poi.tel || null,
         photos,
         tags,
-        fetchedAt
+        fetchedAt,
+        hash
       );
       return { status: 'inserted', row: stmts.getPoiRow.get(poi.poi_id) };
     },
     getPoi(poiId) {
       return stmts.getPoiRow.get(poiId) || null;
+    },
+    // 一条 POI 的已存内容指纹（可能为 null：未回填）
+    poiContentHash(poiId) {
+      const row = stmts.getPoiHash.get(poiId);
+      return row ? row.content_sha256 : null;
+    },
+    // 某城市全部 POI 的集合指纹（与顺序无关）——用于「库没被悄悄改动」的核账
+    poiDigest(city) {
+      const rows = stmts.listPoiHashes.all(city);
+      const withHash = rows.filter((r) => r.content_sha256);
+      return {
+        total: rows.length,
+        hashed: withHash.length,
+        digest: setDigest(withHash.map((r) => ({ poi_id: r.poi_id, hash: r.content_sha256 }))),
+      };
     },
     countPois(city, category) {
       if (category) {
@@ -588,6 +616,24 @@ function createDb(filePath) {
       db.close();
     },
   };
+
+  // 存量行回填内容指纹（幂等；新库无行直接跳过）
+  for (;;) {
+    const rows = stmts.listMissingHashes.all();
+    if (!rows.length) break;
+    rows.forEach((row) => {
+      stmts.setPoiHash.run(
+        contentHash({
+          ...row,
+          photos: parseJsonArray(row.photos),
+          tags: parseJsonArray(row.tags),
+        }),
+        row.poi_id
+      );
+    });
+  }
+
+  return api;
 }
 
 module.exports = { createDb, SCHEMA };

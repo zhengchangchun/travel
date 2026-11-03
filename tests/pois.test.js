@@ -377,3 +377,26 @@ test('GET /api/collect/runs?city= 返回各分类最近一次状态', async () =
     await close();
   }
 });
+
+test('GET /api/pois/digest：给出该城市缓存的集合指纹（可对账）', async () => {
+  const db = createDb(':memory:');
+  const h = await start({ db });
+  try {
+    seedPoi(db, { id: 'DG1', lng: 120.16, lat: 30.25, rating: '4.6' });
+    seedPoi(db, { id: 'DG2', lng: 120.17, lat: 30.26, rating: '4.8' });
+    const a = await getJson(h.base, '/api/pois/digest?city=' + encodeURIComponent('杭州'));
+    assert.equal(a.status, 200);
+    assert.equal(a.body.data.total, 2);
+    assert.equal(a.body.data.hashed, 2, '写库时应已落指纹');
+    assert.match(a.body.data.digest, /^[0-9a-f]{64}$/);
+
+    // 内容没变 ⇒ 指纹不变；变一条 ⇒ 指纹变
+    const b = await getJson(h.base, '/api/pois/digest?city=' + encodeURIComponent('杭州'));
+    assert.equal(b.body.data.digest, a.body.data.digest, '内容未变指纹不应变');
+    seedPoi(db, { id: 'DG2', lng: 120.17, lat: 30.26, rating: '3.9' });
+    const c = await getJson(h.base, '/api/pois/digest?city=' + encodeURIComponent('杭州'));
+    assert.notEqual(c.body.data.digest, a.body.data.digest, '内容变了指纹应变');
+  } finally {
+    await h.close();
+  }
+});

@@ -4,6 +4,8 @@ const assert = require('node:assert');
 const { createApp } = require('../server/index');
 const { createDb } = require('../server/db');
 const { liveRect, bboxPolygon, inBbox, LIVE_MAX_PAGES, diffAgainstCache, storableOnly } = require('../server/collect');
+const { contentHash, setDigest, canonicalPoi, shortHash, HASH_FIELDS } = require('../server/poi-hash');
+const HASH_FIELDS_COUNT = HASH_FIELDS.length;
 
 const TEST_CONFIG = {
   port: 0,
@@ -301,6 +303,58 @@ test('liveRect：库里与远端逐字段相同 ⇒ diff.same 全中（缓存就
   assert.equal(res.diff.same, 1, '应判「与缓存一致」');
   assert.equal(res.diff.changed, 0);
   assert.equal(res.diff.added, 0);
+  db.close();
+});
+
+// ---------- 内容指纹 / 集合指纹 ----------
+
+test('contentHash：字段顺序无关、null 与空串同值、坐标 6 位容差、photos 顺序敏感', () => {
+  const a = { name: 'X', address: 'a', lng: 120.16, lat: 30.25, typecode: '100000', category: 'stay', rating: '4.5', cost: '', tel: null, photos: ['u1'], tags: ['t'] };
+  const b = { tags: ['t'], photos: ['u1'], cost: null, tel: '', rating: '4.5', category: 'stay', typecode: '100000', lat: 30.25, lng: 120.16, address: 'a', name: 'X' };
+  assert.equal(contentHash(a), contentHash(b), '同内容（键顺序不同）指纹应相同');
+  assert.equal(contentHash({ ...a, lng: 120.1600004 }), contentHash(a), '坐标 6 位以内不算变化');
+  assert.notEqual(contentHash({ ...a, rating: '4.9' }), contentHash(a), '字段变化 ⇒ 指纹变');
+  assert.notEqual(contentHash({ ...a, photos: ['u2'] }), contentHash(a), 'photos 变化 ⇒ 指纹变');
+  assert.match(contentHash(a), /^[0-9a-f]{64}$/, '应是 sha256 hex');
+});
+
+test('canonicalPoi：字段顺序固定，便于两库对比与排错', () => {
+  const s = canonicalPoi({ name: 'X', lng: 1, lat: 2 });
+  assert.ok(s.startsWith('X\u0001'), '首字段应是 name：' + JSON.stringify(s.slice(0, 6)));
+  assert.equal(s.split('\u0001').length, HASH_FIELDS_COUNT, '字段个数应固定');
+});
+
+test('setDigest：与顺序无关；内容变则指纹变；空集合稳定', () => {
+  const A = { poi_id: 'A', hash: 'h1' };
+  const B = { poi_id: 'B', hash: 'h2' };
+  assert.equal(setDigest([A, B]), setDigest([B, A]), '集合指纹应与顺序无关');
+  assert.notEqual(setDigest([A, B]), setDigest([A, { poi_id: 'B', hash: 'h3' }]), '内容变 ⇒ 指纹变');
+  assert.equal(setDigest([]), setDigest([]), '空集合应稳定');
+  assert.match(shortHash('0123456789abcdef'), /^0123456789ab$/, '短显示取前 12 位');
+});
+
+test('liveRect：集合指纹 —— 同批两次 digest_match=true，改了一个字段就 false', async () => {
+  const db = createDb(':memory:');
+  let rating = '4.6';
+  const amap = {
+    async searchPoiInArea() {
+      return [mkPoi('G1', '100000', { rating }), mkPoi('G2', '100000', { rating })];
+    },
+  };
+  const first = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.match(first.digest, /^[0-9a-f]{64}$/, '应给集合指纹');
+  assert.equal(first.digest_match, false, '第一次入库前缓存里没有 ⇒ 指纹不等');
+
+  const again = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(again.digest_match, true, '同内容再取一次 ⇒ 指纹一致（缓存就是最新的）');
+  assert.equal(again.diff.same, 2);
+  assert.equal(again.diff.changed, 0);
+
+  rating = '4.9';
+  const changed = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(changed.digest_match, false, '远端变了 ⇒ 指纹不等');
+  assert.equal(changed.diff.changed, 2);
+  assert.equal(changed.diff.changed_fields.rating, 2);
   db.close();
 });
 
