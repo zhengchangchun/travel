@@ -43,6 +43,16 @@ test('无数量限制：源码不得出现 5000 全局封顶，也不做抽稀',
   assert.ok(!/抽稀/.test(APP), 'app.js 不应做抽稀');
 });
 
+test('默认评分过滤：初始即勾选 ≥4.0，切城市保持同一默认', () => {
+  assert.match(APP, /const\s+DEFAULT_RATING_FILTER\s*=\s*'4\.0'/, '缺默认评分过滤常量 4.0');
+  assert.match(APP, /ratingFilter:\s*DEFAULT_RATING_FILTER/, '初始 ratingFilter 未用默认值');
+  assert.match(
+    APP,
+    /state\.ratingFilter\s*=\s*DEFAULT_RATING_FILTER/,
+    '切城市未重置为同一默认值'
+  );
+});
+
 test('双口径计数：当前视野 N 条 · 全城已收录 M 条', () => {
   assert.match(APP, /setViewCount/, 'app 未调用 setViewCount');
   assert.match(APP, /poisStats/, 'app 未取全城已收录数（poisStats）');

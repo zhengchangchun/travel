@@ -25,7 +25,7 @@
     onlySelected: false,
     view: 'list',
     cardPoi: null,
-    ratingFilter: 'all',
+    ratingFilter: DEFAULT_RATING_FILTER,
     collecting: false,
     collectTimer: null,
     viewSeq: 0,
@@ -43,6 +43,9 @@
     { key: '4.5', label: '≥4.5' },
     { key: 'top', label: '★满分' },
   ];
+
+  // 默认评分过滤＝已勾选「≥4.0」（用户 2026-11-02：默认过滤条件勾选 4 分以上）
+  const DEFAULT_RATING_FILTER = '4.0';
 
   function $(id) {
     return document.getElementById(id);
@@ -595,7 +598,7 @@
     $('current-city').textContent = state.city;
     state.activeCats.clear();
     state.onlySelected = false;
-    state.ratingFilter = 'all';
+    state.ratingFilter = DEFAULT_RATING_FILTER;
     state.pois = [];
     state.cityTotal = 0;
     state.trip = null; // N20：切城市必须重置当前行程，避免残留上一城市的行程
