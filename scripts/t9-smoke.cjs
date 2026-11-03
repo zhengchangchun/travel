@@ -190,7 +190,8 @@ check('T9-P100', 'L-1 实时搜索：按当前地图矩形查，框外不显示�
   const collectSrc = readFile('server/collect.js');
   assert.match(collectSrc, /function\s+liveRect/);
   assert.match(collectSrc, /searchPoiInArea/);
-  assert.match(collectSrc, /\.filter\(\(p\) => inBbox\(p, bbox\)\)/);
+  assert.match(collectSrc, /inBbox\(p, bbox\)/, '落库前应按框再筛一遍');
+  assert.match(collectSrc, /diffAgainstCache/, '落库前应对拍缓存');
   assert.match(readFile('server/amap.js'), /\/v3\/place\/polygon/);
   // 老的按格收录前端入口不得回流
   assert.ok(!/autoCollectViewport/.test(app), 'app.js 不应再有按格收录入口');

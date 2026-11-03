@@ -651,9 +651,9 @@ async function liveRect({
 }) {
   const polygon = bboxPolygon(bbox);
   let calls = 0;
-  let inserted = 0;
-  let updated = 0;
   const errors = [];
+  const seen = new Set();
+  const collected = [];
   for (let page = 1; page <= maxPages; page += 1) {
     if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
     calls += 1;
@@ -664,17 +664,102 @@ async function liveRect({
       errors.push((err && err.message) || String(err));
       break; // 失败就停，前端照旧显示缓存
     }
-    const inside = (Array.isArray(pois) ? pois : []).filter((p) => inBbox(p, bbox));
-    const res = storePois(db, city, null, category, inside, classify);
-    inserted += res.inserted;
-    updated += res.updated;
+    const inside = (Array.isArray(pois) ? pois : []).filter(
+      (p) => inBbox(p, bbox) && p.id && !seen.has(p.id)
+    );
+    inside.forEach((p) => {
+      seen.add(p.id);
+      collected.push(p);
+    });
     if (!Array.isArray(pois) || pois.length < PAGE_SIZE) break; // 不满一页 ⇒ 真取完
   }
-  return { calls, inserted, updated, errors, mode: 'rect' };
+
+  // 落库前先对拍：远端这批点与库里的旧行比较（新增/字段变化/一致，0 额外调用）
+  const storable = storableOnly(collected, category, classify);
+  const diff = diffAgainstCache(db, storable);
+  const res = storePois(db, city, null, category, storable, classify);
+
+  return {
+    calls,
+    fetched: collected.length,
+    inserted: res.inserted,
+    updated: res.updated,
+    errors,
+    mode: 'rect',
+    diff,
+  };
+}
+
+// ---- 缓存一致性对拍：远端刚取回的点 vs 库里旧行，逐字段比 ----
+// 高德没有「变更时间/增量」接口（POI 也没有版本号）⇒ 判「缓存是不是最新的」只能重取一次再对拍。
+// 我们每次实时搜索本来就把远端结果拿回来了，落库前顺手对拍一次 ⇒ 0 额外调用。
+const DIFF_FIELDS = [
+  'name',
+  'address',
+  'lng',
+  'lat',
+  'typecode',
+  'category',
+  'rating',
+  'cost',
+  'tel',
+  'photos',
+  'tags',
+];
+
+// 把「远端 POI」与「库行」的同一个字段归一成可比字符串（null/''/缺省 视为同值）
+function cmpVal(v, field) {
+  if (field === 'photos' || field === 'tags') {
+    if (Array.isArray(v)) return JSON.stringify(v);
+    return v == null || v === '' ? '[]' : String(v);
+  }
+  if (field === 'lng' || field === 'lat') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(6) : '';
+  }
+  return v == null ? '' : String(v);
+}
+
+// 对拍：返回 { checked, added, changed, same, changed_fields, samples }
+// added＝库里没有（首次入库）；changed＝字段有变；same＝逐字段与缓存一致
+function diffAgainstCache(db, pois) {
+  const out = { checked: 0, added: 0, changed: 0, same: 0, changed_fields: {}, samples: [] };
+  (pois || []).forEach((p) => {
+    if (!p || !p.id) return;
+    out.checked += 1;
+    const old = typeof db.getPoi === 'function' ? db.getPoi(p.id) : null;
+    if (!old) {
+      out.added += 1;
+      return;
+    }
+    const fields = DIFF_FIELDS.filter((f) => cmpVal(old[f], f) !== cmpVal(p[f], f));
+    if (!fields.length) {
+      out.same += 1;
+      return;
+    }
+    out.changed += 1;
+    fields.forEach((f) => {
+      out.changed_fields[f] = (out.changed_fields[f] || 0) + 1;
+    });
+    if (out.samples.length < 5) out.samples.push({ poi_id: p.id, name: p.name, fields });
+  });
+  return out;
+}
+
+// 只留会真正入库的那些点（与 storePois 的归类规则一致），否则会把要丢弃的点算进对拍
+function storableOnly(pois, category, classify) {
+  const fn = classify || classifyType;
+  return (Array.isArray(pois) ? pois : []).filter((p) => {
+    if (!p || !p.id) return false;
+    if (category === 'all') return !!fn(p.typecode);
+    return matchesCategory(p.typecode, category, fn);
+  });
 }
 
 module.exports = {
   liveRect,
+  diffAgainstCache,
+  storableOnly,
   bboxPolygon,
   inBbox,
   LIVE_MAX_PAGES,

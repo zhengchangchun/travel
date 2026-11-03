@@ -1,6 +1,7 @@
 const { loadConfig, loadCategories } = require('./config');
 
-const AMAP_BASE = 'https://restapi.amap.com';
+// 高德 Web 服务入口；可用 AMAP_BASE 环境变量指向本地假服务（联调/离线验收用，默认不变）
+const AMAP_BASE = process.env.AMAP_BASE || 'https://restapi.amap.com';
 
 let _config = null;
 let _categories = null;

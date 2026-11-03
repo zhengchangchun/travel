@@ -441,11 +441,24 @@
       UI.setStatus('实时搜索失败（高德调用 ' + calls + ' 次全失败）：' + errors[0]);
       return;
     }
-    const parts = [
-      '实时搜索 ' + calls + ' 次调用（当前地图范围内）',
-      '新增 ' + (Number(live.inserted) || 0) + ' 条',
-      '本区域 ' + state.pois.length + ' 条',
-    ];
+    const parts = ['实时搜索 ' + calls + ' 次调用（当前地图范围内）'];
+    // 对拍：远端这批点与本地缓存是否一致（0 额外调用，顺手比出来）
+    const d = live.diff;
+    if (d && d.checked) {
+      parts.push(
+        '远端 ' +
+          d.checked +
+          ' 条 → 新增 ' +
+          d.added +
+          ' · 有变化 ' +
+          d.changed +
+          ' · 与缓存一致 ' +
+          d.same
+      );
+    } else {
+      parts.push('新增 ' + (Number(live.inserted) || 0) + ' 条');
+    }
+    parts.push('本区域 ' + state.pois.length + ' 条');
     if (errors.length) parts.push('失败 ' + errors.length + ' 次：' + errors[0]);
     UI.setStatus(parts.join(' · '));
   }

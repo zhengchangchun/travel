@@ -3,7 +3,7 @@ const assert = require('node:assert');
 
 const { createApp } = require('../server/index');
 const { createDb } = require('../server/db');
-const { liveRect, bboxPolygon, inBbox, LIVE_MAX_PAGES } = require('../server/collect');
+const { liveRect, bboxPolygon, inBbox, LIVE_MAX_PAGES, diffAgainstCache, storableOnly } = require('../server/collect');
 
 const TEST_CONFIG = {
   port: 0,
@@ -185,6 +185,122 @@ test('liveRect：category=all 时按 typecode 归类，非四类丢弃', async (
   assert.equal(res.inserted, 2, '非四类 typecode 应被丢弃');
   assert.equal(db.listPois({ city: '杭州', category: 'stay' }).total, 1);
   assert.equal(db.listPois({ city: '杭州', category: 'food' }).total, 1);
+  db.close();
+});
+
+// ---------- 缓存一致性对拍 ----------
+
+function seed(db, p) {
+  db.upsertPoi({
+    poi_id: p.id,
+    city: '杭州',
+    adcode: '330102',
+    category: p.category || 'stay',
+    name: p.name,
+    address: p.address || '',
+    lng: p.lng,
+    lat: p.lat,
+    typecode: p.typecode || '100000',
+    rating: p.rating || null,
+    cost: p.cost || null,
+    tel: p.tel || null,
+    photos: p.photos || [],
+    tags: p.tags || [],
+  });
+}
+
+test('diffAgainstCache：新增 / 字段变化 / 一致 三分类，逐字段点名', () => {
+  const db = createDb(':memory:');
+  const base = mkPoi('D1', '100000', { name: '老名字', rating: '4.6' });
+  seed(db, base);
+  seed(db, mkPoi('D3', '100000', { name: '同名店' }));
+
+  const diff = diffAgainstCache(db, [
+    mkPoi('D1', '100000', { name: '新名字', rating: '4.6' }), // name 变了
+    mkPoi('D3', '100000', { name: '同名店' }), // 完全一致
+    mkPoi('D9', '100000', { name: '新店' }), // 库里没有
+  ]);
+
+  assert.equal(diff.checked, 3);
+  assert.equal(diff.added, 1, 'D9 应算新增');
+  assert.equal(diff.changed, 1, 'D1 应算有变化');
+  assert.equal(diff.same, 1, 'D3 应算一致');
+  assert.deepEqual(diff.changed_fields, { name: 1 });
+  assert.equal(diff.samples[0].poi_id, 'D1');
+  assert.deepEqual(diff.samples[0].fields, ['name']);
+  db.close();
+});
+
+test('diffAgainstCache：null/空串/缺省视为同值；坐标容差到 6 位；photos/tags 按数组比', () => {
+  const db = createDb(':memory:');
+  const seedFields = {
+    name: 'X',
+    address: 'addr',
+    lng: 120.16,
+    lat: 30.25,
+    rating: '4.5',
+    cost: '',
+    tel: '',
+    photos: ['u1', 'u2'],
+    tags: ['a'],
+  };
+  seed(db, { ...seedFields, id: 'E1' });
+
+  const incoming = (extra = {}) =>
+    mkPoi('E1', '100000', { ...seedFields, tel: null, cost: '', ...extra });
+
+  const same = diffAgainstCache(db, [incoming()]);
+  assert.equal(same.same, 1, 'null 与空串应视为同值');
+  assert.equal(same.changed, 0);
+
+  const changed = diffAgainstCache(db, [incoming({ rating: '4.9' })]);
+  assert.equal(changed.changed_fields.rating, 1, 'rating 变化应被认出');
+  assert.deepEqual(changed.changed_fields, { rating: 1 }, '其他字段不应误报');
+
+  const tol = diffAgainstCache(db, [incoming({ lng: 120.1600004 })]);
+  assert.equal(tol.same, 1, '坐标第 7 位以后不算变化（容差 6 位）');
+
+  const photos = diffAgainstCache(db, [incoming({ photos: ['u2', 'u1'] })]);
+  assert.equal(photos.changed_fields.photos, 1, 'photos 顺序变了应算变化');
+  db.close();
+});
+
+test('storableOnly：按归类规则先滤掉不会入库的点（否则对拍数字会虚高）', () => {
+  const list = [mkPoi('S1', '100000'), mkPoi('S2', '050100'), mkPoi('S3', '200000')];
+  assert.equal(storableOnly(list, 'stay').length, 1, 'stay 只应留 100000');
+  assert.equal(storableOnly(list, 'all').length, 2, 'all 应丢非四类');
+});
+
+test('liveRect：返回与缓存的对拍（0 额外调用）', async () => {
+  const db = createDb(':memory:');
+  seed(db, mkPoi('K1', '100000', { name: '老名字' }));
+  const amap = {
+    async searchPoiInArea() {
+      return [
+        mkPoi('K1', '100000', { name: '新名字' }), // 有变化
+        mkPoi('K2', '100000', { name: '新店' }), // 新增
+      ];
+    },
+  };
+  const res = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(res.diff.checked, 2);
+  assert.equal(res.diff.added, 1);
+  assert.equal(res.diff.changed, 1);
+  assert.equal(res.diff.same, 0);
+  assert.equal(res.diff.changed_fields.name, 1);
+  assert.equal(res.fetched, 2);
+  db.close();
+});
+
+test('liveRect：库里与远端逐字段相同 ⇒ diff.same 全中（缓存就是最新的）', async () => {
+  const db = createDb(':memory:');
+  const p = mkPoi('SAME1', '100000', { name: '一模一样', rating: '4.6' });
+  seed(db, { ...p, id: 'SAME1' });
+  const amap = { async searchPoiInArea() { return [p]; } };
+  const res = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(res.diff.same, 1, '应判「与缓存一致」');
+  assert.equal(res.diff.changed, 0);
+  assert.equal(res.diff.added, 0);
   db.close();
 });
 
