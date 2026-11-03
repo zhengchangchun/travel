@@ -310,6 +310,7 @@
     }
     renderCatChips();
     refresh();
+    fetchPoisInView(); // 分类变了 ⇒ 对当前视野重跑一次（先缓存后实时搜索）
   }
 
   function onPickPoi(poi) {

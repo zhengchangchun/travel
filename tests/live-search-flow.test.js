@@ -68,6 +68,12 @@ test('L19 手动采集模块已下线（用户 2026-11-03：数据采集那个�
   assert.ok(!/\bpollCollect\b/.test(APP), 'app.js 不应再有 pollCollect 轮询');
 });
 
+test('分类选择变化 ⇒ 对当前视野重跑一次（否则只是在筛缓存）', () => {
+  const m = APP.match(/function\s+onToggleChip[\s\S]*?\n  \}/);
+  assert.ok(m, '未找到 onToggleChip');
+  assert.match(m[0], /fetchPoisInView\(\)/, 'onToggleChip 未重跑视野加载（实时搜索不会触发）');
+});
+
 test('N20 切城市重置当前行程并重取', () => {
   const m = APP.match(/function\s+setCity[\s\S]*?\n  \}/);
   assert.ok(m, '未找到 setCity');
