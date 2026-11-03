@@ -107,53 +107,104 @@
     );
   }
 
+  // 单条渲染（抽出来供增量复用）
+  function buildItem(poi, key, sig, handlers, onPick) {
+    const color = window.TravelCategories.colorOf(poi.category);
+    const label = window.TravelCategories.labelOf(poi.category);
+    const meta = [
+      poi.rating ? '★ ' + poi.rating : '',
+      poi.cost ? '¥' + poi.cost : '',
+    ].filter(Boolean).join(' · ');
+    const selected = handlers.isSelected ? handlers.isSelected(poi) : false;
+    const isBase = handlers.isBase ? handlers.isBase(poi) : false;
+
+    const li = document.createElement('li');
+    li.className = 'poi-item';
+    li.dataset.key = key;
+    li.dataset.sig = sig;
+    li.innerHTML =
+      '<div class="poi-head">' +
+      '<span class="dot" style="background:' + esc(color) + '"></span>' +
+      '<b class="poi-name">' + esc(poi.name) + '</b>' +
+      topStarHtml(poi) +
+      '<span class="poi-tag">' + esc(label) + '</span>' +
+      (poi.category === 'stay' ? baseButton(isBase) : '') +
+      starButton(selected, color) +
+      '</div>' +
+      '<div class="poi-addr">' + esc(poi.address || '（无详细地址）') + '</div>' +
+      (meta ? '<div class="poi-meta">' + esc(meta) + '</div>' : '');
+    li.onclick = () => onPick(poi);
+    const star = li.querySelector('.star');
+    if (star && handlers.onToggleSelect) {
+      star.onclick = (e) => {
+        e.stopPropagation();
+        handlers.onToggleSelect(poi);
+      };
+    }
+    const basePick = li.querySelector('.base-pick');
+    if (basePick && handlers.onSetBase) {
+      basePick.onclick = (e) => {
+        e.stopPropagation();
+        handlers.onSetBase(poi);
+      };
+    }
+    return li;
+  }
+
+  // 结果列表：增量渲染（键 + 内容签名）——移动地图时只改动变化的行，不再整屏清空重建
   function renderResults(container, pois, onPick, handlers) {
     handlers = handlers || {};
-    container.innerHTML = '';
-    if (!pois.length) {
-      container.innerHTML = '<li class="empty">' + esc(handlers.emptyText || '没有结果') + '</li>';
+    const list = Array.isArray(pois) ? pois : [];
+    if (!list.length) {
+      container.replaceChildren
+        ? container.replaceChildren()
+        : (container.innerHTML = '');
+      const empty = document.createElement('li');
+      empty.className = 'empty';
+      empty.textContent = handlers.emptyText || '没有结果';
+      container.appendChild(empty);
       return;
     }
-    pois.forEach((poi) => {
-      const color = window.TravelCategories.colorOf(poi.category);
-      const label = window.TravelCategories.labelOf(poi.category);
-      const meta = [
-        poi.rating ? '★ ' + poi.rating : '',
-        poi.cost ? '¥' + poi.cost : '',
-      ].filter(Boolean).join(' · ');
-      const selected = handlers.isSelected ? handlers.isSelected(poi) : false;
-      const isBase = handlers.isBase ? handlers.isBase(poi) : false;
+    const DIFF = window.TravelDiff;
+    const keyOf = (p) => String(p.id || p.poi_id || p.name + '@' + p.lng + ',' + p.lat);
+    const sigOf = (p) =>
+      DIFF
+        ? DIFF.signatureOf([
+            p.name,
+            p.address,
+            p.category,
+            p.rating,
+            p.cost,
+            handlers.isSelected ? handlers.isSelected(p) : false,
+            handlers.isBase ? handlers.isBase(p) : false,
+          ])
+        : '';
 
-      const li = document.createElement('li');
-      li.className = 'poi-item';
-      li.innerHTML =
-        '<div class="poi-head">' +
-        '<span class="dot" style="background:' + esc(color) + '"></span>' +
-        '<b class="poi-name">' + esc(poi.name) + '</b>' +
-        topStarHtml(poi) +
-        '<span class="poi-tag">' + esc(label) + '</span>' +
-        (poi.category === 'stay' ? baseButton(isBase) : '') +
-        starButton(selected, color) +
-        '</div>' +
-        '<div class="poi-addr">' + esc(poi.address || '（无详细地址）') + '</div>' +
-        (meta ? '<div class="poi-meta">' + esc(meta) + '</div>' : '');
-      li.onclick = () => onPick(poi);
-      const star = li.querySelector('.star');
-      if (star && handlers.onToggleSelect) {
-        star.onclick = (e) => {
-          e.stopPropagation();
-          handlers.onToggleSelect(poi);
-        };
-      }
-      const basePick = li.querySelector('.base-pick');
-      if (basePick && handlers.onSetBase) {
-        basePick.onclick = (e) => {
-          e.stopPropagation();
-          handlers.onSetBase(poi);
-        };
-      }
-      container.appendChild(li);
+    const existing = new Map();
+    Array.from(container.querySelectorAll('li.poi-item')).forEach((li) => {
+      existing.set(li.dataset.key, { node: li, sig: li.dataset.sig || '' });
     });
+
+    const out = [];
+    list.forEach((poi) => {
+      const k = keyOf(poi);
+      const sig = sigOf(poi);
+      const hit = existing.get(k);
+      if (hit) existing.delete(k);
+      if (hit && hit.sig === sig) {
+        out.push(hit.node); // 签名一致：复用原节点（不重建、不闪）
+        return;
+      }
+      out.push(buildItem(poi, k, sig, handlers, onPick));
+    });
+    existing.forEach((v) => {
+      if (v.node && v.node.parentNode) v.node.parentNode.removeChild(v.node);
+    });
+    if (typeof container.replaceChildren === 'function') container.replaceChildren(...out);
+    else {
+      container.innerHTML = '';
+      out.forEach((n) => container.appendChild(n));
+    }
   }
 
   function renderSelectionPanel(container, pins, handlers) {

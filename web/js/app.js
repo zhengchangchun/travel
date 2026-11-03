@@ -303,7 +303,9 @@
 
   function renderMap(list, fit) {
     if (!MapCtl.isReady()) return;
-    MapCtl.setMarkers(list, (p) => Selection.has(p));
+    // 增量：只补新增 / 删消失，保留不动的旗子（移动地图时不整屏重画 ⇒ 不闪）
+    if (MapCtl.syncMarkers) MapCtl.syncMarkers(list, (p) => Selection.has(p));
+    else MapCtl.setMarkers(list, (p) => Selection.has(p));
     if (fit) MapCtl.fitView();
   }
 

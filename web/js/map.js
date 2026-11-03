@@ -155,6 +155,38 @@
     step();
   }
 
+  // 增量同步：只 补新增 / 删消失，保留不动的旗子（移动地图时不整屏重画，避免闪烁）
+  // 返回 { added, removed, kept }；未知/无 key 的点走 addMarker 的逻辑不变
+  function syncMarkers(list, isSelected) {
+    if (!map) return { added: 0, removed: 0, kept: 0 };
+    const items = list || [];
+    const wanted = new Map();
+    items.forEach((p) => {
+      const k = poiKey(p);
+      if (!wanted.has(k)) wanted.set(k, p);
+    });
+    let removed = 0;
+    Array.from(markers.keys()).forEach((k) => {
+      if (wanted.has(k)) return;
+      const m = markers.get(k);
+      try {
+        map.remove(m);
+      } catch (err) {
+        /* 已不在图上：忽略 */
+      }
+      markers.delete(k);
+      removed += 1;
+    });
+    let added = 0;
+    wanted.forEach((p, k) => {
+      if (markers.has(k)) return;
+      addMarker(p, isSelected ? isSelected(p) : false);
+      if (markers.has(k)) added += 1;
+    });
+    markerBatch += 1; // 让未画完的旧批次停手（只影响 setMarkers 的分帧）
+    return { added, removed, kept: markers.size - added };
+  }
+
   // 增量落旗：只补尚无的旗子（不整体重画，避免闪烁）。返回新增数量。
   function addMarkers(list, isSelected) {
     if (!map) return 0;
@@ -375,6 +407,7 @@
     addMarker,
     setMarkers,
     addMarkers,
+    syncMarkers,
     markerCount,
     fitView,
     fitBbox,
