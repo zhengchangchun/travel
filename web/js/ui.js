@@ -35,20 +35,6 @@
     el.classList.remove('hidden');
   }
 
-  // T9 R4：本区域采集进度「已采 x / y 格」；total 为 0 时隐藏
-  function setViewProgress(done, total) {
-    const el = $('view-progress');
-    if (!el) return;
-    const t = Number(total) || 0;
-    if (!t) {
-      el.textContent = '';
-      el.classList.add('hidden');
-      return;
-    }
-    el.textContent = '本区域已采 ' + (Number(done) || 0) + ' / ' + t + ' 格';
-    el.classList.remove('hidden');
-  }
-
   function showMapError(msg) {
     const el = $('map-error');
     if (!el) return;
@@ -218,7 +204,6 @@
     setStatus,
     setViewCount,
     setViewHint,
-    setViewProgress,
     showMapError,
     hideMapError,
     renderChips,

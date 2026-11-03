@@ -607,7 +607,76 @@ async function collectViewport({
   };
 }
 
+// ---- 实时搜索（不收录）：视野 → 粗格切分 → 每格 1 次调用，立即返回 ----
+// 与「按格收录」的区别：不翻页、不做半径细分、不标覆盖、不等整片采完；
+// 一次视野 ≤ LIVE_MAX_CELLS 次调用（原来一屏可到 100+ 格）。
+const LIVE_TARGET_CELL_KM = 2; // 粗格目标边长（km）
+const LIVE_MAX_AXIS = 3; // 每轴最多 3 格 ⇒ 最多 9 格
+const LIVE_MAX_CELLS = LIVE_MAX_AXIS * LIVE_MAX_AXIS;
+const LIVE_RADIUS_MIN = 300; // 半径下限（米）
+const LIVE_RADIUS_MAX = 50000; // 高德 around 半径上限（米）
+const KM_PER_DEG = 111.32;
+
+// 视野 bbox（度）→ 粗格列表 [{lng, lat, radius}]，每格取中心 + 覆盖该格的半径
+function liveGrids(bbox) {
+  const minLng = Number(bbox.minLng);
+  const minLat = Number(bbox.minLat);
+  const spanLng = Number(bbox.maxLng) - minLng;
+  const spanLat = Number(bbox.maxLat) - minLat;
+  const nx = Math.max(1, Math.min(LIVE_MAX_AXIS, Math.ceil((spanLng * KM_PER_DEG) / LIVE_TARGET_CELL_KM)));
+  const ny = Math.max(1, Math.min(LIVE_MAX_AXIS, Math.ceil((spanLat * KM_PER_DEG) / LIVE_TARGET_CELL_KM)));
+  const wStep = spanLng / nx;
+  const hStep = spanLat / ny;
+  const out = [];
+  for (let i = 0; i < nx; i += 1) {
+    for (let j = 0; j < ny; j += 1) {
+      const halfDiag =
+        Math.hypot(wStep * KM_PER_DEG * 1000, hStep * KM_PER_DEG * 1000) / 2;
+      out.push({
+        lng: minLng + wStep * (i + 0.5),
+        lat: minLat + hStep * (j + 0.5),
+        radius: Math.round(
+          Math.min(LIVE_RADIUS_MAX, Math.max(LIVE_RADIUS_MIN, halfDiag * 1.2))
+        ),
+      });
+    }
+  }
+  return out;
+}
+
+// 实时搜索一个视野：每格 1 次 around（单页），结果落库当缓存；不做覆盖标记
+// 返回 { calls, inserted, updated, cells, errors }；单格失败不影响其他格
+async function liveViewport({ amap, db, city, category = 'all', bbox, classify, rateLimiter }) {
+  const cells = liveGrids(bbox).slice(0, LIVE_MAX_CELLS);
+  let calls = 0;
+  let inserted = 0;
+  let updated = 0;
+  const errors = [];
+  for (const cell of cells) {
+    if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
+    calls += 1;
+    try {
+      const pois = await amap.searchPoiAround({
+        lng: cell.lng,
+        lat: cell.lat,
+        category,
+        radius: cell.radius,
+        page: 1,
+      });
+      const res = storePois(db, city, null, category, pois, classify);
+      inserted += res.inserted;
+      updated += res.updated;
+    } catch (err) {
+      errors.push((err && err.message) || String(err));
+    }
+  }
+  return { calls, inserted, updated, cells: cells.length, errors };
+}
+
 module.exports = {
+  liveViewport,
+  liveGrids,
+  LIVE_MAX_CELLS,
   collectCityCategory,
   collectDistrict,
   collectViewport,

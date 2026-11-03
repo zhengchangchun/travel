@@ -3,6 +3,7 @@ const {
   collectViewport,
   bboxToGrids,
   releaseViewportGrids,
+  liveViewport,
   MAX_VIEWPORT_GRIDS,
 } = require('../collect');
 const { toDetail } = require('../poi-detail');
@@ -130,6 +131,35 @@ module.exports = [
         offset,
         bbox: parseBbox(ctx, bbox),
       });
+    },
+  },
+  // 实时搜索（不是收录）：当前视野 → 粗格（≤ 9）× 每格 1 次高德调用 → 结果落库当缓存 →
+  // 立即返回该视野的完整结果（缓存 + 刚搜到的）。单格失败不阻断，错误在 live.errors 里回报。
+  {
+    method: 'GET',
+    path: '/api/poi/inview',
+    async handler(ctx) {
+      const city = requireCity(ctx, ctx.query.city);
+      const bbox = parseBbox(ctx, ctx.query.bbox);
+      if (!bbox) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 bbox');
+      const category =
+        (ctx.query.category && String(ctx.query.category).trim()) || 'all';
+      const live = await liveViewport({
+        amap: ctx.amap,
+        db: ctx.db,
+        city,
+        category,
+        bbox,
+        rateLimiter: ctx.viewportRateLimiter,
+      });
+      const result = ctx.db.listPois({ city, bbox });
+      return {
+        city,
+        category,
+        total: result.total,
+        items: result.items,
+        live,
+      };
     },
   },
   {

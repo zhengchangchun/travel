@@ -227,11 +227,10 @@ check('T8-P85', 'L13/L14/L16 前端：门控 + 自动采集 + 渐进补旗资产
   assert.match(app, /const\s+MIN_COLLECT_ZOOM\s*=\s*13/);
   assert.match(app, /zoom\s*<\s*MIN_COLLECT_ZOOM/);
   assert.match(app, /放大地图以加载本区域地点/);
-  assert.match(app, /本区域加载中/);
-  assert.match(app, /autoCollectViewport/);
-  assert.match(app, /API\.coverage/);
-  assert.match(app, /API\.collectViewport/);
-  assert.match(app, /MapCtl\.addMarkers/);
+  assert.match(app, /本区域搜索中/);
+  assert.match(app, /liveSearchViewport/);
+  assert.match(app, /API\.liveInView/);
+  assert.match(app, /MapCtl\.setMarkers/);
   assert.match(map, /function\s+addMarkers/);
   const idx = readFile('web/index.html');
   assert.ok(idx.includes('id="view-hint"'), 'index 缺 #view-hint');

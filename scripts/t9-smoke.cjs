@@ -165,16 +165,16 @@ check('T9-P99', 'R5 中心格优先：先采离 bbox 中心最近的格', async 
   db.close();
 });
 
-check('T9-P100', 'R1/R4 前端资产：单分类轮转 + 已采进度 + 停旧轮询', () => {
+check('T9-P100', 'L-1 前端资产：实时搜索本视野（不再按格收录）', () => {
   const app = readFile('web/js/app.js');
-  const ui = readFile('web/js/ui.js');
-  const idx = readFile('web/index.html');
-  assert.match(app, /CATEGORY_ROTATION/);
-  assert.match(app, /pickCollectCategory/);
-  assert.match(app, /stopViewportPoll/);
-  assert.match(app, /UI\.setViewProgress/);
-  assert.match(ui, /本区域已采/);
-  assert.ok(idx.includes('id="view-progress"'), 'index 缺 #view-progress');
+  const api = readFile('web/js/api.js');
+  assert.match(app, /liveSearchViewport/);
+  assert.match(app, /liveCategory/);
+  assert.match(app, /本区域搜索中/);
+  assert.match(api, /liveInView/);
+  assert.match(api, /\/api\/poi\/inview/);
+  assert.ok(!/autoCollectViewport/.test(app), 'app.js 不应再有按格收录入口');
+  assert.ok(!/setViewProgress/.test(app), 'app.js 不应再有已采格进度');
 });
 
 async function main() {

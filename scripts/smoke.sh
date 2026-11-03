@@ -489,11 +489,12 @@ ok "T4-P48 前端分类过滤 + 数据源切缓存（listPois / chips）"
 [[ "${CSS_T4}" == *legend-bar* ]] || fail "T4-P49 css 缺图例渐变条"
 ok "T4-P49 评分色阶 + 图例就绪（colorFor / score-legend / legend-bar）"
 
-# T4-P50 采集模块已下线（2026-11-03 用户要求）；自动采集资产仍在
+# T4-P50 采集模块已下线（2026-11-03 用户要求）；视野加载改为实时搜索
 [[ "${IDX_T4}" != *'id="collect-btn"'* ]] || fail "T4-P50 index 不应再有采集按钮"
 [[ "${IDX_T4}" != *'id="collect-progress"'* ]] || fail "T4-P50 index 不应再有采集进度容器"
-[[ "${A_APP}" == *autoCollectViewport* ]] || fail "T4-P50 app.js 缺自动采集入口"
-ok "T4-P50 手动采集模块已下线，自动采集（autoCollectViewport）仍在"
+[[ "${A_APP}" == *liveSearchViewport* ]] || fail "T4-P50 app.js 缺实时搜索入口"
+[[ "${A_APP}" == *API.liveInView* ]] || fail "T4-P50 app.js 未调用实时搜索接口"
+ok "T4-P50 手动采集模块已下线，视野加载＝实时搜索（liveSearchViewport / API.liveInView）"
 
 # T4-P51 工程约束：key 未硬编码（node_modules / dependencies / 脚本卫生见 P28）
 if node -e '

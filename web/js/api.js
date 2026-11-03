@@ -93,16 +93,11 @@
     route: (params) => request('/api/route?' + qs(params)),
     itineraryRoute: (city, mode) => request('/api/itinerary/route?' + qs({ city, mode })),
 
-    // POI 缓存与采集（T4）
+    // POI 缓存与实时搜索（T4 / L-1）
     listPois: (params) => request('/api/pois?' + qs(params)),
+    // 实时搜索：视野 → 高德（≤ 9 次）→ 落库当缓存 → 返回本视野结果
+    liveInView: (params) => request('/api/poi/inview?' + qs(params)),
     poisStats: (city) => request('/api/pois/stats?' + qs({ city })),
     getPoiDetail: (poiId) => request('/api/pois/' + encodeURIComponent(poiId)),
-    collect: (payload) => request('/api/collect', post(payload)),
-    collectStatus: (runId) => request('/api/collect/status?' + qs({ runId })),
-    collectRuns: (city) => request('/api/collect/runs?' + qs({ city })),
-
-    // 按视野自动采集（T8）
-    coverage: (params) => request('/api/coverage?' + qs(params)),
-    collectViewport: (payload) => request('/api/collect/viewport', post(payload)),
   };
 })();
