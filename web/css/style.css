@@ -476,8 +476,17 @@ button.danger:hover { background: #ad2102; }
 
 /* ---- 笔记版式详情卡（大图 + 来源角标 + 缩略图条 + 信息 chip） ---- */
 .infocard .note-hero { position: relative; }
-.infocard .gallery-main { position: relative; border-radius: 12px; overflow: hidden; }
-.infocard .gallery-img { width: 100%; height: 210px; object-fit: cover; display: block; }
+.infocard .gallery-main {
+  position: relative; border-radius: 12px; overflow: hidden;
+  height: 210px; background: #F3F1EC; /* 高度随图片比例自适应（见 detail.js），默认 210 */
+}
+/* 整图完整显示：不放大裁切（高德官图常是海报/字标，裁切会只看到一大块原图局部） */
+.infocard .gallery-img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+  background: #F3F1EC; margin: 0 auto;
+}
+.infocard .note-thumb { object-fit: cover; }
+.infocard img { max-width: 100%; }
 .infocard .badge-comment {
   position: absolute; left: 8px; bottom: 8px; z-index: 2;
   background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px;

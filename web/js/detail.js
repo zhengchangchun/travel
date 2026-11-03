@@ -101,7 +101,7 @@
                 i +
                 '" src="' +
                 esc(p.url) +
-                '" alt="" />'
+                '" alt="" loading="lazy" decoding="async" />'
             )
             .join('') +
           '</div>'
@@ -109,7 +109,7 @@
     return (
       '<div class="note-hero gallery" data-count="' + photos.length + '">' +
       '<div class="gallery-main">' +
-      '<img class="gallery-img" src="' + esc(first.url) + '" alt="" />' +
+      '<img class="gallery-img" src="' + esc(first.url) + '" alt="" decoding="async" />' +
       '<span class="badge-comment">' + esc(ps.label) + ' · 来源：' + esc(ps.source) + '</span>' +
       (multi
         ? '<button class="gallery-prev" type="button" title="上一张">‹</button>' +
@@ -236,6 +236,17 @@
         img.style.display = 'none';
         if (main) main.classList.add('img-failed');
       };
+      // 高度随图片比例自适应（160–340px）：整图完整显示，不把大原图裁成一块
+      img.onload = () => {
+        if (!main) return;
+        const nw = img.naturalWidth || 0;
+        const nh = img.naturalHeight || 0;
+        if (!nw || !nh) return;
+        const w = main.clientWidth || 300;
+        const h = Math.min(340, Math.max(160, Math.round((w * nh) / nw)));
+        main.style.height = h + 'px';
+      };
+      if (img.complete && img.naturalWidth) img.onload();
     }
     const prev = card.querySelector('.gallery-prev');
     const next = card.querySelector('.gallery-next');
