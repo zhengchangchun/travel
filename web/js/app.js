@@ -16,6 +16,10 @@
   // T9 R1：一次只采一个分类；筛选为「全部」时按此顺序轮转（可被 config.categoryRotation 覆盖）
   const CATEGORY_ROTATION = ['food', 'stay', 'sight', 'play'];
 
+  // 默认评分过滤＝已勾选「≥4.0」（用户 2026-11-02：默认过滤条件勾选 4 分以上）
+  // 必须在 state 之前声明：state 初始化时会读取它
+  const DEFAULT_RATING_FILTER = '4.0';
+
   const state = {
     config: null,
     city: null,
@@ -43,9 +47,6 @@
     { key: '4.5', label: '≥4.5' },
     { key: 'top', label: '★满分' },
   ];
-
-  // 默认评分过滤＝已勾选「≥4.0」（用户 2026-11-02：默认过滤条件勾选 4 分以上）
-  const DEFAULT_RATING_FILTER = '4.0';
 
   function $(id) {
     return document.getElementById(id);

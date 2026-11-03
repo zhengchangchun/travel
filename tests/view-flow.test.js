@@ -51,6 +51,11 @@ test('默认评分过滤：初始即勾选 ≥4.0，切城市保持同一默认'
     /state\.ratingFilter\s*=\s*DEFAULT_RATING_FILTER/,
     '切城市未重置为同一默认值'
   );
+  // TDZ 守卫：state 初始化会读该常量，常量必须先声明
+  assert.ok(
+    APP.indexOf('const DEFAULT_RATING_FILTER') < APP.indexOf('const state ='),
+    'DEFAULT_RATING_FILTER 必须在 state 之前声明（否则运行时 TDZ 报错）'
+  );
 });
 
 test('双口径计数：当前视野 N 条 · 全城已收录 M 条', () => {
