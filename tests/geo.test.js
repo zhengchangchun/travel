@@ -51,6 +51,17 @@ test('distanceM：同点为 0、杭州→上海约 165km、非法返回 null', (
   assert.equal(Geo.distanceM({ lng: 'a', lat: 1 }, hz), null);
 });
 
+test('geo.num/validLngLat：null・空串不算坐标（防 Number(null)===0 被当成 (0,0)）', () => {
+  assert.ok(Number.isNaN(Geo.num(null)), 'null 应 NaN');
+  assert.ok(Number.isNaN(Geo.num('')), '空串应 NaN');
+  assert.ok(Number.isNaN(Geo.num(undefined)), 'undefined 应 NaN');
+  assert.equal(Geo.num('120.5'), 120.5);
+  assert.equal(Geo.validLngLat({ lng: null, lat: 1 }), false);
+  assert.equal(Geo.validLngLat({ lng: 120, lat: 30 }), true);
+  assert.equal(Geo.distanceM({ lng: null, lat: null }, { lng: 120, lat: 30 }), null, 'null 坐标不得算距离');
+  assert.equal(Geo.inBbox({ lng: null, lat: null }, { minLng: -1, minLat: -1, maxLng: 121, maxLat: 31 }), false);
+});
+
 test('humanDistance：米/公里两档显示', () => {
   assert.equal(Geo.humanDistance(320), '320 m');
   assert.equal(Geo.humanDistance(999), '999 m');

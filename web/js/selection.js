@@ -141,6 +141,34 @@
     }
   }
 
+  // 整单重排（自动成线用）：按给定 poi_id 顺序重排并落库；失败回滚
+  async function reorder(orderedIds) {
+    const want = (Array.isArray(orderedIds) ? orderedIds : []).map(String);
+    if (!want.length) return pins.slice();
+    const byId = new Map(pins.map((p) => [p.id, p]));
+    const next = [];
+    want.forEach((id) => {
+      const hit = byId.get(id);
+      if (hit) {
+        next.push(hit);
+        byId.delete(id);
+      }
+    });
+    byId.forEach((p) => next.push(p)); // 没点名的保持原相对顺序附在末尾
+    if (next.length !== pins.length) return pins.slice();
+    const backup = pins;
+    pins = next;
+    notify();
+    try {
+      await API.reorderSelection({ city, poi_ids: next.map((p) => p.id) });
+      return next;
+    } catch (err) {
+      pins = backup;
+      notify();
+      throw err;
+    }
+  }
+
   function subscribe(fn) {
     listeners.push(fn);
     return () => {
@@ -158,6 +186,7 @@
     remove,
     toggle,
     move,
+    reorder,
     subscribe,
     keyOf,
     getCity: () => city,

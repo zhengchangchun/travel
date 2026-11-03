@@ -8,6 +8,7 @@
   const Itinerary = window.TravelItinerary;
   const Route = window.TravelRoute;
   const Geo = window.TravelGeo;
+  const Planner = window.TravelPlanner;
 
   // 住宿锚点持久化键（localStorage；服务端持久化后续再上）
   const BASE_KEY = 'travel.base';
@@ -39,6 +40,7 @@
     showAll: false, // 是否勾了「全部」分类；未勾且没选具体分类 ⇒ 不显示地点
     base: null, // 住宿锚点（{id,name,lng,lat,category,rating,address,city}），localStorage 持久化
     baseRadiusM: 1000, // 锚点周边半径（米）
+    autoReturn: false, // 自动成线：是否闭环回到住宿
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
@@ -318,11 +320,49 @@
   }
 
   function renderItinerary() {
-    Itinerary.render($('itinerary-list'), Selection.list(), {
+    const list = Selection.list();
+    Itinerary.render($('itinerary-list'), list, {
       onMove: onMovePin,
       onRemove: onRemoveFromItinerary,
     });
-    if (Route) Route.draw(state.city, Selection.list());
+    if (!Route) return;
+    // 「回到住宿」：把锚点当成最后一段接上（锚点已单独高亮，不写进行程点序）
+    const start = baseForPlan();
+    Route.draw(state.city, state.autoReturn && start && list.length ? list.concat([start]) : list);
+  }
+
+  // 当前城市的住宿锚点（没定/不同城 ⇒ null）
+  function baseForPlan() {
+    const b = state.base;
+    if (!b || !Number.isFinite(Number(b.lng)) || !Number.isFinite(Number(b.lat))) return null;
+    if (b.city && state.city && b.city !== state.city) return null;
+    return b;
+  }
+
+  // 自动成线：锚点（有则当起点） + 已挑的点，按最近邻排序 → 落库顺序 → 切行程视图（连线 + 总里程/耗时）
+  async function onAutoPlan() {
+    const pins = Selection.list();
+    if (!pins.length) {
+      UI.setStatus('先在地图上把想去的地方挑进来（点列表里的 ★）');
+      return;
+    }
+    const start = baseForPlan();
+    const plan = Planner.planStops({ stops: pins, start, returnToStart: state.autoReturn });
+    try {
+      await Selection.reorder(plan.order.map((p) => p.id));
+    } catch (err) {
+      UI.setStatus('自动排序保存失败：' + err.message);
+      return;
+    }
+    setView('itinerary');
+    UI.setStatus(
+      '自动成线：' +
+        plan.order.length +
+        ' 个点 · 直线里程 ' +
+        Geo.humanDistance(plan.distanceM) +
+        (plan.closed ? ' · 含回到住宿' : '') +
+        ' · 出行方式在行程视图里切换'
+    );
   }
 
   function refresh(opts) {
@@ -863,6 +903,16 @@
       };
     }
     $('plan-btn').onclick = onPlan;
+    const autoBtn = $('auto-plan-btn');
+    if (autoBtn) autoBtn.onclick = onAutoPlan;
+    const autoReturn = $('auto-return');
+    if (autoReturn) {
+      autoReturn.checked = !!state.autoReturn;
+      autoReturn.onchange = () => {
+        state.autoReturn = !!autoReturn.checked;
+        if (state.view === 'itinerary') renderItinerary();
+      };
+    }
     $('panel-toggle').onclick = onTogglePanel;
     $('itinerary-back').onclick = () => setView('list');
     $('itinerary-copy').onclick = onCopyItinerary;

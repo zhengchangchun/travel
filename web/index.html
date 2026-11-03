@@ -96,6 +96,10 @@
             <button id="only-selected-btn" class="chip toggle" title="只看我选中的">只看我选中的</button>
             <button id="plan-btn" class="primary" title="规划行程">规划行程</button>
           </div>
+          <div class="row">
+            <button id="auto-plan-btn" class="ghost" title="按距离自动排序并连线">自动成线</button>
+            <label class="check"><input type="checkbox" id="auto-return" /> 回到住宿</label>
+          </div>
           <ul id="selection-list" class="poi-list"></ul>
           <div id="itinerary-panel" class="hidden">
             <div class="row itin-toolbar">
@@ -141,6 +145,7 @@
   <script src="/js/selection.js"></script>
   <script src="/js/score-color.js"></script>
   <script src="/js/geo.js"></script>
+  <script src="/js/planner.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/ui.js"></script>
   <script src="/js/detail.js"></script>

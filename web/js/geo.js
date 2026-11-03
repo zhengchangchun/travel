@@ -7,13 +7,26 @@
     return (Number(d) * Math.PI) / 180;
   }
 
+  // 严格数值解析：null/undefined/空串/非数字一律 NaN（注意 Number(null)===0 会误判成 (0,0)）
+  function num(v) {
+    if (v === null || v === undefined || v === '') return NaN;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  // 坐标是否可用
+  function validLngLat(p) {
+    if (!p) return false;
+    return Number.isFinite(num(p.lng)) && Number.isFinite(num(p.lat));
+  }
+
   // 两点球面距离（米）——haversine
   function distanceM(a, b) {
     if (!a || !b) return null;
-    const lng1 = Number(a.lng);
-    const lat1 = Number(a.lat);
-    const lng2 = Number(b.lng);
-    const lat2 = Number(b.lat);
+    const lng1 = num(a.lng);
+    const lat1 = num(a.lat);
+    const lng2 = num(b.lng);
+    const lat2 = num(b.lat);
     if (![lng1, lat1, lng2, lat2].every((n) => Number.isFinite(n))) return null;
     const dLat = toRad(lat2 - lat1);
     const dLng = toRad(lng2 - lng1);
@@ -26,8 +39,8 @@
   // 以中心点 + 半径（米）算一个经纬矩形：周边搜索就按这个框查（正好命中后端 bbox 口径）
   function bboxAround(center, radiusM) {
     if (!center) return null;
-    const lng = Number(center.lng);
-    const lat = Number(center.lat);
+    const lng = num(center.lng);
+    const lat = num(center.lat);
     const r = Math.max(1, Number(radiusM) || 1000);
     if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
     const dLat = r / DEG_LAT_M;
@@ -50,8 +63,8 @@
   // 点是否在框内（前端本地裁剪用）
   function inBbox(p, bbox) {
     if (!p || !bbox) return false;
-    const lng = Number(p.lng);
-    const lat = Number(p.lat);
+    const lng = num(p.lng);
+    const lat = num(p.lat);
     return (
       Number.isFinite(lng) &&
       Number.isFinite(lat) &&
@@ -70,7 +83,7 @@
     return (n / 1000).toFixed(1) + ' km';
   }
 
-  const api = { EARTH_R, DEG_LAT_M, distanceM, bboxAround, bboxQuery, inBbox, humanDistance };
+  const api = { EARTH_R, DEG_LAT_M, num, validLngLat, distanceM, bboxAround, bboxQuery, inBbox, humanDistance };
   if (typeof window !== 'undefined') window.TravelGeo = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
