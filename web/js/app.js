@@ -41,6 +41,7 @@
     base: null, // 住宿锚点（{id,name,lng,lat,category,rating,address,city}），localStorage 持久化
     baseRadiusM: 1000, // 锚点周边半径（米）
     autoReturn: false, // 自动成线：是否闭环回到住宿
+    queriedAt: {}, // 刚查过的视野框（key → 时间戳），TTL 内不重复打接口
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
@@ -194,6 +195,7 @@
     const subEl = $('base-sub');
     const aroundBtn = $('base-around-btn');
     const clearBtn = $('base-clear-btn');
+    const locateBtn = $('base-locate-btn');
     const radiusSel = $('base-radius');
     if (radiusSel) radiusSel.value = String(state.baseRadiusM);
     if (state.base) {
@@ -212,11 +214,13 @@
       }
       if (aroundBtn) aroundBtn.disabled = false;
       if (clearBtn) clearBtn.disabled = false;
+      if (locateBtn) locateBtn.disabled = false;
     } else {
       nameEl.textContent = '未设定';
       if (subEl) subEl.textContent = '在住宿结果里点「住这」定锚点';
       if (aroundBtn) aroundBtn.disabled = true;
       if (clearBtn) clearBtn.disabled = true;
+      if (locateBtn) locateBtn.disabled = true;
     }
     if (MapCtl.setBase) MapCtl.setBase(baseIdOf(state.base));
   }
@@ -249,6 +253,17 @@
     renderBase();
     refresh();
     UI.setStatus('已清除住宿锚点');
+  }
+
+  // 相机回到住宿锚点（不改变筛选，也不重新打接口）
+  function locateBase() {
+    const b = baseForPlan();
+    if (!b) {
+      UI.setStatus('先定一个住宿锚点');
+      return;
+    }
+    flyTo(Number(b.lng), Number(b.lat), 15);
+    UI.setStatus('已回中：' + (b.name || '住宿锚点'));
   }
 
   // 看住宿周边：分类锁到「美食＋景点」，相机落到周边框 ⇒ moveend 会触发视野加载（读缓存＋实时搜索）
@@ -604,13 +619,40 @@
     return 'all';
   }
 
-  // 实时搜索当前地图矩形：打高德 place/polygon（1–4 次调用，一页不满 25 条即停）→ 框内结果落库当缓存 → 立刻整屏刷新
+  // 同一范围重复查看不重复打接口：记住刚查过的框（含分类），TTL 内直接走缓存
+  const QUERY_TTL_MS = 10 * 60 * 1000;
+
+  function queryKeyOf(bbox, category) {
+    if (!bbox) return null;
+    const f = (n) => Number(n).toFixed(5); // 微抖容忍：5 位小数
+    return [f(bbox.minLng), f(bbox.minLat), f(bbox.maxLng), f(bbox.maxLat), category].join('|');
+  }
+
+  function recentlyQueried(key) {
+    if (!key) return 0;
+    const at = state.queriedAt[key];
+    if (!at) return 0;
+    const age = Date.now() - at;
+    return age >= 0 && age < QUERY_TTL_MS ? age : 0;
+  }
+
+  // 实时搜索当前地图矩形：打高德 place/polygon（1–4 次调用，一页不满 25 条即停）→ 框内结果落库当缓存 → 立刻整屏刷新8
   async function liveSearchViewport(bbox, seq) {
     if (!state.city || !bbox) return;
     const category = liveCategory();
     if (!category) {
       UI.setViewHint('');
       return; // 默认不选分类：不查高德，只显示缓存里已选中的分类（通常为空）
+    }
+    // 同一范围刚查过（默认 10 分钟内）⇒ 直接用缓存，不再打接口
+    const key = queryKeyOf(bbox, category);
+    const age = recentlyQueried(key);
+    if (age) {
+      UI.setViewHint('');
+      UI.setStatus(
+        '本范围 ' + Math.max(1, Math.round(age / 60000)) + ' 分钟前刚查过 ⇒ 走缓存（0 次调用）'
+      );
+      return;
     }
     UI.setViewHint('本区域搜索中…');
     let res;
@@ -624,6 +666,7 @@
     }
     if (seq !== state.viewSeq) return; // 丢弃过期响应
     UI.setViewHint('');
+    state.queriedAt[key] = Date.now(); // 记下这个框刚查过
     state.pois = dedupe(res.items || []);
     UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
     await loadCityTotals(state.city);
@@ -894,6 +937,8 @@
     if (aroundBtn) aroundBtn.onclick = showAroundBase;
     const clearBtn = $('base-clear-btn');
     if (clearBtn) clearBtn.onclick = clearBase;
+    const locateBtn = $('base-locate-btn');
+    if (locateBtn) locateBtn.onclick = locateBase;
     const radiusSel = $('base-radius');
     if (radiusSel) {
       radiusSel.onchange = () => {

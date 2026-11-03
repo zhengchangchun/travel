@@ -61,6 +61,31 @@ test('看周边：分类锁到 美食+景点，相机落到周边框（触发视
   assert.match(APP, /state\.baseRadiusM = Number\(radiusSel\.value\)/, '半径切换未生效');
 });
 
+test('一键回中：回中按钮把相机拉回住宿锚点且不重查接口', () => {
+  assert.match(HTML, /id="base-locate-btn"[^>]*>回中/, 'index 缺「回中」按钮');
+  const m = APP.match(/function\s+locateBase[\s\S]*?\n  \}/);
+  assert.ok(m, '缺 locateBase');
+  assert.match(m[0], /flyTo\(Number\(b\.lng\), Number\(b\.lat\), 15\)/, '回中未把相机拉到锚点');
+  assert.ok(!/fetchPoisInView|liveSearchViewport/.test(m[0]), '回中不应触发查询');
+  assert.match(APP, /locateBtn\.onclick = locateBase/, '按钮未绑定');
+});
+
+test('同一范围重复查看不重复打接口：TTL 内直接走缓存', () => {
+  assert.match(APP, /const QUERY_TTL_MS = 10 \* 60 \* 1000/, '缺 TTL 常量');
+  assert.match(APP, /queriedAt: \{\}/, 'state 缺 queriedAt');
+  assert.match(APP, /function\s+queryKeyOf/, '缺 queryKeyOf');
+  assert.match(APP, /function\s+recentlyQueried/, '缺 recentlyQueried');
+  const m = APP.match(/async function\s+liveSearchViewport[\s\S]*?\n  \}/);
+  assert.ok(m, '缺 liveSearchViewport');
+  assert.match(m[0], /const age = recentlyQueried\(key\)/, '未先查 TTL');
+  assert.match(m[0], /走缓存（0 次调用）/, '缺去重提示');
+  assert.match(m[0], /state\.queriedAt\[key\] = Date\.now\(\)/, '查完未记录时间戳');
+  // 去重判断必须在真正发请求之前
+  const dupAt = m[0].indexOf('recentlyQueried(key)');
+  const reqAt = m[0].indexOf('API.liveInView(');
+  assert.ok(dupAt >= 0 && reqAt > dupAt, 'TTL 去重应在发请求之前');
+});
+
 test('锚点常驻显示：被过滤掉也带上 + 地图金色「住」标', () => {
   assert.match(APP, /function\s+ensureBaseVisible/, '缺 ensureBaseVisible');
   assert.match(APP, /ensureBaseVisible\(currentList\(\)\)/, 'refresh 未用 ensureBaseVisible');
