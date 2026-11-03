@@ -247,6 +247,14 @@
     map.on('zoomend', schedule);
   }
 
+  // 相机一落定立刻回调（不防抖）：用于「只显示当前地图范围内的」——平移/缩放结束时马上摘掉框外的旗
+  function onViewSettled(cb) {
+    if (!map) return;
+    const fire = () => cb(getBounds());
+    map.on('moveend', fire);
+    map.on('zoomend', fire);
+  }
+
   function onMarkerClick(cb) {
     clickHandler = cb;
   }
@@ -350,6 +358,7 @@
     getBounds,
     setZoomAndCenter,
     onMoveEnd,
+    onViewSettled,
     onMarkerClick,
     flagHtml,
     routeStyle,

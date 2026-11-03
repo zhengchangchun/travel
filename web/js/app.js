@@ -717,6 +717,10 @@
         jsApiSecurityCode: state.config.jsApiSecurityCode,
       });
       MapCtl.onMarkerClick((poi) => onPickPoi(poi));
+      // 相机落定 → 立刻按新框裁剪已显示的旗；再防抖后加载（先缓存后实时搜索）
+      MapCtl.onViewSettled((bounds) => {
+        if (!state.suppressView) pruneToViewport(bounds);
+      });
       MapCtl.onMoveEnd(() => onViewChanged());
       UI.hideMapError();
     } catch (err) {
