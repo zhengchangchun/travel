@@ -607,76 +607,77 @@ async function collectViewport({
   };
 }
 
-// ---- 实时搜索（不收录）：视野 → 粗格切分 → 每格 1 次调用，立即返回 ----
-// 与「按格收录」的区别：不翻页、不做半径细分、不标覆盖、不等整片采完；
-// 一次视野 ≤ LIVE_MAX_CELLS 次调用（原来一屏可到 100+ 格）。
-const LIVE_TARGET_CELL_KM = 2; // 粗格目标边长（km）
-const LIVE_MAX_AXIS = 3; // 每轴最多 3 格 ⇒ 最多 9 格
-const LIVE_MAX_CELLS = LIVE_MAX_AXIS * LIVE_MAX_AXIS;
-const LIVE_RADIUS_MIN = 300; // 半径下限（米）
-const LIVE_RADIUS_MAX = 50000; // 高德 around 半径上限（米）
-const KM_PER_DEG = 111.32;
+// ---- 实时搜索（不收录）：按当前地图矩形查（place/polygon）----
+// 与「按格收录」的区别：不切网格、不半径细分、不标覆盖；一次视野 1–LIVE_MAX_PAGES 次调用，
+// 结果由高德按多边形（＝当前地图框）过滤，框外的一律不要。
+const LIVE_MAX_PAGES = 4; // 每视野最多翻 4 页（25×4＝100 点），其余靠已有缓存显示
 
-// 视野 bbox（度）→ 粗格列表 [{lng, lat, radius}]，每格取中心 + 覆盖该格的半径
-function liveGrids(bbox) {
-  const minLng = Number(bbox.minLng);
-  const minLat = Number(bbox.minLat);
-  const spanLng = Number(bbox.maxLng) - minLng;
-  const spanLat = Number(bbox.maxLat) - minLat;
-  const nx = Math.max(1, Math.min(LIVE_MAX_AXIS, Math.ceil((spanLng * KM_PER_DEG) / LIVE_TARGET_CELL_KM)));
-  const ny = Math.max(1, Math.min(LIVE_MAX_AXIS, Math.ceil((spanLat * KM_PER_DEG) / LIVE_TARGET_CELL_KM)));
-  const wStep = spanLng / nx;
-  const hStep = spanLat / ny;
-  const out = [];
-  for (let i = 0; i < nx; i += 1) {
-    for (let j = 0; j < ny; j += 1) {
-      const halfDiag =
-        Math.hypot(wStep * KM_PER_DEG * 1000, hStep * KM_PER_DEG * 1000) / 2;
-      out.push({
-        lng: minLng + wStep * (i + 0.5),
-        lat: minLat + hStep * (j + 0.5),
-        radius: Math.round(
-          Math.min(LIVE_RADIUS_MAX, Math.max(LIVE_RADIUS_MIN, halfDiag * 1.2))
-        ),
-      });
-    }
-  }
-  return out;
+// bbox → 高德 polygon 参数（左上→右上→右下→左下，首尾不闭合）
+function bboxPolygon(bbox) {
+  const { minLng, minLat, maxLng, maxLat } = bbox;
+  return [
+    [minLng, minLat],
+    [maxLng, minLat],
+    [maxLng, maxLat],
+    [minLng, maxLat],
+  ]
+    .map(([lng, lat]) => `${lng},${lat}`)
+    .join('|');
 }
 
-// 实时搜索一个视野：每格 1 次 around（单页），结果落库当缓存；不做覆盖标记
-// 返回 { calls, inserted, updated, cells, errors }；单格失败不影响其他格
-async function liveViewport({ amap, db, city, category = 'all', bbox, classify, rateLimiter }) {
-  const cells = liveGrids(bbox).slice(0, LIVE_MAX_CELLS);
+// 点是否落在视野框内（双保险：高德已按多边形过滤，落库前再筛一遍）
+function inBbox(p, bbox) {
+  return (
+    p &&
+    Number.isFinite(Number(p.lng)) &&
+    Number.isFinite(Number(p.lat)) &&
+    Number(p.lng) >= Number(bbox.minLng) &&
+    Number(p.lng) <= Number(bbox.maxLng) &&
+    Number(p.lat) >= Number(bbox.minLat) &&
+    Number(p.lat) <= Number(bbox.maxLat)
+  );
+}
+
+// 实时搜索一个视野：按矩形翻页，只在框内的点才落库；返回 { calls, inserted, updated, errors, mode }
+async function liveRect({
+  amap,
+  db,
+  city,
+  category = 'all',
+  bbox,
+  classify,
+  maxPages = LIVE_MAX_PAGES,
+  rateLimiter,
+}) {
+  const polygon = bboxPolygon(bbox);
   let calls = 0;
   let inserted = 0;
   let updated = 0;
   const errors = [];
-  for (const cell of cells) {
+  for (let page = 1; page <= maxPages; page += 1) {
     if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
     calls += 1;
+    let pois;
     try {
-      const pois = await amap.searchPoiAround({
-        lng: cell.lng,
-        lat: cell.lat,
-        category,
-        radius: cell.radius,
-        page: 1,
-      });
-      const res = storePois(db, city, null, category, pois, classify);
-      inserted += res.inserted;
-      updated += res.updated;
+      pois = await amap.searchPoiInArea({ polygon, category, page });
     } catch (err) {
       errors.push((err && err.message) || String(err));
+      break; // 失败就停，前端照旧显示缓存
     }
+    const inside = (Array.isArray(pois) ? pois : []).filter((p) => inBbox(p, bbox));
+    const res = storePois(db, city, null, category, inside, classify);
+    inserted += res.inserted;
+    updated += res.updated;
+    if (!Array.isArray(pois) || pois.length < PAGE_SIZE) break; // 不满一页 ⇒ 真取完
   }
-  return { calls, inserted, updated, cells: cells.length, errors };
+  return { calls, inserted, updated, errors, mode: 'rect' };
 }
 
 module.exports = {
-  liveViewport,
-  liveGrids,
-  LIVE_MAX_CELLS,
+  liveRect,
+  bboxPolygon,
+  inBbox,
+  LIVE_MAX_PAGES,
   collectCityCategory,
   collectDistrict,
   collectViewport,

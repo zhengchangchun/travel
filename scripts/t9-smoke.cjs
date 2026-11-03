@@ -16,6 +16,9 @@ const {
   DEFAULT_VIEWPORT_RATE_PER_MIN,
   CATEGORY_ROTATION,
   nextCategory,
+  bboxPolygon,
+  inBbox,
+  LIVE_MAX_PAGES,
 } = require('../server/collect');
 
 const ROOT = path.join(__dirname, '..');
@@ -165,14 +168,31 @@ check('T9-P99', 'R5 中心格优先：先采离 bbox 中心最近的格', async 
   db.close();
 });
 
-check('T9-P100', 'L-1 前端资产：实时搜索本视野（不再按格收录）', () => {
+check('T9-P100', 'L-1 实时搜索：按当前地图矩形查，框外不显示不落库', () => {
   const app = readFile('web/js/app.js');
   const api = readFile('web/js/api.js');
+  // 前端：视野加载＝实时搜索；平移先裁剪再请求
   assert.match(app, /liveSearchViewport/);
   assert.match(app, /liveCategory/);
   assert.match(app, /本区域搜索中/);
+  assert.match(app, /当前地图范围内/);
+  assert.match(app, /function\s+pruneToViewport/);
   assert.match(api, /liveInView/);
   assert.match(api, /\/api\/poi\/inview/);
+  // 服务端：矩形语义 + 框外丢弃
+  assert.equal(
+    bboxPolygon({ minLng: 1, minLat: 2, maxLng: 3, maxLat: 4 }),
+    '1,2|3,2|3,4|1,4'
+  );
+  assert.ok(inBbox({ lng: 2, lat: 3 }, { minLng: 1, minLat: 2, maxLng: 3, maxLat: 4 }));
+  assert.ok(!inBbox({ lng: 3.5, lat: 3 }, { minLng: 1, minLat: 2, maxLng: 3, maxLat: 4 }));
+  assert.ok(LIVE_MAX_PAGES >= 1);
+  const collectSrc = readFile('server/collect.js');
+  assert.match(collectSrc, /function\s+liveRect/);
+  assert.match(collectSrc, /searchPoiInArea/);
+  assert.match(collectSrc, /\.filter\(\(p\) => inBbox\(p, bbox\)\)/);
+  assert.match(readFile('server/amap.js'), /\/v3\/place\/polygon/);
+  // 老的按格收录前端入口不得回流
   assert.ok(!/autoCollectViewport/.test(app), 'app.js 不应再有按格收录入口');
   assert.ok(!/setViewProgress/.test(app), 'app.js 不应再有已采格进度');
 });

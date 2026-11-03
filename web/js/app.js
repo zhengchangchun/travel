@@ -346,6 +346,22 @@
       .join(',');
   }
 
+  // 只显示当前地图范围内的：把已有点按当前视野框裁剪（左右上下平移时立刻摘掉框外的旗）
+  function pruneToViewport(bounds) {
+    if (!bounds || !state.pois.length) return;
+    const before = state.pois.length;
+    const kept = state.pois.filter(
+      (p) =>
+        Number(p.lng) >= bounds.minLng &&
+        Number(p.lng) <= bounds.maxLng &&
+        Number(p.lat) >= bounds.minLat &&
+        Number(p.lat) <= bounds.maxLat
+    );
+    if (kept.length === before) return;
+    state.pois = kept;
+    refresh();
+  }
+
   // 视野加载：缩小时不查不画；放大时先读缓存立即落旗，再对当前视野做一次实时搜索（≤ 9 次调用）
   async function fetchPoisInView() {
     if (!MapCtl.isReady()) return;
@@ -426,7 +442,7 @@
       return;
     }
     const parts = [
-      '实时搜索 ' + calls + ' 次调用',
+      '实时搜索 ' + calls + ' 次调用（当前地图范围内）',
       '新增 ' + (Number(live.inserted) || 0) + ' 条',
       '本区域 ' + state.pois.length + ' 条',
     ];
@@ -444,12 +460,13 @@
     }
   }
 
-  // 地图视野变化（拖动/缩放）→ 防抖后自动加载；定位引发的移动跳过
+  // 地图视野变化（拖动/缩放）→ 先按新框裁剪已显示的旗，再防抖加载；定位引发的移动跳过
   function onViewChanged() {
     if (state.suppressView) {
       state.suppressView = false;
       return;
     }
+    pruneToViewport(MapCtl.getBounds());
     fetchPoisInView();
   }
 

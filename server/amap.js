@@ -209,6 +209,20 @@ async function searchPoi({ city, category, keywords, page = 1 } = {}) {
   return pois.map(normalizePoi);
 }
 
+async function searchPoiInArea({ polygon, category, keywords, page = 1 } = {}) {
+  const cat = categoryOf(category);
+  const keyword = (keywords && String(keywords).trim()) || (cat ? cat.label : '');
+  const json = await amapGet('/v3/place/polygon', {
+    polygon,
+    keywords: keyword,
+    offset: 25,
+    page: clampPage(page),
+    extensions: 'all',
+  });
+  const pois = Array.isArray(json.pois) ? json.pois : [];
+  return pois.map(normalizePoi);
+}
+
 async function nearbyPoi({ lng, lat, category, radius = 3000 } = {}) {
   const cat = categoryOf(category);
   const json = await amapGet('/v3/place/around', {
@@ -422,6 +436,7 @@ module.exports = {
   amapGet,
   searchCity,
   searchPoi,
+  searchPoiInArea,
   nearbyPoi,
   searchPoiByDistrict,
   searchPoiAround,

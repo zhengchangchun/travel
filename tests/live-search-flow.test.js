@@ -74,6 +74,20 @@ test('分类选择变化 ⇒ 对当前视野重跑一次（否则只是在筛缓
   assert.match(m[0], /fetchPoisInView\(\)/, 'onToggleChip 未重跑视野加载（实时搜索不会触发）');
 });
 
+test('只显示当前地图范围内：平移时先按新框裁剪，再请求', () => {
+  assert.match(APP, /function\s+pruneToViewport/, 'app.js 缺 pruneToViewport');
+  const m = APP.match(/function\s+onViewChanged[\s\S]*?\n  \}/);
+  assert.ok(m, '未找到 onViewChanged');
+  assert.match(m[0], /pruneToViewport\(MapCtl\.getBounds\(\)\)/, 'onViewChanged 未按新框裁剪');
+  assert.match(m[0], /fetchPoisInView\(\)/, 'onViewChanged 未重新请求');
+  // 裁剪必须是严格框内（四边都判）
+  const p = APP.match(/function\s+pruneToViewport[\s\S]*?\n  \}/);
+  assert.ok(p, '未找到 pruneToViewport');
+  ['minLng', 'maxLng', 'minLat', 'maxLat'].forEach((k) => {
+    assert.ok(p[0].includes('bounds.' + k), 'pruneToViewport 未判 ' + k);
+  });
+});
+
 test('N20 切城市重置当前行程并重取', () => {
   const m = APP.match(/function\s+setCity[\s\S]*?\n  \}/);
   assert.ok(m, '未找到 setCity');

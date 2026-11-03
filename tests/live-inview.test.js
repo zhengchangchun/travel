@@ -3,7 +3,7 @@ const assert = require('node:assert');
 
 const { createApp } = require('../server/index');
 const { createDb } = require('../server/db');
-const { liveViewport, liveGrids, LIVE_MAX_CELLS } = require('../server/collect');
+const { liveRect, bboxPolygon, inBbox, LIVE_MAX_PAGES } = require('../server/collect');
 
 const TEST_CONFIG = {
   port: 0,
@@ -21,6 +21,7 @@ const CATEGORIES = [
 
 // 一个视野 bbox（杭州湖滨，约 0.02° × 0.012° ≈ 2km × 1.3km）
 const BBOX = { minLng: 120.15, minLat: 30.24, maxLng: 120.17, maxLat: 30.252 };
+const BBOX_STR = `${BBOX.minLng},${BBOX.minLat},${BBOX.maxLng},${BBOX.maxLat}`;
 
 function mkPoi(id, typecode, extra = {}) {
   return {
@@ -40,11 +41,8 @@ function mkPoi(id, typecode, extra = {}) {
   };
 }
 
-function aroundFixture(pois, calls) {
-  return async ({ lng, lat, radius, page }) => {
-    calls.push({ lng, lat, radius, page });
-    return pois;
-  };
+function pageOf(n, prefix, typecode = '100000', extra = {}) {
+  return Array.from({ length: n }, (_, k) => mkPoi(`${prefix}-${k}`, typecode, extra));
 }
 
 async function start(opts = {}) {
@@ -78,70 +76,104 @@ async function getJson(base, p) {
   return { status: res.status, body: await res.json() };
 }
 
-// ---------- liveGrids：粗格切分 ----------
+// ---------- bboxPolygon / inBbox ----------
 
-test('liveGrids 小视野 1 格、大视野 ≤ 9 格、半径夹在 [300, 50000]', () => {
-  const small = liveGrids({ minLng: 120.15, minLat: 30.24, maxLng: 120.155, maxLat: 30.244 });
-  assert.equal(small.length, 1, '约 0.5km 视野应只切 1 格');
-  const big = liveGrids({ minLng: 120.0, minLat: 30.0, maxLng: 120.5, maxLat: 30.5 });
-  assert.ok(big.length <= LIVE_MAX_CELLS, `每轴最多 3 格（实际 ${big.length}）`);
-  assert.equal(big.length, LIVE_MAX_CELLS, '50km 视野应切满 9 格');
-  [...small, ...big].forEach((c) => {
-    assert.ok(c.radius >= 300 && c.radius <= 50000, `半径越界：${c.radius}`);
-  });
-  assert.ok(
-    big.every((c) => c.lng > 120.0 && c.lng < 120.5 && c.lat > 30.0 && c.lat < 30.5),
-    '格中心必须落在 bbox 内'
-  );
+test('bboxPolygon：四角闭合顺序 + lng,lat| 格式（首尾不闭合）', () => {
+  const s = bboxPolygon(BBOX);
+  const parts = s.split('|');
+  assert.equal(parts.length, 4, '应是 4 个顶点');
+  assert.equal(parts[0], '120.15,30.24');
+  assert.equal(parts[1], '120.17,30.24');
+  assert.equal(parts[2], '120.17,30.252');
+  assert.equal(parts[3], '120.15,30.252');
+  assert.ok(!/,120\.15,30\.24$/.test(s), '首尾不应重复闭合');
 });
 
-// ---------- liveViewport：一次视野 ≤ 9 次调用 + 落库 ----------
-
-test('liveViewport：每格 1 次调用（不翻页）、结果落库、计数正确', async () => {
-  const db = createDb(':memory:');
-  const calls = [];
-  const pois = [mkPoi('L1', '100000'), mkPoi('L2', '100000')];
-  const res = await liveViewport({
-    amap: { searchPoiAround: aroundFixture(pois, calls) },
-    db,
-    city: '杭州',
-    category: 'stay',
-    bbox: BBOX,
-  });
-  const cells = liveGrids(BBOX).length;
-  assert.equal(res.calls, cells, '调用次数应等于格数');
-  assert.equal(calls.length, cells, '每格只打 1 次');
-  assert.ok(calls.every((c) => c.page === 1), '实时搜索不翻页（只取第 1 页）');
-  assert.equal(res.inserted, 2, '两条新 POI 应入库');
-  assert.deepEqual(res.errors, []);
-  const rows = db.listPois({ city: '杭州', bbox: BBOX });
-  assert.equal(rows.total, 2, '结果应落库并在缓存里可查');
-  assert.equal(rows.items[0].category, 'stay');
-  db.close();
+test('inBbox：框内 true、框外 false、边界算框内', () => {
+  assert.ok(inBbox({ lng: 120.16, lat: 30.25 }, BBOX), '框内应 true');
+  assert.ok(inBbox({ lng: BBOX.minLng, lat: BBOX.minLat }, BBOX), '左下角应算框内');
+  assert.ok(inBbox({ lng: BBOX.maxLng, lat: BBOX.maxLat }, BBOX), '右上角应算框内');
+  assert.ok(!inBbox({ lng: 120.1499, lat: 30.25 }, BBOX), '左越界应 false');
+  assert.ok(!inBbox({ lng: 120.16, lat: 30.253 }, BBOX), '上越界应 false');
+  assert.ok(!inBbox({ lng: null, lat: 30.25 }, BBOX), '缺坐标应 false');
+  assert.ok(!inBbox(null, BBOX), '空点应 false');
 });
 
-test('liveViewport：单格失败不阻断，errors 如实回报（配额用尽场景）', async () => {
+// ---------- liveRect：按矩形查 + 框外不落库 ----------
+
+test('liveRect：只把框内的点落库，框外的一律丢弃', async () => {
   const db = createDb(':memory:');
   const calls = [];
   const amap = {
-    async searchPoiAround(args) {
-      calls.push(args);
-      if (calls.length === 1) throw new Error('USER_DAILY_QUERY_OVER_LIMIT');
-      return [mkPoi('OK1', '100000')];
+    async searchPoiInArea({ polygon, page }) {
+      calls.push({ polygon, page });
+      return [
+        mkPoi('IN-1', '100000', { lng: 120.16, lat: 30.25 }),
+        mkPoi('IN-2', '100000', { lng: 120.165, lat: 30.245 }),
+        mkPoi('OUT-1', '100000', { lng: 120.19, lat: 30.25 }), // 框右外
+        mkPoi('OUT-2', '100000', { lng: 120.16, lat: 30.26 }), // 框上外
+      ];
     },
   };
-  const res = await liveViewport({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
-  assert.ok(res.calls >= 2, '应继续尝试其余格');
-  assert.equal(res.errors.length, 1, '失败次数应记录');
-  assert.match(res.errors[0], /USER_DAILY_QUERY_OVER_LIMIT/);
-  assert.equal(res.inserted, res.calls - 1, '失败那格没有入库');
+  const res = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(res.calls, 1, '不满一页 ⇒ 只查 1 次');
+  assert.equal(res.inserted, 2, '只有框内 2 条入库');
+  assert.deepEqual(res.errors, []);
+  assert.equal(res.mode, 'rect');
+  assert.equal(calls[0].polygon, bboxPolygon(BBOX), '应按当前地图矩形查');
+  const rows = db.listPois({ city: '杭州', bbox: BBOX });
+  assert.equal(rows.total, 2, '框内可查出 2 条');
+  assert.ok(
+    db.listPois({ city: '杭州' }).items.every((p) => inBbox(p, BBOX)),
+    '库里不允许出现框外的点'
+  );
   db.close();
 });
 
-test('liveViewport：category=all 时按 typecode 归类，非四类丢弃', async () => {
+test('liveRect：满页继续翻页，最多 LIVE_MAX_PAGES 次；不满页即停', async () => {
+  const db = createDb(':memory:');
+  const pages = [];
+  const full = {
+    async searchPoiInArea({ page }) {
+      pages.push(page);
+      return pageOf(25, 'F' + page);
+    },
+  };
+  const res = await liveRect({ amap: full, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(res.calls, LIVE_MAX_PAGES, '一直满页 ⇒ 翻到上限停');
+  assert.deepEqual(pages, [1, 2, 3, 4], '页码应按 1..N 递增');
+
+  const db2 = createDb(':memory:');
+  const half = { async searchPoiInArea() { return pageOf(3, 'H'); } };
+  const res2 = await liveRect({ amap: half, db: db2, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(res2.calls, 1, '不满一页即停');
+  assert.equal(res2.inserted, 3);
+  db.close();
+  db2.close();
+});
+
+test('liveRect：失败立刻停并如实回报（配额用尽场景）', async () => {
+  const db = createDb(':memory:');
+  let calls = 0;
+  const amap = {
+    async searchPoiInArea() {
+      calls += 1;
+      throw new Error('USER_DAILY_QUERY_OVER_LIMIT');
+    },
+  };
+  const res = await liveRect({ amap, db, city: '杭州', category: 'stay', bbox: BBOX });
+  assert.equal(calls, 1, '失败后不应继续翻页');
+  assert.equal(res.calls, 1);
+  assert.equal(res.errors.length, 1);
+  assert.match(res.errors[0], /USER_DAILY_QUERY_OVER_LIMIT/);
+  assert.equal(res.inserted, 0);
+  db.close();
+});
+
+test('liveRect：category=all 时按 typecode 归类，非四类丢弃', async () => {
   const db = createDb(':memory:');
   const amap = {
-    async searchPoiAround() {
+    async searchPoiInArea() {
       return [
         mkPoi('A-stay', '100000'),
         mkPoi('A-food', '050100'),
@@ -149,39 +181,49 @@ test('liveViewport：category=all 时按 typecode 归类，非四类丢弃', asy
       ];
     },
   };
-  const res = await liveViewport({ amap, db, city: '杭州', category: 'all', bbox: BBOX });
+  const res = await liveRect({ amap, db, city: '杭州', category: 'all', bbox: BBOX });
   assert.equal(res.inserted, 2, '非四类 typecode 应被丢弃');
-  const stay = db.listPois({ city: '杭州', category: 'stay' });
-  const food = db.listPois({ city: '杭州', category: 'food' });
-  assert.equal(stay.total, 1);
-  assert.equal(food.total, 1);
+  assert.equal(db.listPois({ city: '杭州', category: 'stay' }).total, 1);
+  assert.equal(db.listPois({ city: '杭州', category: 'food' }).total, 1);
   db.close();
 });
 
 // ---------- 路由：/api/poi/inview ----------
 
-test('GET /api/poi/inview：返回本视野结果 + live 计数，且打高德不超过 9 次', async () => {
+test('GET /api/poi/inview：返回当前地图范围内的结果 + live 计数', async () => {
   const calls = [];
-  const pois = [mkPoi('R1', '100000'), mkPoi('R2', '100000'), mkPoi('R3', '050100')];
-  const h = await start({ amap: { searchPoiAround: aroundFixture(pois, calls) } });
+  const amap = {
+    async searchPoiInArea({ polygon, page }) {
+      calls.push({ polygon, page });
+      return [
+        mkPoi('R1', '100000'),
+        mkPoi('R2', '100000'),
+        mkPoi('R3', '050100'),
+        mkPoi('R-out', '100000', { lng: 120.9, lat: 30.9 }), // 框外，必须被过滤
+      ];
+    },
+  };
+  const h = await start({ amap });
   try {
-    const q = `city=${encodeURIComponent('杭州')}&category=stay&bbox=${BBOX.minLng},${BBOX.minLat},${BBOX.maxLng},${BBOX.maxLat}`;
-    const { status, body } = await getJson(h.base, '/api/poi/inview?' + q);
+    const { status, body } = await getJson(
+      h.base,
+      `/api/poi/inview?city=${encodeURIComponent('杭州')}&category=stay&bbox=${BBOX_STR}`
+    );
     assert.equal(status, 200);
     const d = body.data;
-    assert.equal(d.city, '杭州');
     assert.equal(d.category, 'stay');
-    assert.ok(d.live.calls <= 9, `实时调用应 ≤ 9 次（实际 ${d.live.calls}）`);
-    assert.equal(d.total, 2, 'stay 分类 2 条（food 那条不算）');
-    assert.equal(d.items.length, 2);
-    assert.ok(d.items.every((p) => p.category === 'stay'));
+    assert.equal(d.live.mode, 'rect');
+    assert.equal(d.live.calls, 1);
+    assert.equal(d.total, 2, '框内 stay 2 条（food 那条与框外那条都不算）');
+    assert.ok(d.items.every((p) => p.category === 'stay' && inBbox(p, BBOX)));
+    assert.equal(calls[0].polygon, bboxPolygon(BBOX), '请求应带当前地图矩形');
   } finally {
     await h.close();
   }
 });
 
 test('GET /api/poi/inview：缺 bbox → 400；bbox 非法 → 400', async () => {
-  const h = await start({ amap: { async searchPoiAround() { return []; } } });
+  const h = await start({ amap: { async searchPoiInArea() { return []; } } });
   try {
     const bad1 = await getJson(h.base, '/api/poi/inview?city=' + encodeURIComponent('杭州'));
     assert.equal(bad1.status, 400);
@@ -195,7 +237,7 @@ test('GET /api/poi/inview：缺 bbox → 400；bbox 非法 → 400', async () =>
   }
 });
 
-test('GET /api/poi/inview：高德全失败时仍 200，live.errors 回报且 items 走缓存', async () => {
+test('GET /api/poi/inview：高德失败仍 200，live.errors 回报且 items 走缓存', async () => {
   const db = createDb(':memory:');
   db.upsertPoi({
     poi_id: 'CACHE1',
@@ -216,14 +258,16 @@ test('GET /api/poi/inview：高德全失败时仍 200，live.errors 回报且 it
   const h = await start({
     db,
     amap: {
-      async searchPoiAround() {
+      async searchPoiInArea() {
         throw new Error('USER_DAILY_QUERY_OVER_LIMIT');
       },
     },
   });
   try {
-    const q = `city=${encodeURIComponent('杭州')}&category=stay&bbox=${BBOX.minLng},${BBOX.minLat},${BBOX.maxLng},${BBOX.maxLat}`;
-    const { status, body } = await getJson(h.base, '/api/poi/inview?' + q);
+    const { status, body } = await getJson(
+      h.base,
+      `/api/poi/inview?city=${encodeURIComponent('杭州')}&category=stay&bbox=${BBOX_STR}`
+    );
     assert.equal(status, 200, '实时失败不应 500，前端还要显示缓存');
     assert.ok(body.data.live.errors.length > 0, '应回报失败原因');
     assert.equal(body.data.total, 1, '缓存里的点仍要返回');

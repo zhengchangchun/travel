@@ -3,7 +3,7 @@ const {
   collectViewport,
   bboxToGrids,
   releaseViewportGrids,
-  liveViewport,
+  liveRect,
   MAX_VIEWPORT_GRIDS,
 } = require('../collect');
 const { toDetail } = require('../poi-detail');
@@ -133,8 +133,9 @@ module.exports = [
       });
     },
   },
-  // 实时搜索（不是收录）：当前视野 → 粗格（≤ 9）× 每格 1 次高德调用 → 结果落库当缓存 →
-  // 立即返回该视野的完整结果（缓存 + 刚搜到的）。单格失败不阻断，错误在 live.errors 里回报。
+  // 实时搜索（不是收录）：按当前地图矩形向高德查（place/polygon，1–4 次调用）→
+  // 框内的结果落库当缓存 → 立刻返回该视野的完整结果（缓存 + 刚搜到的）。
+  // 框外的一律不存不显；失败不阻断，原因在 live.errors 里回报。
   {
     method: 'GET',
     path: '/api/poi/inview',
@@ -144,7 +145,7 @@ module.exports = [
       if (!bbox) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 bbox');
       const category =
         (ctx.query.category && String(ctx.query.category).trim()) || 'all';
-      const live = await liveViewport({
+      const live = await liveRect({
         amap: ctx.amap,
         db: ctx.db,
         city,
