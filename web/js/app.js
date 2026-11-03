@@ -362,7 +362,7 @@
     refresh();
   }
 
-  // 视野加载：缩小时不查不画；放大时先读缓存立即落旗，再对当前视野做一次实时搜索（≤ 9 次调用）
+  // 视野加载：缩小时不查不画；放大时先读缓存立即落旗，再对当前地图矩形做一次实时搜索（1–4 次调用）
   async function fetchPoisInView() {
     if (!MapCtl.isReady()) return;
     const zoom = MapCtl.getZoom();
@@ -405,7 +405,7 @@
     return 'all';
   }
 
-  // 实时搜索当前视野：直接打高德（≤ 9 次调用，服务端切粗格）→ 结果落库当缓存 → 立刻整屏刷新
+  // 实时搜索当前地图矩形：打高德 place/polygon（1–4 次调用，一页不满 25 条即停）→ 框内结果落库当缓存 → 立刻整屏刷新
   async function liveSearchViewport(bbox, seq) {
     if (!state.city || !bbox) return;
     const category = liveCategory();
