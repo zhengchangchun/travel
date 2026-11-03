@@ -459,3 +459,17 @@ button.danger:hover { background: #ad2102; }
 /* 自动成线控件 */
 .right-body .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #55514b; }
 .right-body .check input { accent-color: #1677ff; }
+
+/* 多来源入口（标明来源） */
+.src-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin: 8px 0 4px; padding-top: 8px; border-top: 1px dashed #e6e1d6;
+}
+.src-title { font-size: 12px; color: #8a857c; margin-right: 2px; }
+.src-link {
+  display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
+  border: 1px solid #e2ddd2; background: #fff; border-radius: 999px;
+  padding: 3px 9px; font-size: 12px; color: #55514b;
+}
+.src-link:hover { border-color: #1677ff; color: #1677ff; }
+.src-kind { color: #a09a90; }

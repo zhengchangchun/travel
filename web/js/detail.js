@@ -105,6 +105,38 @@
     if (data.cost) meta.push('¥' + data.cost);
     if (data.opentime) meta.push(data.opentime);
 
+    // 多来源入口（标明来源）：小红书/抖音/B站/微博 + 高德自己的详情页
+    // 只生成跳转，不抓取任何平台内容
+    const SRC = window.TravelSources;
+    const sources = SRC ? SRC.sourcesFor(data, city) : [];
+    const sourcesHtml = sources.length
+      ? '<div class="src-row">' +
+        '<span class="src-title">看视频/笔记（标明来源）</span>' +
+        sources
+          .map(
+            (s) =>
+              '<a class="src-link" href="' +
+              esc(s.url) +
+              '" target="_blank" rel="noopener" title="来源：' +
+              esc(s.label) +
+              '（' +
+              esc(s.kind) +
+              '）">' +
+              '<span class="src-icon">' +
+              esc(s.icon) +
+              '</span>' +
+              '<span class="src-label">' +
+              esc(s.label) +
+              '</span>' +
+              '<span class="src-kind">' +
+              esc(s.kind) +
+              '</span>' +
+              '</a>'
+          )
+          .join('') +
+        '</div>'
+      : '';
+
     const tagsHtml =
       Array.isArray(data.tags) && data.tags.length
         ? '<div class="dish-tags">' +
@@ -128,6 +160,7 @@
       '<button class="copy-addr" title="复制地址">复制</button>' +
       '</div>' +
       tagsHtml +
+      sourcesHtml +
       '<div class="card-actions">' +
       (data.category === 'stay' ? '<button class="btn base-pick">定为住宿</button>' : '') +
       '<a class="btn" href="' + esc(navUrl) + '" target="_blank" rel="noopener">导航</a>' +
