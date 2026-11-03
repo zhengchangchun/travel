@@ -473,3 +473,31 @@ button.danger:hover { background: #ad2102; }
 }
 .src-link:hover { border-color: #1677ff; color: #1677ff; }
 .src-kind { color: #a09a90; }
+
+/* ---- 笔记版式详情卡（大图 + 来源角标 + 缩略图条 + 信息 chip） ---- */
+.infocard .note-hero { position: relative; }
+.infocard .gallery-main { position: relative; border-radius: 12px; overflow: hidden; }
+.infocard .gallery-img { width: 100%; height: 210px; object-fit: cover; display: block; }
+.infocard .badge-comment {
+  position: absolute; left: 8px; bottom: 8px; z-index: 2;
+  background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px;
+  padding: 3px 8px; border-radius: 999px; letter-spacing: .2px;
+}
+.infocard .gallery-count {
+  position: absolute; right: 8px; bottom: 8px; z-index: 2;
+  background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px;
+  padding: 2px 8px; border-radius: 999px;
+}
+.infocard .note-thumbs { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto; }
+.infocard .note-thumb {
+  width: 56px; height: 42px; object-fit: cover; border-radius: 8px;
+  border: 2px solid transparent; cursor: pointer; flex: 0 0 auto; opacity: .75;
+}
+.infocard .note-thumb.active { border-color: #1677ff; opacity: 1; }
+.infocard .detail-name { font-size: 17px; font-weight: 700; }
+.infocard .note-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.infocard .note-chip {
+  font-size: 12px; padding: 3px 9px; border-radius: 999px;
+  background: #F3F1EC; color: #55514b;
+}
+.infocard .note-chip.hot { background: #FFF1E8; color: #C4501B; }

@@ -69,7 +69,13 @@
     return out;
   }
 
-  const api = { sourcesFor, keywordOf, PLATFORMS };
+  // 图片来源标注（高德的图分「官方图」与「用户实拍」，后者 URL 含 aos-comment）
+  function photoSource(url) {
+    const isComment = String(url || '').indexOf('aos-comment') >= 0;
+    return { isComment, label: isComment ? '用户实拍' : '官方图', source: '高德' };
+  }
+
+  const api = { sourcesFor, keywordOf, photoSource, PLATFORMS };
   if (typeof window !== 'undefined') window.TravelSources = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

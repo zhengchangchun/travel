@@ -51,3 +51,32 @@ test('详情卡渲染来源行：标题写「标明来源」、每条显示来�
   assert.match(HTML, /<script src="\/js\/sources\.js"><\/script>/, 'index 未引 sources.js');
   assert.match(CSS, /\.src-link/, 'css 缺来源行样式');
 });
+
+test('photoSource：图片也标明来源（高德官方图 vs 高德用户实拍）', () => {
+  const c = Src.photoSource('https://aos-comment.amap.com/x/comment/y.jpg');
+  assert.equal(c.isComment, true);
+  assert.equal(c.label, '用户实拍');
+  assert.equal(c.source, '高德');
+  const o = Src.photoSource('https://store.is.autonavi.com/showpic/z');
+  assert.equal(o.isComment, false);
+  assert.equal(o.label, '官方图');
+  assert.equal(Src.photoSource('').label, '官方图');
+  assert.equal(Src.photoSource(null).isComment, false);
+});
+
+test('笔记版式：大图头图 + 来源角标 + 缩略图条 + 信息 chip，且保留既有资产', () => {
+  const D = DETAIL;
+  ['note-hero', 'note-thumbs', 'note-thumb', 'note-chips', 'note-chip'].forEach((k) =>
+    assert.ok(D.includes(k), '笔记版式缺 ' + k)
+  );
+  // 原有 t5 资产不能弄丢
+  ['gallery-img', 'badge-comment', '用户实拍', 'dish-chip', 'addr-text', 'detail-note', '去高德看评价'].forEach(
+    (k) => assert.ok(D.includes(k), '丢了 t5 资产 ' + k)
+  );
+  assert.ok(D.includes('来源：'), '图上/信息区应标明来源');
+  assert.ok(D.includes('数据来源：高德'), '信息 chip 缺数据来源标注');
+  assert.match(D, /photoSource\(/, '未用 photoSource 标注图片来源');
+  assert.ok(!/xhsUrl/.test(D), '已由多来源行取代，不应再留旧的小红书按钮变量');
+  assert.match(CSS, /\.note-hero/, 'css 缺笔记头图样式');
+  assert.match(CSS, /\.note-thumb\.active/, 'css 缺缩略图选中态');
+});

@@ -68,23 +68,56 @@
     );
   }
 
+  // 图片信息：标明这张图从哪来（高德官方图 / 高德用户实拍）
+  function photoMeta(url, fallbackIsComment) {
+    const SRC = window.TravelSources;
+    if (SRC && SRC.photoSource) return SRC.photoSource(url);
+    const isComment = fallbackIsComment != null ? !!fallbackIsComment : isComment0(url);
+    return { isComment, label: isComment ? '用户实拍' : '官方图', source: '高德' };
+  }
+
+  function isComment0(url) {
+    return String(url || '').indexOf('aos-comment') >= 0;
+  }
+
+  // 笔记头图：大图 + 来源角标（始终标明来源）+ 图片计数 + 缩略图条
   function galleryHtml(photos) {
     if (!photos.length) {
-      return '<div class="gallery gallery-empty"><span class="gallery-empty-text">暂无图片</span></div>';
+      return '<div class="note-hero gallery gallery-empty"><span class="gallery-empty-text">暂无图片</span></div>';
     }
     const first = photos[0];
+    const ps = photoMeta(first.url, first.isComment);
     const multi = photos.length > 1;
+    const thumbs =
+      photos.length > 1
+        ? '<div class="note-thumbs">' +
+          photos
+            .slice(0, 6)
+            .map(
+              (p, i) =>
+                '<img class="note-thumb' +
+                (i === 0 ? ' active' : '') +
+                '" data-index="' +
+                i +
+                '" src="' +
+                esc(p.url) +
+                '" alt="" />'
+            )
+            .join('') +
+          '</div>'
+        : '';
     return (
-      '<div class="gallery" data-count="' + photos.length + '">' +
+      '<div class="note-hero gallery" data-count="' + photos.length + '">' +
       '<div class="gallery-main">' +
       '<img class="gallery-img" src="' + esc(first.url) + '" alt="" />' +
-      '<span class="badge-comment' + (first.isComment ? '' : ' hidden') + '">用户实拍</span>' +
+      '<span class="badge-comment">' + esc(ps.label) + ' · 来源：' + esc(ps.source) + '</span>' +
       (multi
         ? '<button class="gallery-prev" type="button" title="上一张">‹</button>' +
           '<button class="gallery-next" type="button" title="下一张">›</button>'
         : '') +
+      '<span class="gallery-count">1 / ' + photos.length + '</span>' +
       '</div>' +
-      '<div class="gallery-count">1 / ' + photos.length + '</div>' +
+      thumbs +
       '</div>'
     );
   }
@@ -96,9 +129,6 @@
     const navUrl =
       'https://uri.amap.com/marker?position=' +
       data.lng + ',' + data.lat + '&name=' + encodeURIComponent(data.name || '');
-    const xhsUrl =
-      'https://www.xiaohongshu.com/search_result?keyword=' +
-      encodeURIComponent((city || '') + (data.name || ''));
 
     const meta = [];
     if (data.rating) meta.push('★ ' + data.rating);
@@ -154,7 +184,14 @@
       starButton(!!(handlers && handlers.isSelected && handlers.isSelected(data)), color) +
       '<button class="card-close" title="关闭">×</button>' +
       '</div>' +
-      (meta.length ? '<div class="detail-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+      (meta.length
+        ? '<div class="detail-meta note-chips">' +
+          meta
+            .map((t, i) => '<span class="note-chip' + (i === 0 ? ' hot' : '') + '">' + esc(t) + '</span>')
+            .join('') +
+          '<span class="note-chip">数据来源：高德</span>' +
+          '</div>'
+        : '') +
       '<div class="card-addr">' +
       '<span class="addr-text">' + esc(data.address || '（无详细地址）') + '</span>' +
       '<button class="copy-addr" title="复制地址">复制</button>' +
@@ -165,10 +202,9 @@
       (data.category === 'stay' ? '<button class="btn base-pick">定为住宿</button>' : '') +
       '<a class="btn" href="' + esc(navUrl) + '" target="_blank" rel="noopener">导航</a>' +
       '<a class="btn amap" href="' + esc(data.amapUrl) + '" target="_blank" rel="noopener">去高德看评价</a>' +
-      '<a class="btn xhs" href="' + esc(xhsUrl) + '" target="_blank" rel="noopener">去小红书看笔记</a>' +
       '<button class="btn primary add-pin">加入行程</button>' +
       '</div>' +
-      '<p class="detail-note">高德接口不提供评价正文，点「去高德看评价」看真实评价</p>';
+      '<p class="detail-note">图片来源：高德（官方图 / 用户实拍，已在图上标明）；高德接口不提供评价正文，点「去高德看评价」看真实评价</p>';
 
     card.classList.remove('hidden');
 
@@ -185,8 +221,15 @@
       img.style.display = '';
       if (main) main.classList.remove('img-failed');
       img.src = p.url;
-      if (badge) badge.classList.toggle('hidden', !p.isComment);
+      const pm = photoMeta(p.url, p.isComment);
+      if (badge) {
+        badge.textContent = pm.label + ' · 来源：' + pm.source;
+        badge.classList.toggle('hidden', false);
+      }
       if (counter) counter.textContent = idx + 1 + ' / ' + photos.length;
+      card.querySelectorAll('.note-thumb').forEach((t, i) => {
+        t.classList.toggle('active', i === idx);
+      });
     }
     if (img) {
       img.onerror = () => {
@@ -198,6 +241,12 @@
     const next = card.querySelector('.gallery-next');
     if (prev) prev.onclick = (e) => { e.stopPropagation(); showPhoto(idx - 1); };
     if (next) next.onclick = (e) => { e.stopPropagation(); showPhoto(idx + 1); };
+    card.querySelectorAll('.note-thumb').forEach((t) => {
+      t.onclick = (e) => {
+        e.stopPropagation();
+        showPhoto(Number(t.dataset.index) || 0);
+      };
+    });
     showPhoto(0);
 
     const close = card.querySelector('.card-close');
