@@ -3,6 +3,7 @@
   let map = null;
   let AMap = null;
   const markers = new Map();
+  let baseId = null; // 住宿锚点的 poi_id（旗子单独高亮）
   let clickHandler = null;
   let markerBatch = 0; // 分批落旗的批次号：新批次会取消未画完的旧批次
 
@@ -24,15 +25,17 @@
     const label = window.TravelCategories.labelOf(poi.category);
     const top = SC ? SC.isTop(poi.rating) : false;
     const noRating = !poi.rating;
+    const isBase = !!baseId && (poi.id === baseId || poi.poi_id === baseId);
     return (
       '<div class="flag' + (selected ? ' selected' : '') + (top ? ' top' : '') +
-      (noRating ? ' no-rating' : '') + '" data-category="' +
+      (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + '" data-category="' +
       esc(poi.category) + '" ' +
       'style="--flag-color:' + esc(color) + '" title="' + esc(poi.name) + '">' +
       '<div class="flag-head"><span class="flag-icon">' + esc(label.slice(0, 1)) + '</span></div>' +
       '<div class="flag-tail"></div>' +
       (selected ? '<span class="flag-star">★</span>' : '') +
       (top ? '<span class="flag-crown">★</span>' : '') +
+      (isBase ? '<span class="flag-base">住</span>' : '') +
       '</div>'
     );
   }
@@ -172,6 +175,27 @@
   function fitView() {
     if (!map || markers.size === 0) return;
     map.setFitView(Array.from(markers.values()));
+  }
+
+  // 把相机落到指定经纬框（住宿周边）：触发 moveend ⇒ 上层会按新视野重新加载
+  function fitBbox(bbox) {
+    if (!map || !bbox || !AMap) return false;
+    try {
+      map.setBounds(
+        new AMap.Bounds(
+          [Number(bbox.minLng), Number(bbox.minLat)],
+          [Number(bbox.maxLng), Number(bbox.maxLat)]
+        )
+      );
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // 设置住宿锚点（旗子样式随 baseId 变；重画由上层 refresh 负责）
+  function setBase(poiId) {
+    baseId = poiId || null;
   }
 
   function flyTo(lng, lat, zoom) {
@@ -353,6 +377,8 @@
     addMarkers,
     markerCount,
     fitView,
+    fitBbox,
+    setBase,
     flyTo,
     getZoom,
     getBounds,

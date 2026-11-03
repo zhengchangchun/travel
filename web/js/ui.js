@@ -97,6 +97,16 @@
     );
   }
 
+  // 住宿锚点按钮（只给住宿项）：定为「住这」
+  function baseButton(isBase) {
+    return (
+      '<button class="base-pick' + (isBase ? ' active' : '') + '" ' +
+      'title="' + (isBase ? '已是住宿锚点' : '定为住宿锚点') + '">' +
+      (isBase ? '★住这' : '住这') +
+      '</button>'
+    );
+  }
+
   function renderResults(container, pois, onPick, handlers) {
     handlers = handlers || {};
     container.innerHTML = '';
@@ -112,6 +122,7 @@
         poi.cost ? '¥' + poi.cost : '',
       ].filter(Boolean).join(' · ');
       const selected = handlers.isSelected ? handlers.isSelected(poi) : false;
+      const isBase = handlers.isBase ? handlers.isBase(poi) : false;
 
       const li = document.createElement('li');
       li.className = 'poi-item';
@@ -121,6 +132,7 @@
         '<b class="poi-name">' + esc(poi.name) + '</b>' +
         topStarHtml(poi) +
         '<span class="poi-tag">' + esc(label) + '</span>' +
+        (poi.category === 'stay' ? baseButton(isBase) : '') +
         starButton(selected, color) +
         '</div>' +
         '<div class="poi-addr">' + esc(poi.address || '（无详细地址）') + '</div>' +
@@ -131,6 +143,13 @@
         star.onclick = (e) => {
           e.stopPropagation();
           handlers.onToggleSelect(poi);
+        };
+      }
+      const basePick = li.querySelector('.base-pick');
+      if (basePick && handlers.onSetBase) {
+        basePick.onclick = (e) => {
+          e.stopPropagation();
+          handlers.onSetBase(poi);
         };
       }
       container.appendChild(li);

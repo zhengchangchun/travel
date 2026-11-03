@@ -432,3 +432,26 @@ button.danger:hover { background: #ad2102; }
   .gallery-img { height: 130px; }
   .card-actions .btn { flex: 1 1 45%; }
 }
+
+/* ---- 住宿锚点（L-2）：侧栏卡片 + 列表按钮 + 地图金标 ---- */
+.base-box .base-name { font-size: 14px; color: #2E2A26; margin-bottom: 2px; }
+.base-box .base-sub { font-size: 12px; color: #7a7f88; margin-bottom: 6px; word-break: break-all; }
+.base-box select {
+  border: 1px solid #d9d5cc; border-radius: 8px; padding: 0 8px; height: 34px;
+  background: #fff; color: #2E2A26; font-size: 13px;
+}
+.base-box button[disabled] { opacity: .45; cursor: not-allowed; }
+
+.poi-item .base-pick {
+  border: 1px solid #d9d5cc; background: #fff; color: #7a7f88;
+  border-radius: 10px; font-size: 12px; line-height: 1; padding: 4px 6px; cursor: pointer;
+}
+.poi-item .base-pick.active { border-color: #D9A22B; color: #8a6410; background: #FDF3DC; }
+
+.flag.base .flag-head { box-shadow: 0 0 0 3px #FFD23F, 0 2px 6px rgba(0, 0, 0, .35); }
+.flag-base {
+  position: absolute; right: -6px; top: -6px; width: 16px; height: 16px; line-height: 16px;
+  text-align: center; border-radius: 50%; background: #FFD23F; color: #4a3606;
+  font-size: 10px; font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+.btn.base-pick.active { border-color: #D9A22B; color: #8a6410; background: #FDF3DC; }

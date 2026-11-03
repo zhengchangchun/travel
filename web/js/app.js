@@ -7,6 +7,11 @@
   const Selection = window.TravelSelection;
   const Itinerary = window.TravelItinerary;
   const Route = window.TravelRoute;
+  const Geo = window.TravelGeo;
+
+  // 住宿锚点持久化键（localStorage；服务端持久化后续再上）
+  const BASE_KEY = 'travel.base';
+  const BASE_RADIUS_KEY = 'travel.baseRadiusM';
 
   // 切城市落主城区用的倍率；倍率阈值是「是否加载视野内地点」的唯一门控
   const CITY_ZOOM = 13;
@@ -32,6 +37,8 @@
     cardPoi: null,
     ratingFilter: DEFAULT_RATING_FILTER,
     showAll: false, // 是否勾了「全部」分类；未勾且没选具体分类 ⇒ 不显示地点
+    base: null, // 住宿锚点（{id,name,lng,lat,category,rating,address,city}），localStorage 持久化
+    baseRadiusM: 1000, // 锚点周边半径（米）
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
@@ -121,6 +128,155 @@
     return state.pois.filter(passesFilters);
   }
 
+  // ---------- 住宿锚点：先定住宿，再看它周边的美食/景点；锚点常驻显示 ----------
+
+  function loadBaseFromStore() {
+    try {
+      const raw = window.localStorage.getItem(BASE_KEY);
+      state.base = raw ? JSON.parse(raw) : null;
+      const r = Number(window.localStorage.getItem(BASE_RADIUS_KEY));
+      if (Number.isFinite(r) && r > 0) state.baseRadiusM = r;
+    } catch (err) {
+      state.base = null;
+    }
+    if (!state.base || !state.base.id) state.base = null;
+  }
+
+  function saveBaseToStore() {
+    try {
+      if (state.base) window.localStorage.setItem(BASE_KEY, JSON.stringify(state.base));
+      else window.localStorage.removeItem(BASE_KEY);
+      window.localStorage.setItem(BASE_RADIUS_KEY, String(state.baseRadiusM));
+    } catch (err) {
+      /* 隐私模式/配额满：不影响主流程 */
+    }
+  }
+
+  function baseIdOf(poi) {
+    return poi ? poi.id || poi.poi_id || null : null;
+  }
+
+  function baseIs(poi) {
+    const b = baseIdOf(state.base);
+    const id = baseIdOf(poi);
+    return !!b && !!id && b === id;
+  }
+
+  // 锚点在当前视野内时，无论分类/评分过滤都把它带上（旗子用金色「住」标）
+  function ensureBaseVisible(list) {
+    const b = state.base;
+    if (!b || !Number.isFinite(Number(b.lng)) || !Number.isFinite(Number(b.lat))) return list;
+    if (list.some((p) => baseIs(p))) return list;
+    const bounds = MapCtl.getBounds ? MapCtl.getBounds() : null;
+    if (!bounds || !Geo.inBbox(b, bounds)) return list;
+    return list.concat([
+      {
+        id: b.id,
+        poi_id: b.id,
+        name: b.name || '住宿锚点',
+        address: b.address || '',
+        lng: Number(b.lng),
+        lat: Number(b.lat),
+        category: b.category || 'stay',
+        rating: b.rating || '',
+        cost: '',
+        photos: [],
+        tags: [],
+      },
+    ]);
+  }
+
+  function renderBase() {
+    const nameEl = $('base-name');
+    if (!nameEl) return;
+    const subEl = $('base-sub');
+    const aroundBtn = $('base-around-btn');
+    const clearBtn = $('base-clear-btn');
+    const radiusSel = $('base-radius');
+    if (radiusSel) radiusSel.value = String(state.baseRadiusM);
+    if (state.base) {
+      nameEl.textContent = state.base.name || state.base.id;
+      const cityNote =
+        state.city && state.base.city && state.base.city !== state.city
+          ? '（' + state.base.city + '）'
+          : '';
+      if (subEl) {
+        subEl.textContent =
+          '周边 ' +
+          Geo.humanDistance(state.baseRadiusM) +
+          cityNote +
+          ' · ' +
+          (state.base.address || '');
+      }
+      if (aroundBtn) aroundBtn.disabled = false;
+      if (clearBtn) clearBtn.disabled = false;
+    } else {
+      nameEl.textContent = '未设定';
+      if (subEl) subEl.textContent = '在住宿结果里点「住这」定锚点';
+      if (aroundBtn) aroundBtn.disabled = true;
+      if (clearBtn) clearBtn.disabled = true;
+    }
+    if (MapCtl.setBase) MapCtl.setBase(baseIdOf(state.base));
+  }
+
+  function setBase(poi) {
+    const id = baseIdOf(poi);
+    if (!id) return;
+    state.base = {
+      id,
+      poi_id: id,
+      name: poi.name || '',
+      address: poi.address || '',
+      lng: Number(poi.lng),
+      lat: Number(poi.lat),
+      category: poi.category || 'stay',
+      rating: poi.rating || '',
+      city: state.city || '',
+    };
+    saveBaseToStore();
+    renderBase();
+    refresh();
+    UI.setStatus(
+      '住宿锚点：' + (state.base.name || id) + '（周边 ' + Geo.humanDistance(state.baseRadiusM) + '）'
+    );
+  }
+
+  function clearBase() {
+    state.base = null;
+    saveBaseToStore();
+    renderBase();
+    refresh();
+    UI.setStatus('已清除住宿锚点');
+  }
+
+  // 看住宿周边：分类锁到「美食＋景点」，相机落到周边框 ⇒ moveend 会触发视野加载（读缓存＋实时搜索）
+  function showAroundBase() {
+    if (!state.base) {
+      UI.setStatus('先定一个住宿锚点');
+      return;
+    }
+    const bbox = Geo.bboxAround(state.base, state.baseRadiusM);
+    if (!bbox) {
+      UI.setStatus('锚点坐标无效');
+      return;
+    }
+    state.onlySelected = false;
+    state.showAll = false;
+    state.activeCats = new Set(['food', 'sight']);
+    renderCatChips();
+    UI.setStatus(
+      '看 ' +
+        (state.base.name || '锚点') +
+        ' 周边 ' +
+        Geo.humanDistance(state.baseRadiusM) +
+        ' 的美食/景点…'
+    );
+    if (MapCtl.isReady() && MapCtl.fitBbox && MapCtl.fitBbox(bbox)) {
+      return; // 等 moveend 自己加载
+    }
+    fetchPoisInView();
+  }
+
   // 分类 chip：“全部”首位 + 真实分类；选中态由 showAll / activeCats 决定
   function renderCatChips() {
     const chips = [{ key: ALL_CAT_KEY, label: '全部', color: '#8a9099' }].concat(Cats.all());
@@ -172,7 +328,7 @@
   function refresh(opts) {
     const fit = !!(opts && opts.fit);
     const drawMarkers = !opts || opts.markers !== false;
-    const list = currentList();
+    const list = ensureBaseVisible(currentList());
     const emptyText =
       !state.onlySelected && catFilterEmpty()
         ? '先点上面的分类（如 住宿），或勾「全部」'
@@ -180,6 +336,8 @@
     UI.renderResults($('result-list'), list, onPickPoi, {
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
+      isBase: baseIs,
+      onSetBase: setBase,
       emptyText,
     });
     $('result-count').textContent = String(list.length);
@@ -320,6 +478,7 @@
       onAddPin,
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
+      onSetBase: setBase,
     });
   }
 
@@ -691,6 +850,18 @@
       if (e.key === 'Enter') doPoiSearch();
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
+    const aroundBtn = $('base-around-btn');
+    if (aroundBtn) aroundBtn.onclick = showAroundBase;
+    const clearBtn = $('base-clear-btn');
+    if (clearBtn) clearBtn.onclick = clearBase;
+    const radiusSel = $('base-radius');
+    if (radiusSel) {
+      radiusSel.onchange = () => {
+        state.baseRadiusM = Number(radiusSel.value) || 1000;
+        saveBaseToStore();
+        renderBase();
+      };
+    }
     $('plan-btn').onclick = onPlan;
     $('panel-toggle').onclick = onTogglePanel;
     $('itinerary-back').onclick = () => setView('list');
@@ -721,6 +892,8 @@
     Cats.init(state.config.categories);
     renderCatChips();
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    loadBaseFromStore();
+    renderBase();
 
     Selection.subscribe(() => {
       refresh({ fit: false });

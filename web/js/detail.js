@@ -129,6 +129,7 @@
       '</div>' +
       tagsHtml +
       '<div class="card-actions">' +
+      (data.category === 'stay' ? '<button class="btn base-pick">定为住宿</button>' : '') +
       '<a class="btn" href="' + esc(navUrl) + '" target="_blank" rel="noopener">导航</a>' +
       '<a class="btn amap" href="' + esc(data.amapUrl) + '" target="_blank" rel="noopener">去高德看评价</a>' +
       '<a class="btn xhs" href="' + esc(xhsUrl) + '" target="_blank" rel="noopener">去小红书看笔记</a>' +
@@ -203,6 +204,16 @@
 
     const add = card.querySelector('.add-pin');
     if (add && handlers && handlers.onAddPin) add.onclick = () => handlers.onAddPin(data);
+
+    // 住宿铺点：把这家定为行程锚点（后续「看周边美食/景点」以它为中心）
+    const bp = card.querySelector('.base-pick');
+    if (bp && handlers && handlers.onSetBase) {
+      bp.onclick = () => {
+        handlers.onSetBase(data);
+        bp.textContent = '已设为住宿';
+        bp.classList.add('active');
+      };
+    }
   }
 
   // 打开详情面板：先用列表/旗子已有数据即时渲染 → 再向后端取权威详情覆盖

@@ -34,6 +34,25 @@
       </section>
 
       <section class="card">
+        <h2>住宿锚点</h2>
+        <div id="base-box" class="base-box">
+          <div class="base-name"><b id="base-name">未设定</b></div>
+          <div class="base-sub"><span id="base-sub">在住宿结果里点「住这」定锚点</span></div>
+          <div class="row">
+            <select id="base-radius" title="周边半径">
+              <option value="500">500 m</option>
+              <option value="1000" selected>1 km</option>
+              <option value="2000">2 km</option>
+              <option value="5000">5 km</option>
+            </select>
+            <button id="base-around-btn" class="primary">看周边美食/景点</button>
+            <button id="base-clear-btn" class="ghost">清除</button>
+          </div>
+          <p class="hint">先定住宿，再看它周边的美食与景点（一次查询 ≤4 次调用，其余走缓存）</p>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>分类过滤</h2>
         <div id="chips" class="chips"></div>
         <p class="hint">默认不选；选中哪个分类就只显示哪个分类；勾「全部」显示所有分类</p>
@@ -121,6 +140,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/selection.js"></script>
   <script src="/js/score-color.js"></script>
+  <script src="/js/geo.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/ui.js"></script>
   <script src="/js/detail.js"></script>
