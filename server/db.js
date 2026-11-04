@@ -36,6 +36,13 @@ CREATE TABLE IF NOT EXISTS notes (
   url         TEXT NOT NULL,
   title       TEXT,
   source      TEXT,
+  source_type TEXT,
+  author      TEXT,
+  content     TEXT,
+  cover       TEXT,
+  images      TEXT,
+  tags        TEXT,
+  fetched_at  TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -152,6 +159,14 @@ function createDb(filePath) {
   ensureColumn(db, 'poi_coverage', 'truncated', 'truncated INTEGER NOT NULL DEFAULT 0');
   // POI 内容指纹列（存量库前滚；缺失指纹的行在下面回填）
   ensureColumn(db, 'pois', 'content_sha256', 'content_sha256 TEXT');
+  // 笔记本地缓存（P3）：正文/作者/封面/图全部落本地，页面之后从本地读（不再每次都去平台）
+  ensureColumn(db, 'notes', 'source_type', 'source_type TEXT');
+  ensureColumn(db, 'notes', 'author', 'author TEXT');
+  ensureColumn(db, 'notes', 'content', 'content TEXT');
+  ensureColumn(db, 'notes', 'cover', 'cover TEXT');
+  ensureColumn(db, 'notes', 'images', 'images TEXT');
+  ensureColumn(db, 'notes', 'tags', 'tags TEXT');
+  ensureColumn(db, 'notes', 'fetched_at', 'fetched_at TEXT');
 
   const stmts = {
     insertTrip: db.prepare('INSERT INTO trips (city, title) VALUES (?, ?)'),
@@ -179,6 +194,21 @@ function createDb(filePath) {
     listNotesAll: db.prepare('SELECT * FROM notes ORDER BY id DESC'),
     listNotesCity: db.prepare('SELECT * FROM notes WHERE city = ? ORDER BY id DESC'),
     deleteNote: db.prepare('DELETE FROM notes WHERE id = ?'),
+    insertNoteFull: db.prepare(
+      `INSERT INTO notes (pin_id, city, url, title, source, source_type, author, content, cover, images, tags, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ),
+    // 本地搜索：关键词命中标题/正文/作者；source 同时认 source 与 source_type（小红书/抖音…）
+    searchNotes: db.prepare(
+      `SELECT * FROM notes
+        WHERE (? = '' OR COALESCE(title, '') LIKE ? OR COALESCE(content, '') LIKE ? OR COALESCE(author, '') LIKE ?)
+          AND (? = '' OR COALESCE(source, '') = ? OR COALESCE(source_type, '') = ?)
+          AND (? = '' OR COALESCE(city, '') = ?)
+        ORDER BY id DESC LIMIT ?`
+    ),
+    setNotePayload: db.prepare(
+      'UPDATE notes SET author = ?, content = ?, cover = ?, images = ?, tags = ?, fetched_at = ? WHERE id = ?'
+    ),
 
     // ---- T2 选中模型 ----
     tripByCity: db.prepare('SELECT * FROM trips WHERE city = ? ORDER BY id LIMIT 1'),
@@ -333,6 +363,51 @@ function createDb(filePath) {
         note.source || null
       );
       return stmts.getNote.get(toNumber(info.lastInsertRowid));
+    },
+    // 带内容的完整入库（笔记本地缓存）
+    addNoteFull(note) {
+      const info = stmts.insertNoteFull.run(
+        note.pin_id ?? null,
+        note.city || null,
+        note.url,
+        note.title || null,
+        note.source || null,
+        note.source_type || null,
+        note.author || null,
+        note.content || null,
+        note.cover || null,
+        note.images ? JSON.stringify(note.images) : null,
+        note.tags ? JSON.stringify(note.tags) : null,
+        note.fetched_at || null
+      );
+      return stmts.getNote.get(toNumber(info.lastInsertRowid));
+    },
+    searchNotes({ q = '', source = '', city = '', limit = 200 } = {}) {
+      const like = '%' + q + '%';
+      return stmts.searchNotes.all(
+        q,
+        like,
+        like,
+        like,
+        source,
+        source,
+        source,
+        city,
+        city,
+        Number(limit) || 200
+      );
+    },
+    setNotePayload(id, { author, content, cover, images, tags } = {}) {
+      stmts.setNotePayload.run(
+        author || null,
+        content || null,
+        cover || null,
+        images ? JSON.stringify(images) : null,
+        tags ? JSON.stringify(tags) : null,
+        new Date().toISOString(),
+        id
+      );
+      return stmts.getNote.get(id) || null;
     },
     listNotes(city) {
       return city ? stmts.listNotesCity.all(city) : stmts.listNotesAll.all();

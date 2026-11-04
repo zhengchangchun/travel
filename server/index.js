@@ -56,6 +56,10 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
   '.ico': 'image/x-icon',
 };
 
@@ -91,12 +95,12 @@ async function readBody(req) {
   }
 }
 
-function serveStatic(req, res, pathname) {
+function serveStatic(req, res, pathname, baseDir) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendErr(res, 405, 'METHOD_NOT_ALLOWED', '静态资源仅支持 GET/HEAD');
     return;
   }
-  const webRoot = path.join(ROOT, 'web');
+  const webRoot = baseDir || path.join(ROOT, 'web');
   const rel = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.normalize(path.join(webRoot, rel));
   if (filePath !== webRoot && !filePath.startsWith(webRoot + path.sep)) {
@@ -249,6 +253,14 @@ function createApp(opts = {}) {
       const query = Object.fromEntries(u.searchParams.entries());
       if (pathname.startsWith('/api/')) {
         await handleApi(req, res, baseCtx, req.method, pathname, query);
+      } else if (pathname.startsWith('/notes-img/')) {
+        // 笔记图片：本地缓存目录（data/notes-img），不放 web/ 代码目录
+        serveStatic(
+          req,
+          res,
+          pathname.slice('/notes-img'.length),
+          process.env.TRAVEL_NOTE_IMG_DIR || path.join(ROOT, 'data', 'notes-img')
+        );
       } else {
         serveStatic(req, res, pathname);
       }
