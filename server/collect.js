@@ -688,6 +688,12 @@ async function liveRect({
   const digest = setDigest(remoteHashes);
   const cacheDigest = setDigest(cacheHashes);
   const res = storePois(db, city, null, category, storable, classify);
+  // 这批点落在哪些格（P2：被截断时只能把「真有数据的格」标新鲜）
+  const hit = new Set();
+  storable.forEach((p) => {
+    const g = gridOf(p.lng, p.lat);
+    if (Number.isFinite(g.gx) && Number.isFinite(g.gy)) hit.add(g.gx + ',' + g.gy);
+  });
 
   return {
     calls,
@@ -700,6 +706,7 @@ async function liveRect({
     digest,
     cache_digest: cacheDigest,
     digest_match: digest === cacheDigest,
+    grids_hit: Array.from(hit),
   };
 }
 
@@ -751,8 +758,139 @@ function storableOnly(pois, category, classify) {
   });
 }
 
+// ---- P2 账本补采：调用由「格是否新鲜」决定，不再由「地图动了」决定 ----
+// 账本 = poi_coverage(city, category, gx, gy, collected_at, ...)，格边长 GRID_DEG ≈ 1.1km。
+// 三态：fresh（采过且在 TTL 内）/ stale（采过但过期）/ blank（从没采过）；要补 = stale ∪ blank。
+// 补完只是「浏览级」（每格 1 页 25 条，够看不够全）；要采全走 collectViewport（人显式点）。
+const COVERAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 格新鲜度 30 天（POI 是月级慢变数据；新店靠手动刷新）
+const FILL_AROUND_MAX_GRIDS = 2; // 需补格 ≤ 2 → 按格查（1 次/格）；≥ 3 → 整框查（≤ 4 页）一次把整片标新鲜
+
+// 只读：这个视野里哪些格要补（可单测）
+function planFill({ db, city, category, bbox, ttlMs = COVERAGE_TTL_MS, now = Date.now, force = false } = {}) {
+  const grids = bboxToGrids(bbox);
+  const gxs = grids.map((g) => g.gx);
+  const gys = grids.map((g) => g.gy);
+  const rows = db.listCoverageRange(
+    city,
+    category,
+    Math.min(...gxs),
+    Math.max(...gxs),
+    Math.min(...gys),
+    Math.max(...gys)
+  );
+  const at = new Map();
+  rows.forEach((r) => at.set(r.gx + ',' + r.gy, Date.parse(r.collected_at) || 0));
+  const t = typeof now === 'function' ? now() : now;
+  const fresh = [];
+  const todo = [];
+  grids.forEach((g) => {
+    const k = g.gx + ',' + g.gy;
+    const seen = at.has(k);
+    if (!force && seen && t - at.get(k) <= ttlMs) fresh.push(g);
+    else todo.push({ gx: g.gx, gy: g.gy, kind: seen ? 'stale' : 'blank' });
+  });
+  return {
+    grids,
+    fresh,
+    todo,
+    fresh_count: fresh.length,
+    stale_count: todo.filter((g) => g.kind === 'stale').length,
+    blank_count: todo.filter((g) => g.kind === 'blank').length,
+  };
+}
+
+// 按格查（浏览级）：place/around 1 次/格、只取第 1 页；采完标格（失败不标 ⇒ 下次再试）
+async function fillAroundGrids({ amap, db, city, category, grids, classify, rateLimiter, radius = GRID_RADIUS_M } = {}) {
+  let calls = 0;
+  let inserted = 0;
+  let updated = 0;
+  let marked = 0;
+  const errors = [];
+  for (const g of grids || []) {
+    const c = gridCenter(g.gx, g.gy);
+    if (rateLimiter && typeof rateLimiter.acquire === 'function') await rateLimiter.acquire();
+    calls += 1;
+    try {
+      const pois = await amap.searchPoiAround({ lng: c.lng, lat: c.lat, category, radius, page: 1 });
+      const st = storableOnly(pois, category, classify);
+      const r = storePois(db, city, null, category, st, classify);
+      inserted += r.inserted;
+      updated += r.updated;
+      db.markCovered(city, category, g.gx, g.gy, r.inserted, false);
+      marked += 1;
+    } catch (err) {
+      errors.push((err && err.message) || String(err));
+    }
+  }
+  return { calls, fetched: 0, inserted, updated, errors, marked };
+}
+
+// 整框查（复用 liveRect）+ 标账本：取全了 ⇒ 整框所有格标新鲜；被截断 ⇒ 只标真有数据的格
+async function fillRectGrids({ amap, db, city, category, bbox, grids, classify, rateLimiter, maxPages } = {}) {
+  const res = await liveRect({ amap, db, city, category, bbox, classify, rateLimiter, maxPages });
+  const pages = maxPages || LIVE_MAX_PAGES;
+  const complete = res.calls < pages && res.errors.length === 0;
+  let marked = 0;
+  const targets = complete ? grids.map((g) => g.gx + ',' + g.gy) : res.grids_hit || [];
+  targets.forEach((k) => {
+    const [gx, gy] = String(k).split(',');
+    db.markCovered(city, category, Number(gx), Number(gy), 0, false);
+    marked += 1;
+  });
+  return { ...res, marked, complete };
+}
+
+// 账本补采总入口：0 调用（全新鲜）/ 按格查（≤2 格）/ 整框查（≥3 格）
+async function fillByGrids({
+  amap,
+  db,
+  city,
+  category = 'all',
+  bbox,
+  classify,
+  rateLimiter,
+  ttlMs = COVERAGE_TTL_MS,
+  now = Date.now,
+  force = false,
+  maxPages,
+} = {}) {
+  const plan = planFill({ db, city, category, bbox, ttlMs, now, force });
+  const base = {
+    mode: 'cache',
+    grids: plan.grids.length,
+    fresh: plan.fresh_count,
+    stale: plan.stale_count,
+    blank: plan.blank_count,
+    filled: 0,
+    skipped: plan.fresh_count,
+    calls: 0,
+    fetched: 0,
+    inserted: 0,
+    updated: 0,
+    errors: [],
+    diff: null,
+    digest: null,
+    cache_digest: null,
+    digest_match: true,
+  };
+  // 本区域 TTL 内已采过 ⇒ 0 次调用（反复看同一片永远走这条）
+  if (!plan.todo.length) return base;
+  if (plan.todo.length <= FILL_AROUND_MAX_GRIDS) {
+    const r = await fillAroundGrids({ amap, db, city, category, grids: plan.todo, classify, rateLimiter });
+    return { ...base, ...r, mode: 'around', filled: r.marked };
+  }
+  const r = await fillRectGrids({ amap, db, city, category, bbox, grids: plan.grids, classify, rateLimiter, maxPages });
+  return { ...base, ...r, mode: 'rect', filled: r.marked };
+}
+
 module.exports = {
   liveRect,
+  planFill,
+  fillByGrids,
+  fillAroundGrids,
+  fillRectGrids,
+  COVERAGE_TTL_MS,
+  FILL_AROUND_MAX_GRIDS,
   diffAgainstCache,
   storableOnly,
   bboxPolygon,

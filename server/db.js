@@ -249,8 +249,9 @@ function createDb(filePath) {
     listCoverage: db.prepare(
       'SELECT * FROM poi_coverage WHERE city = ? AND category = ? ORDER BY gx, gy'
     ),
+    // 含 collected_at：补采决策要按「这个格多久前采的」判新鲜度（P2 账本）
     listCoverageRange: db.prepare(
-      `SELECT gx, gy FROM poi_coverage
+      `SELECT gx, gy, collected_at, n_inserted, truncated FROM poi_coverage
        WHERE city = ? AND category = ? AND gx BETWEEN ? AND ? AND gy BETWEEN ? AND ?`
     ),
   };

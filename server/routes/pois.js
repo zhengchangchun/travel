@@ -3,7 +3,7 @@ const {
   collectViewport,
   bboxToGrids,
   releaseViewportGrids,
-  liveRect,
+  fillByGrids,
   MAX_VIEWPORT_GRIDS,
 } = require('../collect');
 const { toDetail } = require('../poi-detail');
@@ -133,9 +133,9 @@ module.exports = [
       });
     },
   },
-  // 实时搜索（不是收录）：按当前地图矩形向高德查（place/polygon，1–4 次调用）→
-  // 框内的结果落库当缓存 → 立刻返回该视野的完整结果（缓存 + 刚搜到的）。
-  // 框外的一律不存不显；失败不阻断，原因在 live.errors 里回报。
+  // 实时搜索（不是收录）：先查「格账本」——本区域 TTL（30 天）内采过 ⇒ 0 次调用（只读缓存）；
+  // 没采过才补：需补 ≤2 格按格查（place/around 1 次/格）、≥3 格整框查（place/polygon ≤4 页）。
+  // force=1 跳过账本强制重查本区域；失败不阻断，原因在 live.errors 里回报。
   {
     method: 'GET',
     path: '/api/poi/inview',
@@ -145,13 +145,15 @@ module.exports = [
       if (!bbox) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 bbox');
       const category =
         (ctx.query.category && String(ctx.query.category).trim()) || 'all';
-      const live = await liveRect({
+      const force = ctx.query.force === '1' || ctx.query.force === 'true';
+      const live = await fillByGrids({
         amap: ctx.amap,
         db: ctx.db,
         city,
         category,
         bbox,
         rateLimiter: ctx.viewportRateLimiter,
+        force,
       });
       const result = ctx.db.listPois({ city, bbox });
       return {

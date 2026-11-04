@@ -42,6 +42,7 @@
     baseRadiusM: 1000, // 锚点周边半径（米）
     autoReturn: false, // 自动成线：是否闭环回到住宿
     queriedAt: {}, // 刚查过的视野框（key → 时间戳），TTL 内不重复打接口
+    lastLiveBox: null, // 上次真正打了接口的视野（数值对象），用干小位移抑制
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
@@ -625,6 +626,31 @@
   // 同一范围重复查看不重复打接口：记住刚查过的框（含分类），TTL 内直接走缓存
   const QUERY_TTL_MS = 10 * 60 * 1000;
 
+  // 视野只挪了一点点（中心 <［300m 且面积变化 <20%）⇒ 没必要再打接口：
+  // 后端账本（30 天）本来就会拦住，这里再省一次网络往返
+  const TINY_MOVE_DEG = 0.0027; // ≈300m（纬度方向）
+  const AREA_CHANGE_RATIO = 0.2;
+
+  // currentBbox() 返回的是 "minLng,minLat,maxLng,maxLat" 字符串；这里转回数值对象
+  function parseBbox(str) {
+    if (!str) return null;
+    if (typeof str === 'object') return str;
+    const p = String(str).split(',').map(Number);
+    if (p.length !== 4 || p.some((n) => !Number.isFinite(n))) return null;
+    return { minLng: p[0], minLat: p[1], maxLng: p[2], maxLat: p[3] };
+  }
+
+  function isTinyMove(prev, next) {
+    if (!prev || !next) return false;
+    const dLat = Math.abs((next.minLat + next.maxLat) / 2 - (prev.minLat + prev.maxLat) / 2);
+    const dLng = Math.abs((next.minLng + next.maxLng) / 2 - (prev.minLng + prev.maxLng) / 2);
+    if (Math.max(dLat, dLng) >= TINY_MOVE_DEG) return false;
+    const aPrev = (prev.maxLng - prev.minLng) * (prev.maxLat - prev.minLat);
+    const aNext = (next.maxLng - next.minLng) * (next.maxLat - next.minLat);
+    if (!(aPrev > 0)) return false;
+    return Math.abs(aNext - aPrev) / aPrev < AREA_CHANGE_RATIO;
+  }
+
   function queryKeyOf(bbox, category) {
     if (!bbox) return null;
     const f = (n) => Number(n).toFixed(5); // 微抖容忍：5 位小数
@@ -639,7 +665,8 @@
     return age >= 0 && age < QUERY_TTL_MS ? age : 0;
   }
 
-  // 实时搜索当前地图矩形：打高德 place/polygon（1–4 次调用，一页不满 25 条即停）→ 框内结果落库当缓存 → 立刻整屏刷新8
+  // 实时搜索当前地图矩形：后端按「格账本」决定发不发高德 ——
+  // 本区域 30 天内采过 ⇒ 0 次调用（只读缓存）；没采过才补（≤2 格按格查 1 次/格、≥3 格整框查 ≤4 页）
   async function liveSearchViewport(bbox, seq) {
     if (!state.city || !bbox) return;
     const category = liveCategory();
@@ -647,14 +674,21 @@
       UI.setViewHint('');
       return; // 默认不选分类：不查高德，只显示缓存里已选中的分类（通常为空）
     }
+    const box = parseBbox(bbox);
     // 同一范围刚查过（默认 10 分钟内）⇒ 直接用缓存，不再打接口
-    const key = queryKeyOf(bbox, category);
+    const key = queryKeyOf(box, category);
     const age = recentlyQueried(key);
     if (age) {
       UI.setViewHint('');
       UI.setStatus(
         '本范围 ' + Math.max(1, Math.round(age / 60000)) + ' 分钟前刚查过 ⇒ 走缓存（0 次调用）'
       );
+      return;
+    }
+    // 视野几乎没动 ⇒ 也不用再打（后端账本同判，这里省一次往返）
+    if (isTinyMove(state.lastLiveBox, box)) {
+      UI.setViewHint('');
+      UI.setStatus('视野几乎没动 ⇒ 走缓存（0 次调用）');
       return;
     }
     UI.setViewHint('本区域搜索中…');
@@ -670,6 +704,7 @@
     if (seq !== state.viewSeq) return; // 丢弃过期响应
     UI.setViewHint('');
     state.queriedAt[key] = Date.now(); // 记下这个框刚查过
+    state.lastLiveBox = box;
     state.pois = dedupe(res.items || []);
     UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
     await loadCityTotals(state.city);
@@ -677,16 +712,32 @@
     reportLiveResult(res.live);
   }
 
-  // 把这次实时搜索的结果讲清楚：调用次数 / 新增 / 失败（配额用尽是常见失败）
+  // 把这次实时搜索的结果讲清楚：走账本 0 次调用 / 补采了几格 / 调用次数 / 失败
   function reportLiveResult(live) {
     if (!live) return;
+    const mode = live.mode || 'rect';
     const calls = Number(live.calls) || 0;
+    const total = Number(live.grids) || 0;
     const errors = Array.isArray(live.errors) ? live.errors : [];
+    if (mode === 'cache') {
+      UI.setStatus(
+        '本区域 ' +
+          total +
+          ' 格 · 30 天内已采过 ⇒ 走缓存（0 次调用）· 本区域 ' +
+          state.pois.length +
+          ' 条'
+      );
+      return;
+    }
     if (errors.length && errors.length >= calls) {
       UI.setStatus('实时搜索失败（高德调用 ' + calls + ' 次全失败）：' + errors[0]);
       return;
     }
-    const parts = ['实时搜索 ' + calls + ' 次调用（当前地图范围内）'];
+    const parts = [
+      mode === 'around'
+        ? '补采 ' + (Number(live.filled) || 0) + ' 格 · ' + calls + ' 次调用'
+        : '补采 ' + (Number(live.filled) || 0) + '/' + total + ' 格 · ' + calls + ' 次调用',
+    ];
     // 对拍：远端这批点与本地缓存是否一致（0 额外调用，顺手比出来）
     const d = live.diff;
     if (d && d.checked) {
