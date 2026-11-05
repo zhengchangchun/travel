@@ -857,3 +857,13 @@ button:disabled { opacity: .45; }
   #sidebar.col-left { border-bottom: 1px solid var(--line); }
   #right-panel.col-right { border-top: 1px solid var(--line); }
 }
+
+/* 满分旗子（评分 5.0）在暗色底图上：不再用「最深色」（会糊进底图只剩一个金环，像脏点）
+   ⇒ 改成提亮 + 金色双环 + 柔光，让「满分」是亮出来而不是沉下去 */
+.flag.top .flag-head {
+  filter: brightness(1.5) saturate(1.05);
+  border-color: #ffd23f;
+  box-shadow: 0 0 0 2px rgba(255, 210, 63, .7), 0 0 12px rgba(255, 210, 63, .35), 0 2px 8px rgba(0, 0, 0, .5);
+}
+.flag.top .flag-tail { filter: brightness(1.5) saturate(1.05); }
+.flag.top .flag-crown { text-shadow: 0 0 6px rgba(255, 210, 63, .85), 0 0 2px #000; }
