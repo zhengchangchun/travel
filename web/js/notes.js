@@ -1,16 +1,20 @@
-/* 笔记流（P4）：粘贴分享文案/正文 → 存本地 → 提取地名 → 高德补全成候选点
+/* 笔记流（P4/P5）：自己抓 → 本地库 → 提取地名 → 高德补全成候选点
+   两条入口：
+     ① 抓取：粘链接（或分享文案）→ 本机浏览器用平台已登录 profile 把笔记/视频抓回来（标题/正文/作者/图/封面）
+     ② 搜笔记：按关键词在小红书搜一批候选 → 挑一条抓详情落本地
    口径：
-    · 平台侧不抓（抖音/小红书/快手在本机都被风控）⇒ 内容一律「用户粘贴」；
-    · 「提取地名」零调用、可反复跑；「高德补全」每个名字 1 次调用（最多 8 个），失败如实报错不写假点；
-    · 图片/封面下到本地（data/notes-img），页面之后从本地读。 */
+    · 抓取失败（需登录/超时/风控）如实报原因，不造数据；
+    · 图/封面下到本地（data/notes-img），页面之后从本地读；
+    · 「提取地名」零调用、可反复跑；「高德补全」每个名字 1 次调用（≤8）。 */
 (function () {
   const API = window.TravelAPI;
 
   const st = {
     city: '',
-    parsed: null, // 识别结果（存本地时带上）
+    parsed: null, // 识别结果（手动贴文案时用）
     list: [],
     detail: null,
+    candidates: [],
     busy: false,
     hooks: {},
   };
@@ -39,7 +43,148 @@
     );
   }
 
-  // ---------- 识别 ----------
+  function setHint(text, isErr) {
+    const el = $('note-status');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('note-err', !!isErr);
+  }
+
+  // ---------- ① 抓取（链接 / 分享文案） ----------
+  async function onFetch() {
+    if (st.busy) return;
+    const linkEl = $('note-link');
+    const raw = String((linkEl && linkEl.value) || $('note-share').value || '').trim();
+    if (!raw) {
+      setHint('先粘一条链接（小红书/抖音/快手/B站），或整段分享文案', true);
+      return;
+    }
+    st.busy = true;
+    setHint('抓取中…本机浏览器在跑，一般 10–25 秒');
+    try {
+      const r = await API.fetchNote({ share_text: raw, city: st.city, save: true });
+      setHint(
+        '抓好了：' +
+          (r.note.title || '(无标题)') +
+          ' · ' +
+          (r.note.images || []).length +
+          ' 张图' +
+          (r.updated ? ' · 更新了已有记录' : '')
+      );
+      if (linkEl) linkEl.value = '';
+      // 抓完顺手提地名（零调用）
+      try {
+        await API.notePlaces(r.note.id, {});
+      } catch (err) {
+        /* 提取失败不影响抓取结果 */
+      }
+      await refresh();
+      await openDetail(r.note.id);
+    } catch (err) {
+      setHint('抓取失败：' + err.message + '（' + (err.code || '') + '）', true);
+    } finally {
+      st.busy = false;
+    }
+  }
+
+  // ---------- ② 按关键词搜一批候选 ----------
+  async function onSearch() {
+    if (st.busy) return;
+    const kwEl = $('note-keyword');
+    const pfEl = $('note-platform');
+    const keyword = String((kwEl && kwEl.value) || '').trim();
+    if (!keyword) {
+      setHint('先填个关键词，如 杭州咖啡', true);
+      return;
+    }
+    st.busy = true;
+    setHint('搜「' + keyword + '」中…（本机浏览器，10–25 秒）');
+    try {
+      const r = await API.discoverNotes({
+        keyword,
+        platform: (pfEl && pfEl.value) || 'xhs',
+        limit: 12,
+      });
+      st.candidates = r.items || [];
+      setHint('搜到 ' + st.candidates.length + ' 条候选，点「存到本地」会把正文和图一起抓回来');
+      renderCandidates();
+    } catch (err) {
+      st.candidates = [];
+      renderCandidates();
+      setHint('搜索失败：' + err.message + '（' + (err.code || '') + '）', true);
+    } finally {
+      st.busy = false;
+    }
+  }
+
+  function renderCandidates() {
+    const box = $('note-candidates');
+    if (!box) return;
+    if (!st.candidates.length) {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    box.classList.remove('hidden');
+    box.innerHTML =
+      '<div class="mini-label">搜到的候选（未入库）</div><ul class="poi-list note-cands">' +
+      st.candidates
+        .map((c, i) => {
+          const cover = c.cover_url
+            ? '<img class="note-thumb" src="' + esc(c.cover_url) + '" alt="" />'
+            : '<span class="note-thumb blank">无图</span>';
+          return [
+            '<li class="note-cand" data-i="' + i + '">',
+            cover,
+            '<div class="note-cand-main">',
+            '<div class="note-item-title">' + esc(c.title || '(无标题)') + '</div>',
+            '<div class="note-item-sub">' +
+              esc(c.author || '') +
+              (c.liked ? ' · ♥' + esc(String(c.liked)) : '') +
+              (c.exists ? ' · <b>已在本地</b>' : '') +
+              '</div>',
+            '</div>',
+            '<button class="chip mini" data-act="save">' + (c.exists ? '重抓' : '存到本地') + '</button>',
+            '</li>',
+          ].join('');
+        })
+        .join('') +
+      '</ul>';
+    Array.from(box.querySelectorAll('.note-cand')).forEach((li) => {
+      const c = st.candidates[Number(li.getAttribute('data-i'))];
+      const btn = li.querySelector('button[data-act="save"]');
+      if (btn) btn.onclick = (ev) => {
+        ev.stopPropagation();
+        saveCandidate(c, btn);
+      };
+    });
+  }
+
+  async function saveCandidate(c, btn) {
+    if (st.busy) return;
+    st.busy = true;
+    if (btn) btn.textContent = '抓取中…';
+    setHint('抓取《' + (c.title || '').slice(0, 20) + '》中…');
+    try {
+      const r = await API.fetchNote({ url: c.url, city: st.city, save: true });
+      try {
+        await API.notePlaces(r.note.id, {});
+      } catch (err) {
+        /* 忽略 */
+      }
+      setHint('已存到本地：' + (r.note.title || '') + ' · ' + (r.note.images || []).length + ' 张图');
+      await refresh();
+      await openDetail(r.note.id);
+      renderCandidates();
+    } catch (err) {
+      setHint('抓取失败：' + err.message + '（' + err.code + '）', true);
+      if (btn) btn.textContent = c.exists ? '重抓' : '存到本地';
+    } finally {
+      st.busy = false;
+    }
+  }
+
+  // ---------- 手动贴文案（备用路径，P4 保留） ----------
   async function onParse() {
     const text = String($('note-share').value || '').trim();
     if (!text) return;
@@ -48,14 +193,8 @@
       st.parsed = p;
       renderPreview(p);
     } catch (err) {
-      renderPreviewError(err.message);
+      setHint('识别失败：' + err.message, true);
     }
-  }
-
-  function renderPreviewError(msg) {
-    const box = $('note-preview');
-    box.classList.remove('hidden');
-    box.innerHTML = '<div class="note-err">识别失败：' + esc(msg) + '</div>';
   }
 
   function renderPreview(p) {
@@ -73,15 +212,17 @@
       '<input id="note-author" value="' + esc(p.author || '') + '" placeholder="可选" />',
       '<label class="mini-label">正文（地名就从这里提）</label>',
       '<textarea id="note-content" rows="4">' + esc(p.content_clean || '') + '</textarea>',
-      '<label class="mini-label">图片 URL（一行一个，可选；视频封面也可以）</label>',
+      '<label class="mini-label">图片 URL（一行一个，可选）</label>',
       '<textarea id="note-image-urls" rows="2" placeholder="https://....jpg"></textarea>',
       p.names && p.names.length
         ? '<div class="note-names">可能的地名：' + p.names.map((n) => '<span class="chip mini">' + esc(n) + '</span>').join('') + '</div>'
         : '',
+      '<div class="row"><button id="note-save-btn2" class="ghost">存到本地（手动）</button></div>',
     ].join('');
+    const b = $('note-save-btn2');
+    if (b) b.onclick = onSave;
   }
 
-  // ---------- 存本地 ----------
   async function onSave() {
     if (st.busy) return;
     const raw = String($('note-share').value || '').trim();
@@ -97,41 +238,40 @@
           .map((s) => s.trim())
           .filter(Boolean)
       : [];
-    const payload = {
-      share_text: raw,
-      city: st.city,
-      title: titleEl ? titleEl.value.trim() : p.title,
-      author: authorEl ? authorEl.value.trim() : p.author,
-      content: contentEl ? contentEl.value.trim() : p.content_clean,
-      url: p.url,
-      source: p.source,
-      source_type: p.source_type,
-      kind: p.kind,
-      image_urls: imageUrls,
-    };
     st.busy = true;
     try {
-      const note = await API.addNote(payload);
-      // 顺手把地名候选落库（零调用），用户点「补全」才打高德
+      const note = await API.addNote({
+        share_text: raw,
+        city: st.city,
+        title: titleEl ? titleEl.value.trim() : p.title,
+        author: authorEl ? authorEl.value.trim() : p.author,
+        content: contentEl ? contentEl.value.trim() : p.content_clean,
+        url: p.url,
+        source: p.source,
+        source_type: p.source_type,
+        kind: p.kind,
+        image_urls: imageUrls,
+      });
       try {
         await API.notePlaces(note.id, {});
       } catch (err) {
-        /* 提取失败不影响已存下的笔记 */
+        /* 忽略 */
       }
       $('note-share').value = '';
       st.parsed = null;
       $('note-preview').classList.add('hidden');
       $('note-preview').innerHTML = '';
+      setHint('已存到本地（手动）');
       await refresh();
       await openDetail(note.id);
     } catch (err) {
-      renderPreviewError(err.message);
+      setHint('保存失败：' + err.message, true);
     } finally {
       st.busy = false;
     }
   }
 
-  // ---------- 列表 ----------
+  // ---------- 本地列表 ----------
   async function refresh(city) {
     if (city !== undefined) st.city = city || '';
     try {
@@ -149,7 +289,7 @@
     if (count) count.textContent = String(st.list.length);
     if (!box) return;
     if (!st.list.length) {
-      box.innerHTML = '<li class="note-empty">还没有本地笔记：上面粘贴一段分享文案试试</li>';
+      box.innerHTML = '<li class="note-empty">还没有本地笔记：上面粘链接抓一条试试</li>';
       return;
     }
     box.innerHTML = st.list
@@ -174,6 +314,9 @@
     Array.from(box.querySelectorAll('.note-item')).forEach((li) => {
       li.onclick = () => openDetail(Number(li.getAttribute('data-id')));
     });
+    Array.from(box.querySelectorAll('img')).forEach((img) => {
+      img.onerror = () => img.classList.add('is-broken');
+    });
   }
 
   // ---------- 详情 ----------
@@ -194,7 +337,7 @@
     return (
       '<ul class="poi-list note-places">' +
       list
-        .map((p) => {
+        .map((p, idx) => {
           const ok = !!p.poi_id;
           const right = ok
             ? '<span class="note-place-acts">' +
@@ -203,7 +346,7 @@
               '</span>'
             : '<span class="note-place-acts"><span class="note-err-inline">未补全</span></span>';
           return [
-            '<li class="note-place" data-name="' + esc(p.name) + '" data-idx="' + list.indexOf(p) + '">',
+            '<li class="note-place" data-name="' + esc(p.name) + '" data-idx="' + idx + '">',
             '<div class="note-place-main">',
             '<b>' + esc(p.name) + '</b>',
             ok && p.rating ? '<span class="note-rating">★' + esc(p.rating) + '</span>' : '',
@@ -234,18 +377,19 @@
       badge(note),
       note.author ? '<span class="note-author">@' + esc(note.author) + '</span>' : '',
       note.url ? '<a class="note-link" href="' + esc(note.url) + '" target="_blank" rel="noopener">原链接</a>' : '',
-      note.video_url ? '<a class="note-link" href="' + esc(note.video_url) + '" target="_blank" rel="noopener">视频</a>' : '',
-      '</div>',
-      note.cover_url
-        ? '<img class="note-cover" src="' + esc(note.cover_url) + '" alt="封面" />'
+      note.video_url && note.video_url !== note.url
+        ? '<a class="note-link" href="' + esc(note.video_url) + '" target="_blank" rel="noopener">视频</a>'
         : '',
+      '</div>',
+      note.cover_url ? '<img class="note-cover" src="' + esc(note.cover_url) + '" alt="封面" />' : '',
       note.content ? '<div class="note-content">' + esc(note.content) + '</div>' : '',
       imgs.length
         ? '<div class="note-imgs">' + imgs.map((u) => '<img src="' + esc(u) + '" alt="" />').join('') + '</div>'
-        : '<div class="hint">本地没存图（可以下次粘贴时带上图片 URL）</div>',
+        : '<div class="hint">本地没存图</div>',
       '<div class="row note-actions">',
       '<button class="chip" id="note-extract-btn">提取地名</button>',
       '<button class="primary" id="note-resolve-btn" title="每个名字 1 次高德调用">高德补全</button>',
+      note.url ? '<button class="ghost" id="note-refresh-btn" title="用原链接重新抓一遍">重抓</button>' : '',
       '<button class="ghost" id="note-del-btn">删除</button>',
       '</div>',
       '<label class="mini-label">要补全的地名（可改，顿号/逗号/空格分隔）</label>',
@@ -254,11 +398,28 @@
       placesHtml(note),
     ].join('');
 
-    $('note-detail-close').onclick = () => {
-      box.classList.add('hidden');
-    };
+    $('note-detail-close').onclick = () => box.classList.add('hidden');
     $('note-extract-btn').onclick = () => runPlaces({}, '已提取地名候选（0 次调用）');
     $('note-resolve-btn').onclick = () => runPlaces({ resolve: true }, '补全完成');
+    const refBtn = $('note-refresh-btn');
+    if (refBtn) {
+      refBtn.onclick = async () => {
+        if (st.busy) return;
+        st.busy = true;
+        setHint('重抓中…');
+        try {
+          const r = await API.refreshNote(note.id);
+          st.detail = r.note;
+          setHint('已重抓：' + (r.note.title || '') + ' · ' + (r.note.images || []).length + ' 张图');
+          await refresh();
+          renderDetail();
+        } catch (err) {
+          setHint('重抓失败：' + err.message, true);
+        } finally {
+          st.busy = false;
+        }
+      };
+    }
     $('note-del-btn').onclick = async () => {
       try {
         await API.deleteNote(note.id);
@@ -268,7 +429,6 @@
         /* 删除失败保持原样 */
       }
     };
-    // 图挂了就藏起来，别留破图框（本地缓存被清 / 源站防盗链时会碰上）
     Array.from(box.querySelectorAll('img')).forEach((img) => {
       img.onerror = () => img.classList.add('is-broken');
     });
@@ -302,7 +462,6 @@
     if (st.busy || !st.detail) return;
     st.busy = true;
     const hint = $('note-place-hint');
-    // 地名列表以输入框为准（用户剔掉噪声/手填名字后再补全）
     const namesEl = $('note-names-input');
     const typed = namesEl
       ? String(namesEl.value || '')
@@ -314,8 +473,7 @@
     if (hint) hint.textContent = payload.resolve ? '正在补全（每个名字 1 次高德调用）…' : '提取中…';
     try {
       const r = await API.notePlaces(st.detail.id, body);
-      const note = await API.getNote(st.detail.id);
-      st.detail = note;
+      st.detail = await API.getNote(st.detail.id);
       renderDetail();
       const after = $('note-place-hint');
       if (after) {
@@ -328,7 +486,9 @@
           ' 次调用 · 补全成功 ' +
           r.resolved +
           ' 个' +
-          (r.errors && r.errors.length ? ' · 失败 ' + r.errors.length + ' 个（' + r.errors.map((e) => e.name).join('、') + '）' : '');
+          (r.errors && r.errors.length
+            ? ' · 失败 ' + r.errors.length + ' 个（' + r.errors.map((e) => e.name).join('、') + '）'
+            : '');
       }
       await refresh();
     } catch (err) {
@@ -344,20 +504,24 @@
     const parseBtn = $('note-parse-btn');
     const saveBtn = $('note-save-btn');
     const clearBtn = $('note-clear-btn');
+    const fetchBtn = $('note-fetch-btn');
+    const searchBtn = $('note-search-btn');
+    if (fetchBtn) fetchBtn.onclick = onFetch;
+    if (searchBtn) searchBtn.onclick = onSearch;
     if (parseBtn) parseBtn.onclick = onParse;
-    if (saveBtn) saveBtn.onclick = onSave;
+    if (saveBtn) saveBtn.onclick = onParse; // 「识别」→ 出预览（存走预览里的按钮）
     if (clearBtn) {
       clearBtn.onclick = () => {
         $('note-share').value = '';
         st.parsed = null;
         $('note-preview').classList.add('hidden');
         $('note-preview').innerHTML = '';
+        setHint('');
       };
     }
     const box = $('note-share');
     if (box) {
       box.onpaste = () => {
-        // 粘完自动识别，省一步点击
         setTimeout(() => {
           if (String($('note-share').value || '').trim()) onParse();
         }, 0);
@@ -365,5 +529,5 @@
     }
   }
 
-  window.TravelNotes = { mount, refresh, openDetail, extractPlaceNamesFallback: null };
+  window.TravelNotes = { mount, refresh, openDetail };
 })();

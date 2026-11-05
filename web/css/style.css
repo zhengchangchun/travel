@@ -597,3 +597,20 @@ button.danger:hover { background: #ad2102; }
   border-radius: 8px; font-family: inherit;
 }
 #note-card img.is-broken { display: none; }
+/* ---------- 抓取（P5） ---------- */
+#note-card .row input, #note-card .row select {
+  padding: 6px 8px; font-size: 12px; border: 1px solid #d7d9e0; border-radius: 8px;
+  font-family: inherit; min-width: 0;
+}
+#note-card .row input { flex: 1; }
+#note-card .row select { flex: 0 0 auto; }
+#note-card .row button { flex: 0 0 auto; }
+.note-status { font-size: 11px; color: #6b7280; line-height: 1.5; margin-top: 6px; min-height: 14px; }
+.note-manual { margin-top: 8px; }
+.note-manual summary { font-size: 11px; color: #8b8f98; cursor: pointer; }
+.note-cands { max-height: 240px; overflow-y: auto; }
+.note-cand {
+  display: flex; gap: 8px; align-items: center; padding: 6px;
+  border: 1px solid #eceef2; border-radius: 10px; background: #fff;
+}
+.note-cand-main { flex: 1; min-width: 0; }

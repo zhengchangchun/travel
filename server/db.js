@@ -216,6 +216,7 @@ function createDb(filePath) {
       'INSERT INTO notes (pin_id, city, url, title, source) VALUES (?, ?, ?, ?, ?)'
     ),
     getNote: db.prepare('SELECT * FROM notes WHERE id = ?'),
+    findNoteByUrl: db.prepare('SELECT * FROM notes WHERE url = ? ORDER BY id LIMIT 1'),
     listNotesAll: db.prepare('SELECT * FROM notes ORDER BY id DESC'),
     listNotesCity: db.prepare('SELECT * FROM notes WHERE city = ? ORDER BY id DESC'),
     deleteNote: db.prepare('DELETE FROM notes WHERE id = ?'),
@@ -497,6 +498,10 @@ function createDb(filePath) {
     },
     listNotes(city) {
       return city ? stmts.listNotesCity.all(city) : stmts.listNotesAll.all();
+    },
+    findNoteByUrl(url) {
+      if (!url) return null;
+      return stmts.findNoteByUrl.get(String(url)) || null;
     },
     deleteNote(id) {
       // 地点候选跟笔记一起走（不留孤儿行）

@@ -39,7 +39,8 @@ function refererFor(url) {
 }
 
 // 下载一张图；返回 { file, bytes, cached }（file 只是文件名，调用方负责拼访问路径）
-async function downloadImage(url, dir, { fetchImpl = fetch, timeoutMs = 15000 } = {}) {
+async function downloadImage(url, dir, opts = {}) {
+  const { fetchImpl = fetch, timeoutMs = 15000, referer = null } = opts;
   const name = nameFor(url);
   for (const ext of ALL_EXTS) {
     const p = path.join(dir, name + ext);
@@ -48,7 +49,8 @@ async function downloadImage(url, dir, { fetchImpl = fetch, timeoutMs = 15000 } 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const ref = refererFor(url);
+    // 图常有防盗链：默认带同源来路；平台 CDN 认平台域时由调用方点名 referer
+    const ref = referer || refererFor(url);
     const res = await fetchImpl(url, {
       headers: Object.assign({ 'User-Agent': UA }, ref ? { Referer: ref } : {}),
       signal: ctrl.signal,
@@ -81,4 +83,17 @@ async function downloadImages(urls, dir, opts) {
   return out;
 }
 
-module.exports = { downloadImage, downloadImages, extFor, nameFor, UA, ALL_EXTS };
+// 各平台图片 CDN 认的来路（抓到图不认时用它）
+const IMAGE_REFERER = {
+  xhs: 'https://www.xiaohongshu.com/',
+  douyin: 'https://www.douyin.com/',
+  kuaishou: 'https://www.kuaishou.com/',
+  bilibili: 'https://www.bilibili.com/',
+  weibo: 'https://m.weibo.cn/',
+};
+
+function refererForPlatform(sourceType) {
+  return IMAGE_REFERER[sourceType] || null;
+}
+
+module.exports = { downloadImage, downloadImages, extFor, nameFor, refererForPlatform, UA, ALL_EXTS };

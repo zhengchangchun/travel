@@ -35,14 +35,32 @@
 
       <section class="card" id="note-card">
         <h2>笔记 → 找地方</h2>
-        <p class="hint">小红书 / 抖音 / 快手… App 里「分享 → 复制链接」，整段粘进来（图文、视频都收）</p>
-        <textarea id="note-share" rows="3" placeholder="粘贴分享文案 / 链接 / 正文"></textarea>
+        <p class="hint">粘链接（小红书 / 抖音 / 快手 / B站）或整段分享文案，本机自己抓（用已登录的浏览器 profile）</p>
         <div class="row">
-          <button id="note-parse-btn" class="ghost">识别</button>
-          <button id="note-save-btn" class="primary">存到本地</button>
-          <button id="note-clear-btn" class="ghost">清空</button>
+          <input id="note-link" placeholder="粘贴链接 / 分享文案" autocomplete="off" />
+          <button id="note-fetch-btn" class="primary">抓取</button>
         </div>
-        <div id="note-preview" class="note-preview hidden"></div>
+        <div class="row">
+          <input id="note-keyword" placeholder="按关键词搜笔记，如 杭州咖啡" autocomplete="off" />
+          <select id="note-platform" title="搜哪个平台">
+            <option value="xhs">小红书</option>
+            <option value="douyin">抖音</option>
+            <option value="kuaishou">快手</option>
+          </select>
+          <button id="note-search-btn" class="ghost">搜笔记</button>
+        </div>
+        <div id="note-status" class="note-status"></div>
+        <div id="note-candidates" class="hidden"></div>
+        <details class="note-manual">
+          <summary>手动贴正文（备用）</summary>
+          <textarea id="note-share" rows="3" placeholder="粘分享文案 / 正文"></textarea>
+          <div class="row">
+            <button id="note-parse-btn" class="ghost">识别</button>
+            <button id="note-save-btn" class="ghost">预览</button>
+            <button id="note-clear-btn" class="ghost">清空</button>
+          </div>
+          <div id="note-preview" class="note-preview hidden"></div>
+        </details>
         <h2 class="sub-head">本地笔记 <span id="note-count" class="count">0</span></h2>
         <ul id="note-list" class="poi-list note-list"></ul>
         <div id="note-detail" class="note-detail hidden"></div>

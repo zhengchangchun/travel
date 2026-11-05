@@ -2,8 +2,15 @@
 // 口径：内容由用户提供（分享文案/链接/正文/图 URL），平台侧抓取在本机被风控
 // （抖音验证码页、小红书 300012 IP 风险、B站风控页、微博 302 访客登）⇒ 这里只做「落库/落图/本地读/补全」。
 const path = require('node:path');
-const { downloadImages } = require('../note-images');
-const { parseShareText, extractPlaceNames, cleanContent } = require('../note-share');
+const { downloadImages, refererForPlatform } = require('../note-images');
+const {
+  parseShareText,
+  extractPlaceNames,
+  cleanContent,
+  tidyText,
+  nameOfType,
+  kindOfType,
+} = require('../note-share');
 
 const ROOT = path.join(__dirname, '..', '..');
 // 可用环境变量重定向（测试隔离用），默认 data/notes-img
@@ -69,6 +76,83 @@ function pickBest(name, list) {
   return pool
     .slice()
     .sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0))[0];
+}
+
+// 抓回来的东西落成一个笔记（先落图再入库）：抓取遇到配额/风控时如实报错，不造数据
+async function ingestFetched(ctx, r, opts = {}) {
+  const sourceType = r.platform || 'other';
+  const referer = refererForPlatform(sourceType);
+  const imageUrls = Array.isArray(r.image_urls) ? r.image_urls : [];
+  const downloaded = imageUrls.length
+    ? await downloadImages(imageUrls, NOTE_IMG_DIR, { referer })
+    : [];
+  const files = downloaded.filter((d) => d.ok).map((d) => d.file);
+  let coverFile = null;
+  let coverErr = null;
+  if (r.cover_url) {
+    const got = await downloadImages([String(r.cover_url)], NOTE_IMG_DIR, { referer });
+    if (got[0] && got[0].ok) coverFile = got[0].file;
+    else coverErr = got[0] ? got[0].error : '封面下载失败';
+  }
+  const download = {
+    requested: imageUrls.length,
+    saved: files.length,
+    failed: downloaded.filter((d) => !d.ok).map((d) => ({ url: d.url, error: d.error })),
+    cover: coverFile ? { saved: true, file: coverFile } : coverErr ? { saved: false, error: coverErr } : null,
+  };
+  // 抓回来的文案先洗一遍：抖音的 desc 里常混着它自己那串分享话术
+  const sourceName = nameOfType(sourceType);
+  const tidyTitle = tidyText(r.title, 80) || sourceName + (r.kind === 'video' ? ' 视频' : ' 笔记');
+  const payload = {
+    city: opts.city || null,
+    url: r.url || '',
+    title: tidyTitle,
+    source: nameOfType(sourceType),
+    source_type: sourceType,
+    kind: r.kind || kindOfType(sourceType),
+    author: r.author || '',
+    content: tidyText(r.content),
+    cover: coverFile || files[0] || null,
+    images: files,
+    tags: Array.isArray(r.tags) ? r.tags : [],
+    video_url: r.video_url || '',
+    share_text: '',
+    fetched_at: new Date().toISOString(),
+  };
+  if (!opts.save) {
+    // 只预览：图已经落到本地缓存（按 URL 幂等），库里不写
+    const preview = Object.assign({}, payload, {
+      id: null,
+      images: JSON.stringify(files),
+      tags: JSON.stringify(payload.tags || []),
+    });
+    return { note: toPublic(preview), preview: true, download, saved: false, updated: false, stats: r.stats || null };
+  }
+  const existing = ctx.db.findNoteByUrl(payload.url);
+  let note;
+  let updated = false;
+  if (existing) {
+    ctx.db.setNoteIdent(existing.id, {
+      title: payload.title,
+      source: payload.source,
+      source_type: payload.source_type,
+      kind: payload.kind,
+      url: payload.url,
+      video_url: payload.video_url,
+      share_text: payload.share_text,
+    });
+    note = ctx.db.setNotePayload(existing.id, {
+      author: payload.author,
+      content: payload.content,
+      cover: payload.cover,
+      images: files,
+      tags: payload.tags,
+    });
+    updated = true;
+  } else {
+    note = ctx.db.addNoteFull(payload);
+  }
+  return { note: toPublic(note), download, saved: true, updated, stats: r.stats || null };
 }
 
 module.exports = [
@@ -179,6 +263,80 @@ module.exports = [
           cover: coverFile ? { saved: true, file: coverFile } : coverErr ? { saved: false, error: coverErr } : null,
         },
       });
+    },
+  },
+  // 自己抓：给链接（或分享文案）→ 本机浏览器（已登录 profile）把笔记/视频抓回来，落图到本地
+  // save=1 才写库（不给就只返回预览，用户确认后再存）
+  {
+    method: 'POST',
+    path: '/api/notes/fetch',
+    async handler(ctx) {
+      const b = ctx.body || {};
+      const raw = String(b.url || b.share_text || '').trim();
+      if (!raw) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 url（或 share_text）');
+      const parsed = /^https?:\/\//.test(raw) ? { url: raw } : parseShareText(raw);
+      const url = parsed.url;
+      if (!url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这段文字里没找到链接');
+      const r = await ctx.noteFetch.fetchNote({ url });
+      if (!r || r.ok !== true) {
+        const info = r || {};
+        throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
+      }
+      const out = await ingestFetched(ctx, r, {
+        city: b.city || null,
+        save: !!b.save,
+      });
+      return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
+    },
+  },
+  // 按关键词搜笔记（目前小红书已通；返回候选，不写库，用户挑完再抓）
+  {
+    method: 'POST',
+    path: '/api/notes/discover',
+    async handler(ctx) {
+      const b = ctx.body || {};
+      const keyword = String(b.keyword || '').trim();
+      if (!keyword) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 keyword');
+      const platform = String(b.platform || 'xhs');
+      const limit = Math.min(Math.max(1, Number(b.limit) || 10), 30);
+      const r = await ctx.noteFetch.searchNotes({ platform, keyword, limit });
+      if (!r || r.ok !== true) {
+        const info = r || {};
+        throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '搜索失败');
+      }
+      const items = [];
+      // 候选项的封面也下到本地（否则页面直连平台 CDN 会 403，且「下载后缓存到本地」不成立）
+      for (const it of r.items || []) {
+        let cover = it.cover_url || '';
+        if (cover) {
+          const got = await downloadImages([cover], NOTE_IMG_DIR, {
+            referer: refererForPlatform(r.platform),
+          });
+          cover = got[0] && got[0].ok ? '/notes-img/' + got[0].file : '';
+        }
+        items.push(
+          Object.assign({}, it, { cover_url: cover, exists: !!ctx.db.findNoteByUrl(it.url) })
+        );
+      }
+      return { platform, keyword, total: items.length, items };
+    },
+  },
+  // 重新抓一遍（对「只存了标题封面」的候选记录很有用）
+  {
+    method: 'POST',
+    path: '/api/notes/:id/refresh',
+    async handler(ctx) {
+      const id = Number(ctx.params.id);
+      const existing = findNote(ctx.db, id);
+      if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
+      if (!existing.url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这条笔记没有链接，没法重抓');
+      const r = await ctx.noteFetch.fetchNote({ url: existing.url });
+      if (!r || r.ok !== true) {
+        const info = r || {};
+        throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
+      }
+      const out = await ingestFetched(ctx, r, { city: existing.city, save: true });
+      return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
     },
   },
   // 给已有笔记补内容/补图（用户手动提供时走这里）

@@ -170,6 +170,8 @@ function createApp(opts = {}) {
     cache,
     amap,
     HttpError,
+    // 笔记抓取（P5）：可注入（测试里换成假抓取器，不起浏览器）
+    noteFetch: opts.noteFetch || require('./note-fetch'),
     routeIntervalMs:
       opts.routeIntervalMs !== undefined
         ? Number(opts.routeIntervalMs) || 0

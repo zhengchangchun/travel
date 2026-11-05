@@ -226,7 +226,7 @@ function parseShareText(raw) {
 
 // 地名特征词（含其中任意一个就当地名候选）
 const PLACE_WORDS = [
-  '店', '馆', '铺', '行', '城', '楼', '厦', '苑', '园', '轩', '阁',
+  '店', '馆', '铺', '银行', '城', '楼', '厦', '苑', '园', '轩', '阁',
   '咖啡', '茶', '酒馆', '酒吧', '餐厅', '饭店', '饭馆', '面馆', '食堂', '夜市', '市场', '超市',
   '广场', '公园', '花园', '植物园', '动物园', '游乐园', '乐园', '湿地', '景区', '风景区', '度假区',
   '寺', '庙', '祠', '观', '教堂', '山', '峰', '湖', '河', '江', '溪', '桥', '塔', '岛', '湾', '港',
@@ -258,7 +258,8 @@ const SPLIT_RE = /[，,。.、；;：:！!？?（）()[\]【】{}|｜/\\~—\-�
 const NOISE_SUBSTR = ['必去', '必吃', '必看', '必打卡', '推荐', '安利', '超赞', '超好', '攻略', '合集', '排行', '清单'];
 
 function stripLead(s) {
-  let t = s;
+  // 行首的 ▫ 📍 ⏰ ☕ · 这类标记先去掉（笔记正文常用它们当行首）
+  let t = String(s || '').replace(/^[^\w\u4e00-\u9fa5]+/, '');
   for (const w of LEAD_STRIP) {
     if (t.startsWith(w) && t.length > w.length + 1) t = t.slice(w.length);
   }
@@ -282,10 +283,48 @@ function trimConnectors(s) {
   return t.trim();
 }
 
+// 文风噪声（出现就说明它不是地名，而是一句描述）
+const NOT_PLACE_SUBSTR = [
+  '一家', '这家', '那家', '两家', '三家', '几家', '这些', '那些', '这份', '那份', '值得',
+  '必去', '必吃', '必看', '百佳', '新鲜出炉', '合集', '清单', '推荐', '种草', '攻略', '排行',
+  '年度', '冲进', '拿下', '不错', '完全', '结果', '发现', '原来', '其实', '终于', '喜欢',
+  '朋友', '爱喝', '大家', '一起', '收藏', '快收好', '步行', '地铁',
+];
+
+// 抓回来的文案清洗：去链接、去平台自带的分享话术（抖音的 desc 里常混着它自己的分享串）
+const TIDY_PHRASES = [
+  /https?:\/\/\S+/gi,
+  /复制此链接[^，。\n]*[，。]?/g,
+  /打开抖音搜索[^，。\n]*[，。]?/g,
+  /打开抖音[^，。\n]*[，。]?/g,
+  /直接观看视频[！!]?/g,
+  /复制本条信息[^，。\n]*[，。]?/g,
+  /打开【?[^】\n]{1,12}】?App[^，。\n]*[，。]?/g,
+  /查看精彩内容[！!]?/g,
+  /\b[A-Za-z0-9]{2,4}:\/\s*[A-Za-z0-9@._-]+/g,
+  /\b\d{2}\/\d{2}\b/g,
+];
+
+function tidyText(text, maxLen) {
+  let t = String(text == null ? '' : text);
+  TIDY_PHRASES.forEach((re) => {
+    t = t.replace(re, ' ');
+  });
+  t = t
+    .split('\n')
+    .map((l) => l.replace(/[ \t]{2,}/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  return maxLen ? t.slice(0, maxLen) : t;
+}
+
 function looksLikePlace(s) {
   if (s.length < 2 || s.length > 14) return false;
   if (NOT_PLACE.has(s)) return false;
   if (/^\d+$/.test(s)) return false;
+  if (/^(家|个|处|条|份|些|种|次|天|年|月|日|号|楼|栋|室|层|座|期)/.test(s)) return false;
+  if (NOT_PLACE_SUBSTR.some((w) => s.includes(w))) return false;
   return PLACE_WORDS.some((w) => s.includes(w));
 }
 
@@ -340,6 +379,7 @@ function extractPlaceNames(input, opts = {}) {
 }
 
 module.exports = {
+  tidyText,
   parseShareText,
   extractPlaceNames,
   cleanContent,

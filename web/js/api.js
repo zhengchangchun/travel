@@ -74,6 +74,10 @@
     getNote: (id) => request('/api/notes/' + id),
     notePlaces: (id, payload) => request('/api/notes/' + id + '/places', post(payload || {})),
     deleteNote: (id) => request('/api/notes/' + id, { method: 'DELETE' }),
+    // P5：自己抓（本机浏览器 + 平台已登录 profile）
+    fetchNote: (payload) => request('/api/notes/fetch', post(payload)),
+    discoverNotes: (payload) => request('/api/notes/discover', post(payload)),
+    refreshNote: (id) => request('/api/notes/' + id + '/refresh', post({})),
     updatePinNote: (id, note) =>
       request('/api/pins/' + id, {
         method: 'PATCH',
