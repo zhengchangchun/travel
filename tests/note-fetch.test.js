@@ -46,6 +46,18 @@ test('platformOfUrl / profileFor：链接认平台，平台认 profile', () => {
   assert.strictEqual(profileFor('bilibili'), '', 'B站不用浏览器');
 });
 
+test('profileFor：可以用环境变量换 profile（换号/换登录态）', () => {
+  process.env.TRAVEL_PROFILE_XHS = 'xhs-main';
+  try {
+    assert.strictEqual(profileFor('xhs'), 'xhs-main');
+    assert.strictEqual(profileFor('douyin'), 'douyin', '没设的仍走默认');
+    assert.strictEqual(profileFor(''), '');
+  } finally {
+    delete process.env.TRAVEL_PROFILE_XHS;
+  }
+  assert.strictEqual(profileFor('xhs'), 'xhs');
+});
+
 test('runFetcher：取最后一行 JSON 当结果（日志噪音不算）', async () => {
   const { spawnImpl, calls } = fakeSpawn(['some log', '{"ok":true,"platform":"xhs"}']);
   const r = await runFetcher(['--profile', 'xhs', 'url', 'xhs', 'https://x/1'], { spawnImpl });

@@ -211,7 +211,19 @@ async function kuaishouNote({ page, url }) {
   return fail('NOT_IMPLEMENTED', '快手登录后的解析还没实现（先跑通小红书/抖音）', { platform: 'kuaishou' });
 }
 
-module.exports = async ({ page, args }) => {
+module.exports = async ({ page, context, args }) => {
+  // 抓取也走「别像机器人」的常规处理（网页端风控会看这些指纹）
+  try {
+    if (context && context.addInitScript) {
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh'] });
+        window.chrome = window.chrome || { runtime: {} };
+      });
+    }
+  } catch (e) {
+    /* 忽略 */
+  }
   const rest = ((args && args._) || []).slice(2); // ['run', '<script>', mode, a, b...]
   const [mode, platform, a, b] = rest;
   const def = PLATFORMS[platform];

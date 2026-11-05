@@ -25,7 +25,11 @@ function platformOfUrl(url) {
   return hit ? hit.source_type : '';
 }
 
+// 平台用哪个浏览器 profile：默认按表；可用 TRAVEL_PROFILE_XHS / _DOUYIN / _KUAISHOU 换（换号/换登录态时用）
 function profileFor(sourceType) {
+  if (!sourceType) return '';
+  const env = process.env['TRAVEL_PROFILE_' + String(sourceType).toUpperCase()];
+  if (env) return env;
   return PROFILE[sourceType] || '';
 }
 
