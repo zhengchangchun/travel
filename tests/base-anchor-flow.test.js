@@ -86,9 +86,10 @@ test('同一范围重复查看不重复打接口：TTL 内直接走缓存', () =
   assert.ok(dupAt >= 0 && reqAt > dupAt, 'TTL 去重应在发请求之前');
 });
 
-test('锚点常驻显示：被过滤掉也带上 + 地图金色「住」标', () => {
-  assert.match(APP, /function\s+ensureBaseVisible/, '缺 ensureBaseVisible');
-  assert.match(APP, /ensureBaseVisible\(currentList\(\)\)/, 'refresh 未用 ensureBaseVisible');
+test('锚点不再强行常驻：没选住宿就不该冒出住宿旗子（但地图标记与卡片仍在）', () => {
+  assert.ok(!/ensureBaseVisible/.test(APP), '不应再有「把锚点硬塞进可见集合」的逻辑');
+  assert.match(APP, /const list = currentList\(\)/, 'refresh 应直接用过滤结果');
+  assert.match(APP, /function\s+renderBase/, '锚点卡片仍在（改半径/回中/清除都在这）');
   assert.match(MAP, /function\s+setBase/, 'map 缺 setBase');
   assert.match(MAP, /isBase \? ' base' : ''/, 'flagHtml 未加 base 样式类');
   assert.match(MAP, /flag-base/, 'flagHtml 缺「住」角标');

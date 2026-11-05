@@ -168,29 +168,6 @@
   }
 
   // 锚点在当前视野内时，无论分类/评分过滤都把它带上（旗子用金色「住」标）
-  function ensureBaseVisible(list) {
-    const b = state.base;
-    if (!b || !Number.isFinite(Number(b.lng)) || !Number.isFinite(Number(b.lat))) return list;
-    if (list.some((p) => baseIs(p))) return list;
-    const bounds = MapCtl.getBounds ? MapCtl.getBounds() : null;
-    if (!bounds || !Geo.inBbox(b, bounds)) return list;
-    return list.concat([
-      {
-        id: b.id,
-        poi_id: b.id,
-        name: b.name || '住宿锚点',
-        address: b.address || '',
-        lng: Number(b.lng),
-        lat: Number(b.lat),
-        category: b.category || 'stay',
-        rating: b.rating || '',
-        cost: '',
-        photos: [],
-        tags: [],
-      },
-    ]);
-  }
-
   function renderBase() {
     const nameEl = $('base-name');
     if (!nameEl) return;
@@ -387,7 +364,8 @@
   function refresh(opts) {
     const fit = !!(opts && opts.fit);
     const drawMarkers = !opts || opts.markers !== false;
-    const list = ensureBaseVisible(currentList());
+    // 锚点不再强行常驻：分类/评分过滤说了算（没选住宿就不该冒出住宿旗子）
+    const list = currentList();
     const emptyText =
       !state.onlySelected && catFilterEmpty()
         ? '先点上面的分类（如 住宿），或勾「全部」'
