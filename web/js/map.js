@@ -17,6 +17,15 @@
     return poi.id || poi.name + '@' + poi.lng + ',' + poi.lat;
   }
 
+  // 悬停说明：把「为什么这面旗子不一样」直接写出来（满分？住宿锚点？）
+  function flagTitle(poi, top, isBase) {
+    const bits = [poi.name];
+    if (poi.rating) bits.push('★' + poi.rating + (top ? '（满分）' : ''));
+    else bits.push('（高德无评分）');
+    if (isBase) bits.push('住宿锚点');
+    return bits.join(' · ');
+  }
+
   function flagHtml(poi, selected) {
     const SC = window.TravelScoreColor;
     const color = SC
@@ -30,7 +39,7 @@
       '<div class="flag' + (selected ? ' selected' : '') + (top ? ' top' : '') +
       (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + '" data-category="' +
       esc(poi.category) + '" ' +
-      'style="--flag-color:' + esc(color) + '" title="' + esc(poi.name) + '">' +
+      'style="--flag-color:' + esc(color) + '" title="' + esc(flagTitle(poi, top, isBase)) + '">' +
       '<div class="flag-head"><span class="flag-icon">' + esc(label.slice(0, 1)) + '</span></div>' +
       '<div class="flag-tail"></div>' +
       (selected ? '<span class="flag-star">★</span>' : '') +

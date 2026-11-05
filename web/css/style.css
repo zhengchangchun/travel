@@ -863,7 +863,8 @@ button:disabled { opacity: .45; }
 .flag.top .flag-head {
   filter: brightness(1.5) saturate(1.05);
   border-color: #ffd23f;
-  box-shadow: 0 0 0 2px rgba(255, 210, 63, .7), 0 0 12px rgba(255, 210, 63, .35), 0 2px 8px rgba(0, 0, 0, .5);
+  /* 金环只留给「住宿锚点」；满分用「亮色 + 头顶金星」表达，两种语义不再撞车 */
+  box-shadow: 0 0 0 1px rgba(255, 210, 63, .45), 0 2px 8px rgba(0, 0, 0, .5);
 }
 .flag.top .flag-tail { filter: brightness(1.5) saturate(1.05); }
 .flag.top .flag-crown { text-shadow: 0 0 6px rgba(255, 210, 63, .85), 0 0 2px #000; }
