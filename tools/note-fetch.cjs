@@ -192,6 +192,22 @@ async function douyinNote({ page, url }) {
   });
 }
 
+// ---------- 抖音搜索：试一次，把风控原因说清楚 ----------
+async function douyinSearch({ page, keyword }) {
+  const err = await open(page, 'https://www.douyin.com/search/' + encodeURIComponent(keyword) + '?type=general', 8000);
+  const info = await page.evaluate(() => ({
+    title: document.title,
+    text: (document.body ? document.body.innerText : '').slice(0, 200),
+  }));
+  if (/验证码|滑块|安全验证/.test(info.title + info.text)) {
+    return fail('NEED_CAPTCHA', '抖音搜索页弹验证码中间页（风控）⇒ 抖音只能给链接抓单条，不能按关键词搜', {
+      platform: 'douyin',
+    });
+  }
+  if (err) return fail('NO_DATA', '抖音搜索页打不开：' + String(err.message).split('\n')[0], { platform: 'douyin' });
+  return fail('NOT_IMPLEMENTED', '抖音搜索接口还没接（页面可打开，但列表接口没拦到）', { platform: 'douyin' });
+}
+
 // ---------- 快手（网页端要登录，未登录时如实报） ----------
 async function kuaishouNote({ page, url }) {
   await open(page, url, 6000);
@@ -233,6 +249,8 @@ module.exports = async ({ page, context, args }) => {
       result = fail('BAD_PLATFORM', '不支持的平台: ' + platform, { platform });
     } else if (mode === 'search' && platform === 'xhs') {
       result = await xhsSearch({ page, keyword: a, limit: Number(b) || 12 });
+    } else if (mode === 'search' && platform === 'douyin') {
+      result = await douyinSearch({ page, keyword: a });
     } else if (mode === 'search') {
       result = fail('NOT_IMPLEMENTED', '该平台的「按关键词搜」还没实现（可用链接抓取）', { platform });
     } else if (mode === 'url' && platform === 'xhs') {

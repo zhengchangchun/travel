@@ -172,6 +172,8 @@ function createApp(opts = {}) {
     HttpError,
     // 笔记抓取（P5）：可注入（测试里换成假抓取器，不起浏览器）
     noteFetch: opts.noteFetch || require('./note-fetch'),
+    // 地名补全兜底（OSM/Photon，免 key）：高德没配额时用，可注入
+    osm: opts.osm || require('./geocode-osm'),
     routeIntervalMs:
       opts.routeIntervalMs !== undefined
         ? Number(opts.routeIntervalMs) || 0

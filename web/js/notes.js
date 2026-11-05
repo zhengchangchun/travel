@@ -350,6 +350,7 @@
             '<div class="note-place-main">',
             '<b>' + esc(p.name) + '</b>',
             ok && p.rating ? '<span class="note-rating">★' + esc(p.rating) + '</span>' : '',
+            ok && p.source === 'osm' ? '<span class="note-src">OSM</span>' : '',
             '<div class="note-place-addr">' + esc(p.address || (ok ? '' : '还没查高德')) + '</div>',
             '</div>',
             right,
@@ -465,12 +466,16 @@
     const namesEl = $('note-names-input');
     const typed = namesEl
       ? String(namesEl.value || '')
-          .split(/[、,，\s]+/)
+          .split(/[、,，\n]+/)
           .map((s) => s.trim())
           .filter(Boolean)
       : [];
     const body = Object.assign({}, payload, typed.length ? { names: typed } : {});
-    if (hint) hint.textContent = payload.resolve ? '正在补全（每个名字 1 次高德调用）…' : '提取中…';
+    if (hint) {
+      hint.textContent = payload.resolve
+        ? '正在补全（每个名字先试高德，没配额时走 OSM）…'
+        : '提取中…';
+    }
     try {
       const r = await API.notePlaces(st.detail.id, body);
       st.detail = await API.getNote(st.detail.id);
@@ -481,9 +486,11 @@
           okMsg +
           '：' +
           r.names.length +
-          ' 个候选 · ' +
+          ' 个候选 · 高德 ' +
           r.calls +
-          ' 次调用 · 补全成功 ' +
+          ' 次' +
+          (r.osm_calls ? ' · OSM 兜底 ' + r.osm_calls + ' 次' : '') +
+          ' · 补全成功 ' +
           r.resolved +
           ' 个' +
           (r.errors && r.errors.length

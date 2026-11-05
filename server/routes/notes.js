@@ -3,6 +3,17 @@
 // （抖音验证码页、小红书 300012 IP 风险、B站风控页、微博 302 访客登）⇒ 这里只做「落库/落图/本地读/补全」。
 const path = require('node:path');
 const { downloadImages, refererForPlatform } = require('../note-images');
+const { matchesName } = require('../geocode-osm');
+
+// 同一个地名可能在两个源上都失败：错因合并成一条，别在界面上重复报同一个名字
+function pushErr(errors, name, msg) {
+  const hit = errors.find((e) => e.name === name);
+  if (hit) {
+    if (!hit.msg.includes(msg)) hit.msg = hit.msg + ' / ' + msg;
+    return;
+  }
+  errors.push({ name, msg });
+}
 const {
   parseShareText,
   extractPlaceNames,
@@ -411,41 +422,61 @@ module.exports = [
         return { note_id: id, city: city || null, names, places, calls: 0, errors: [], resolved: 0 };
       }
 
+      const geocoder = String(b.geocoder || 'auto'); // auto | amap | osm
       if (!city) {
-        throw new ctx.HttpError(400, 'BAD_REQUEST', '高德补全需要 city（笔记里没有就带上）');
+        throw new ctx.HttpError(400, 'BAD_REQUEST', '地名补全需要 city（笔记里没有就带上）');
       }
 
       const rows = [];
       const errors = [];
-      let calls = 0;
+      let calls = 0; // 高德调用次数
+      let osmCalls = 0; // OSM 兜底调用次数
       for (const name of names) {
-        try {
-          calls += 1;
-          const list = await ctx.amap.searchPoi({ city, keywords: name, page: 1 });
-          const best = pickBest(name, list);
-          if (!best) {
-            rows.push({ name, city, resolved_at: resolvedAt });
-            errors.push({ name, msg: '高德没返回结果' });
-            continue;
+        let hit = null;
+        let amapErr = null;
+        if (geocoder !== 'osm') {
+          try {
+            calls += 1;
+            const list = await ctx.amap.searchPoi({ city, keywords: name, page: 1 });
+            hit = pickBest(name, list);
+          } catch (err) {
+            // 配额/网络失败先记下，再让 OSM 兜底；两条都不成才如实报错（不写假点）
+            amapErr = (err && err.message) || String(err);
           }
-          rows.push({
-            name,
-            poi_name: best.name,
-            city,
-            poi_id: best.id,
-            address: best.address,
-            lng: best.lng,
-            lat: best.lat,
-            rating: best.rating,
-            category: best.category,
-            photo: best.photo,
-            resolved_at: resolvedAt,
-          });
-        } catch (err) {
-          // 配额/网络失败一律如实报，不写假点（该名字留空，下次可重试）
-          rows.push({ name, city, resolved_at: null });
-          errors.push({ name, msg: (err && err.message) || String(err) });
         }
+        if (!hit && geocoder !== 'amap' && ctx.osm && typeof ctx.osm.searchOsm === 'function') {
+          try {
+            osmCalls += 1;
+            const list = await ctx.osm.searchOsm({ city, keywords: name, limit: 5 });
+            // OSM 只认同名的（不然它会给一条无关街道）
+            const same = list.filter((p) => matchesName(name, p.name));
+            const best = pickBest(name, same);
+            if (best) hit = Object.assign({}, best, { source: 'osm' });
+            else pushErr(errors, name, 'OSM 里没有同名地点（不拿别的点凑）');
+          } catch (err) {
+            pushErr(errors, name, 'OSM 兜底也失败：' + ((err && err.message) || String(err)));
+          }
+        }
+        if (!hit) {
+          rows.push({ name, city, resolved_at: null });
+          if (amapErr) pushErr(errors, name, amapErr);
+          else pushErr(errors, name, '没查到这个地名');
+          continue;
+        }
+        rows.push({
+          name,
+          poi_name: hit.name,
+          city,
+          poi_id: hit.id,
+          address: hit.address,
+          lng: hit.lng,
+          lat: hit.lat,
+          rating: hit.rating,
+          category: hit.category,
+          photo: hit.photo,
+          source: hit.source === 'osm' ? 'osm' : 'amap',
+          resolved_at: resolvedAt,
+        });
       }
       const places = ctx.db.replaceNotePlaces(id, rows);
       return {
@@ -454,7 +485,12 @@ module.exports = [
         names,
         places,
         calls,
+        osm_calls: osmCalls,
         resolved: places.filter((p) => p.poi_id).length,
+        by_source: {
+          amap: places.filter((p) => p.source === 'amap').length,
+          osm: places.filter((p) => p.source === 'osm').length,
+        },
         errors,
       };
     },

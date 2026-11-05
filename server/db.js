@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS note_places (
   rating      REAL,
   category    TEXT,
   photo       TEXT,
+  source      TEXT,
   resolved_at TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -192,6 +193,8 @@ function createDb(filePath) {
   ensureColumn(db, 'notes', 'video_url', 'video_url TEXT');
   ensureColumn(db, 'notes', 'share_text', 'share_text TEXT');
   ensureColumn(db, 'notes', 'fetched_at', 'fetched_at TEXT');
+  // 地点来源（amap / osm）：兜底源要能一眼看出，不与高德结果混为一谈
+  ensureColumn(db, 'note_places', 'source', 'source TEXT');
 
   const stmts = {
     insertTrip: db.prepare('INSERT INTO trips (city, title) VALUES (?, ?)'),
@@ -241,8 +244,8 @@ function createDb(filePath) {
     listNotePlaces: db.prepare('SELECT * FROM note_places WHERE note_id = ? ORDER BY id'),
     deleteNotePlaces: db.prepare('DELETE FROM note_places WHERE note_id = ?'),
     insertNotePlace: db.prepare(
-      `INSERT INTO note_places (note_id, name, poi_name, city, poi_id, address, lng, lat, rating, category, photo, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO note_places (note_id, name, poi_name, city, poi_id, address, lng, lat, rating, category, photo, source, resolved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
 
     // ---- T2 选中模型 ----
@@ -456,6 +459,7 @@ function createDb(filePath) {
             p.rating == null || p.rating === '' ? null : Number(p.rating),
             p.category || null,
             p.photo || null,
+            p.source || null,
             p.resolved_at || null
           );
         });

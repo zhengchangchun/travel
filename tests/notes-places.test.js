@@ -49,6 +49,8 @@ async function startApp(opts = {}) {
     categories: CATEGORIES,
     db: opts.db || createDb(':memory:'),
     amap: opts.amap || { searchPoi: () => [] },
+    // 单测一律注入假 OSM：不许真打外部请求
+    osm: opts.osm || { searchOsm: async () => [] },
     collectIntervalMs: 0,
   });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
@@ -229,6 +231,101 @@ test('POST /api/notes/:id/places（resolve=1）：逐名 1 次调用、挑最贴
     // 重跑幂等：地点行整批替换，不堆历史
     const again = await req(base, 'POST', '/api/notes/' + id + '/places', { resolve: true });
     assert.strictEqual(again.body.data.places.length, d.places.length, '重跑不累积');
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('地名补全兜底：高德没配额时走 OSM（来源如实标 osm）', async () => {
+  const osmCalls = [];
+  const app = await startApp({
+    amap: {
+      searchPoi() {
+        throw new Error('USER_DAILY_QUERY_OVER_LIMIT');
+      },
+    },
+    osm: {
+      searchOsm({ city, keywords }) {
+        osmCalls.push({ city, keywords });
+        if (keywords !== '西湖') {
+          // 兜底源可能返回同名以外的结果：路由要把它筛掉
+          return [{ id: 'osm:noise', name: '环城东路', lng: 120.17, lat: 30.24, category: 'sight', source: 'osm' }];
+        }
+        return [
+          {
+            id: 'osm:relation2308774',
+            name: '西湖',
+            address: '苏堤 杭州市 浙江省',
+            lng: 120.1445,
+            lat: 30.2489,
+            category: 'sight',
+            rating: '',
+            photo: '',
+            source: 'osm',
+          },
+        ];
+      },
+    },
+  });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  try {
+    const created = await req(base, 'POST', '/api/notes', {
+      url: 'https://x.com/1',
+      city: '杭州',
+      title: 'T',
+      content: '去西湖，然后去密渡桥路',
+    });
+    const id = created.body.data.id;
+    const r = await req(base, 'POST', '/api/notes/' + id + '/places', { resolve: true });
+    assert.strictEqual(r.status, 200);
+    const d = r.body.data;
+    assert.ok(d.calls >= 1, '高德被试过');
+    assert.ok(d.osm_calls >= 1, 'OSM 兜底被调过');
+    const xihu = d.places.find((p) => p.name === '西湖');
+    assert.strictEqual(xihu.source, 'osm');
+    assert.strictEqual(xihu.poi_id, 'osm:relation2308774');
+    assert.strictEqual(xihu.lng, 120.1445);
+    assert.ok(xihu.resolved_at, '兜底也算补全成功');
+    assert.strictEqual(d.by_source.osm, 1);
+    // 两个源都查不到的：不写假点，错因如实报
+    const miss = d.places.find((p) => p.name === '密渡桥路');
+    assert.strictEqual(miss.poi_id, null);
+    assert.ok(d.errors.some((e) => /OVER_LIMIT/.test(e.msg)), '高德的原因要报出来');
+    const dup = d.errors.filter((e) => e.name === '密渡桥路');
+    assert.strictEqual(dup.length, 1, '同一个地名只报一条（错因合并）');
+    assert.match(dup[0].msg, /OSM/, '两个源的原因都要在');
+    assert.ok(osmCalls.every((c) => c.city === '杭州'));
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('地名补全：显式 geocoder=amap 时不走兜底', async () => {
+  const osmCalls = [];
+  const app = await startApp({
+    amap: { searchPoi: () => [] },
+    osm: {
+      searchOsm() {
+        osmCalls.push(1);
+        return [{ id: 'osm:1', name: '西湖', lng: 1, lat: 2, category: 'sight', source: 'osm' }];
+      },
+    },
+  });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  try {
+    const created = await req(base, 'POST', '/api/notes', {
+      url: 'https://x.com/1',
+      city: '杭州',
+      title: 'T',
+      content: '去西湖',
+    });
+    const r = await req(base, 'POST', '/api/notes/' + created.body.data.id + '/places', {
+      resolve: true,
+      geocoder: 'amap',
+      names: ['西湖'],
+    });
+    assert.strictEqual(r.body.data.osm_calls, 0);
+    assert.strictEqual(osmCalls.length, 0);
   } finally {
     await new Promise((r) => app.server.close(r));
   }
