@@ -84,7 +84,11 @@ test('笔记版式：大图头图 + 来源角标 + 缩略图条 + 信息 chip，
 test('头图不放大裁切：整图完整显示 + 高度随图片比例自适应 + 缩略图懒加载', () => {
   const CSS2 = CSS;
   assert.match(CSS2, /\.infocard\s+\.gallery-img\s*\{[^}]*object-fit:\s*contain/, '头图应 contain（整图可见，不裁切）');
-  assert.match(CSS2, /\.infocard\s+\.gallery-main\s*\{[^}]*background:\s*#F3F1EC/, '头图容器应有中性底色（letterbox）');
+  assert.match(
+    CSS2,
+    /\.infocard\s+\.gallery-main\s*\{[^}]*background:\s*#(F3F1EC|191d26)/,
+    '头图容器应有中性底色（letterbox；暗色主题下是 #191d26）'
+  );
   assert.match(CSS2, /\.infocard\s+img\s*\{\s*max-width:\s*100%/, '详情卡内图片不应溢出');
   assert.match(DETAIL, /img\.onload/, '缺按图片比例自适应高度的 onload');
   assert.match(DETAIL, /Math\.min\(340, Math\.max\(160/, '高度应在 160–340 之间夹紧');

@@ -618,3 +618,242 @@ button.danger:hover { background: #ad2102; }
   font-size: 10px; padding: 1px 5px; border-radius: 999px; margin-left: 5px;
   background: #eef7ee; color: #2f7a3f;
 }
+
+/* ============================================================
+   暗色主题（P7）：追加层，不改上面既有规则 ⇒ 老选择器与测试断言全部保留
+   设计：深中性底 + 玻璃拟态浮层 + 单一强调色（靛蓝→青）渐变主按钮
+   ============================================================ */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --bg-panel: #101319;
+  --surface: #151922;
+  --surface-2: #1b2029;
+  --line: rgba(255, 255, 255, .07);
+  --line-2: rgba(255, 255, 255, .14);
+  --ink: #e9edf6;
+  --ink-2: #a7b1c0;
+  --ink-3: #6f7887;
+  --accent: #6d8bff;
+  --accent-2: #35d0c0;
+  --danger: #ff6b6b;
+  --warn: #ffc861;
+  --ok: #4ad69a;
+  --glass: rgba(17, 20, 27, .78);
+  --radius: 14px;
+  --shadow: 0 16px 40px rgba(0, 0, 0, .5);
+}
+
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  background-image:
+    radial-gradient(1100px 500px at 12% -10%, rgba(109, 139, 255, .16), transparent 60%),
+    radial-gradient(900px 460px at 100% 0%, rgba(53, 208, 192, .10), transparent 62%);
+  background-attachment: fixed;
+}
+#app { background: transparent; }
+
+/* 侧栏 / 右栏 */
+#sidebar.col-left {
+  background: linear-gradient(180deg, #11151c 0%, #0e1117 100%);
+  border-right: 1px solid var(--line);
+}
+#right-panel.col-right {
+  background: linear-gradient(180deg, #11151c 0%, #0e1117 100%);
+  border-left: 1px solid var(--line);
+}
+.brand h1 { letter-spacing: -.2px; color: var(--ink); }
+.brand .sub, .hint { color: var(--ink-3); }
+.brand .sub { font-size: 12px; }
+.right-head { border-bottom: 1px solid var(--line); }
+.panel-toggle {
+  background: var(--surface); border: 1px solid var(--line-2); color: var(--ink-2);
+  border-radius: 10px; transition: all .16s ease;
+}
+.panel-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 卡片 */
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 13px; box-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset;
+}
+.card h2 { color: var(--ink); font-size: 13.5px; letter-spacing: .1px; }
+.card .count { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b0d12; font-weight: 700; }
+.pin-card { background: var(--surface); }
+.sub-head { color: var(--ink-2); font-size: 12.5px; }
+.current-city { color: var(--ink-2); }
+.current-city b { color: var(--accent-2); }
+
+/* 表单控件 */
+input, #note-card textarea, #note-card .row input, #note-card .row select, #note-detail input {
+  background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink);
+  border-radius: 10px; transition: border-color .16s ease, box-shadow .16s ease;
+}
+input::placeholder, #note-card textarea::placeholder { color: var(--ink-3); }
+input:focus, #note-card textarea:focus, #note-card .row input:focus, #note-card .row select:focus,
+#note-detail input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 139, 255, .18); }
+select { color-scheme: dark; }
+
+button {
+  background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink);
+  border-radius: 10px; transition: all .16s ease;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary {
+  background: linear-gradient(135deg, #5f7dff 0%, #6d8bff 45%, #35d0c0 130%);
+  border-color: transparent; color: #0b0d12; font-weight: 700;
+  box-shadow: 0 6px 18px rgba(95, 125, 255, .28);
+}
+button.primary:hover { filter: brightness(1.08); color: #0b0d12; }
+button.ghost { background: rgba(255, 255, 255, .03); }
+button.danger { background: linear-gradient(135deg, #ff5f5f, #ff7a45); border-color: transparent; color: #12141a; font-weight: 700; }
+button:disabled { opacity: .45; }
+
+/* 城市搜索结果 / chip */
+.city-item { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; }
+.city-item:hover { border-color: var(--accent); color: var(--accent); }
+.chip {
+  background: rgba(255, 255, 255, .04); border: 1px solid var(--line-2); color: var(--ink-2);
+  border-radius: 999px; transition: all .16s ease;
+}
+.chip:hover { color: var(--ink); border-color: var(--line-2); background: rgba(255, 255, 255, .07); }
+.chip.active {
+  background: color-mix(in srgb, var(--chip-color, var(--accent)) 26%, transparent);
+  border-color: color-mix(in srgb, var(--chip-color, var(--accent)) 70%, transparent);
+  color: #fff;
+}
+.chip.toggle.active, .rating-chip.active {
+  background: rgba(255, 200, 97, .16); border-color: rgba(255, 200, 97, .6); color: var(--warn);
+}
+
+/* POI 列表 */
+.poi-item, .note-item, .note-cand, .note-place {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+  transition: border-color .16s ease, transform .16s ease, background .16s ease;
+}
+.poi-item:hover, .note-item:hover, .note-cand:hover { border-color: var(--accent); transform: translateY(-1px); }
+.note-item.selected { border-color: var(--accent); background: rgba(109, 139, 255, .12); }
+.poi-name, .note-item-title, .note-detail-title, .infocard .detail-name { color: var(--ink); }
+.poi-addr, .note-place-addr { color: var(--ink-2); }
+.poi-meta, .detail-meta { color: var(--accent-2); }
+.poi-tag { background: rgba(255, 255, 255, .06); color: var(--ink-2); }
+.poi-item .del { color: var(--danger); }
+.trip-name { color: var(--ink-3); }
+.poi-list .empty, .note-empty { color: var(--ink-3); }
+
+/* 地图区与浮层（玻璃拟态） */
+#map-wrap { background: #0a0c11; }
+.map-status, .view-count, .score-legend {
+  background: var(--glass); border: 1px solid var(--line-2); color: var(--ink);
+  backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); border-radius: 12px;
+}
+.view-count b, .view-count span { color: var(--ink); }
+.view-hint {
+  background: rgba(109, 139, 255, .16); border: 1px solid rgba(109, 139, 255, .45); color: #c8d3ff;
+  backdrop-filter: blur(10px); border-radius: 12px;
+}
+.view-progress { background: rgba(74, 214, 154, .14); border: 1px solid rgba(74, 214, 154, .4); color: #9df0c6; border-radius: 12px; }
+.map-error { background: rgba(255, 107, 107, .16); border: 1px solid rgba(255, 107, 107, .5); color: #ffc9c9; border-radius: 12px; backdrop-filter: blur(10px); }
+.legend-title, .legend-scale { color: var(--ink-2); }
+.legend-bar { background: linear-gradient(to right, #39404d 0%, #8b96a6 50%, #e9edf6 100%); }
+.legend-top { color: var(--warn); }
+
+/* 详情卡（笔记版式） */
+.infocard {
+  background: var(--glass); border: 1px solid var(--line-2); border-radius: 16px;
+  backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: var(--shadow); color: var(--ink);
+}
+.card-head b { color: var(--ink); }
+.card-close { color: var(--ink-3); }
+.card-addr { background: rgba(255, 255, 255, .05); }
+.addr-text { color: var(--ink); }
+.copy-addr { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-2); }
+.card-rows dt { color: var(--ink-3); }
+.card-rows dd { color: var(--ink); }
+.card-actions .btn { background: rgba(255, 255, 255, .04); border: 1px solid var(--line-2); color: var(--ink); }
+.card-actions .btn:hover { border-color: var(--accent); color: var(--accent); }
+.card-actions .btn.primary { background: linear-gradient(135deg, #5f7dff, #35d0c0); border-color: transparent; color: #0b0d12; font-weight: 700; }
+.card-actions .btn.amap { color: #7fb2ff; border-color: rgba(127, 178, 255, .45); }
+.infocard .gallery-main, .gallery-main { background: #191d26; }
+.gallery-img { background: #191d26; }
+.infocard .gallery-main.img-failed::after, .gallery-main.img-failed::after { background: #191d26; color: var(--ink-3); }
+.infocard .note-thumb { border-color: transparent; opacity: .7; }
+.infocard .note-thumb.active { border-color: var(--accent); opacity: 1; }
+.infocard .note-chip { background: rgba(255, 255, 255, .06); color: var(--ink-2); }
+.infocard .note-chip.hot { background: rgba(255, 138, 66, .18); color: #ffb27a; }
+.dish-chip { background: rgba(255, 200, 97, .14); border-color: rgba(255, 200, 97, .4); color: var(--warn); }
+.detail-note { color: var(--ink-3); border-top: 1px dashed var(--line-2); }
+.src-row { border-top: 1px dashed var(--line-2); }
+.src-title, .src-kind { color: var(--ink-3); }
+.src-link { background: rgba(255, 255, 255, .04); border: 1px solid var(--line-2); color: var(--ink-2); }
+.src-link:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 选中星标 / 行程 */
+.star { color: #454c59; }
+.star.active { color: var(--warn); }
+.itin-group { background: rgba(255, 255, 255, .05); color: var(--ink-2); }
+.itin-no, .route-leg-no { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b0d12; font-weight: 700; }
+.itin-btns button { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-2); }
+.route-summary { background: var(--surface-2); border: 1px solid var(--line); }
+.route-chip.active { background: rgba(109, 139, 255, .18); border-color: var(--accent); color: #cfd8ff; }
+.route-metrics .metric b { color: var(--accent-2); }
+.route-metrics .metric small, .route-totals .route-mode-line, .route-progress { color: var(--ink-3); }
+.route-leg { border: 1px solid var(--line); }
+.route-leg-head { background: var(--surface-2); color: var(--ink); }
+.route-leg-head:hover { background: rgba(255, 255, 255, .06); }
+.route-leg-path { color: var(--ink); }
+.route-leg-meta { color: var(--ink-3); }
+.route-leg-detail { background: #12161d; }
+.route-steps { color: var(--ink-2); }
+.route-leg.failed .route-leg-meta, .route-warn, .route-leg-reason { color: #ff9d9d; }
+
+/* 二次确认弹层 */
+.modal-mask { background: rgba(6, 8, 12, .68); backdrop-filter: blur(6px); }
+.modal-box { background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px; box-shadow: var(--shadow); }
+.modal-msg { color: var(--ink); }
+
+/* 旗子：暗底上加密一层描边，避免和深色底图糊在一起 */
+.flag-head { border-color: rgba(255, 255, 255, .92); box-shadow: 0 2px 8px rgba(0, 0, 0, .55); }
+.flag.selected .flag-head { box-shadow: 0 0 0 3px rgba(109, 139, 255, .55), 0 2px 10px rgba(0, 0, 0, .6); }
+.flag-base { background: linear-gradient(135deg, #ffd23f, #ffb300); color: #3a2a00; }
+
+/* 住宿锚点卡 */
+.base-box .base-name { color: var(--ink); }
+.base-box .base-sub { color: var(--ink-3); }
+.base-box select { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink); }
+.poi-item .base-pick { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-3); }
+.poi-item .base-pick.active, .btn.base-pick.active { background: rgba(255, 210, 63, .18); border-color: rgba(255, 210, 63, .6); color: var(--warn); }
+.right-body .check { color: var(--ink-2); }
+.right-body .check input { accent-color: var(--accent); }
+
+/* 笔记面板（P4–P6） */
+.note-preview, .note-detail { background: rgba(255, 255, 255, .03); border: 1px solid var(--line); border-radius: 12px; }
+.note-badge { background: rgba(255, 107, 107, .18); color: #ffb3b3; }
+.note-badge.ghost-badge { background: rgba(109, 139, 255, .18); color: #c3cdff; }
+.note-author, .note-item-sub, .mini-label, .note-status, .note-names { color: var(--ink-3); }
+.note-link { color: var(--accent); }
+.note-thumb { background: rgba(255, 255, 255, .06); }
+.note-thumb.blank { color: var(--ink-3); }
+.note-content { color: var(--ink-2); }
+.note-cover { border: 1px solid var(--line); }
+.note-err { color: var(--danger); }
+.note-err-inline { color: var(--warn); }
+.note-rating { color: var(--warn); }
+.note-dot { color: var(--line-2); }
+.note-src { background: rgba(74, 214, 154, .16); color: #93e8c0; }
+.note-manual summary { color: var(--ink-2); }
+
+/* 滚动条 */
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .18) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .14); border: 3px solid transparent; background-clip: content-box; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .26); background-clip: content-box; }
+
+/* 窄屏沿用暗色（原断点 1100px 保持） */
+@media (max-width: 1100px) {
+  #sidebar.col-left { border-bottom: 1px solid var(--line); }
+  #right-panel.col-right { border-top: 1px solid var(--line); }
+}

@@ -83,6 +83,8 @@
       zoom: 11,
       center: [120.15507, 30.27415],
       viewMode: '2D',
+      // 暗色主题：底图也跟着走暗色（不改的话深色界面里会嵌一块惨白地图）
+      mapStyle: 'amap://styles/dark',
     });
     window.addEventListener('resize', onWindowResize);
     return map;
