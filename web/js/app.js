@@ -9,6 +9,7 @@
   const Route = window.TravelRoute;
   const Geo = window.TravelGeo;
   const Planner = window.TravelPlanner;
+  const Notes = window.TravelNotes;
 
   // 住宿锚点持久化键（localStorage；服务端持久化后续再上）
   const BASE_KEY = 'travel.base';
@@ -818,6 +819,13 @@
     if (MapCtl.isReady()) MapCtl.clearMarkers();
     refresh();
     await refreshTrips();
+    if (Notes && Notes.refresh) {
+      try {
+        await Notes.refresh(state.city);
+      } catch (err) {
+        /* 笔记读取失败不阻塞主流程 */
+      }
+    }
 
     const center =
       typeof city.lng === 'number' && typeof city.lat === 'number'
@@ -1064,6 +1072,24 @@
     });
 
     bind();
+
+    // 笔记流（P4）：粘贴分享文案 → 本地库 → 提地名 → 高德补全（看图/加入选择都回主流程）
+    if (Notes && Notes.mount) {
+      Notes.mount({
+        onFlyTo: (lng, lat, name) => {
+          if (MapCtl.isReady() && typeof lng === 'number' && typeof lat === 'number') {
+            MapCtl.flyTo(lng, lat, 16);
+            UI.setStatus('已定位到笔记地点：' + (name || ''));
+          }
+        },
+        onSelect: (poi) => {
+          if (!poi || !poi.id || typeof poi.lng !== 'number') return;
+          Selection.select(poi)
+            .then(() => UI.setStatus('已加入我的选择：' + (poi.name || '')))
+            .catch((err) => UI.setStatus('加入失败：' + err.message));
+        },
+      });
+    }
 
     try {
       await MapCtl.init('map', {

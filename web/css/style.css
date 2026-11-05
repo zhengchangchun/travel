@@ -510,3 +510,90 @@ button.danger:hover { background: #ad2102; }
   background: #F3F1EC; color: #55514b;
 }
 .infocard .note-chip.hot { background: #FFF1E8; color: #C4501B; }
+
+/* ---------- 笔记 → 找地方（P4） ---------- */
+#note-card textarea {
+  width: 100%; margin-top: 6px; padding: 8px; font-size: 12px; line-height: 1.5;
+  border: 1px solid #d7d9e0; border-radius: 8px; resize: vertical;
+  font-family: inherit; color: #1f2937; background: #fff;
+}
+#note-card textarea:focus { outline: none; border-color: #1677ff; }
+#note-card .row { margin-top: 8px; }
+#note-card .row button { flex: 0 0 auto; }
+.mini-label { display: block; font-size: 11px; color: #8b8f98; margin: 8px 0 2px; }
+.note-preview {
+  margin-top: 10px; padding: 10px; border: 1px solid #e5e6eb;
+  border-radius: 10px; background: #fafbfc;
+}
+.note-preview input {
+  width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid #d7d9e0;
+  border-radius: 8px; font-family: inherit;
+}
+.note-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.note-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: #ffeceb; color: #d4380d;
+}
+.note-badge.ghost-badge { background: #eef2ff; color: #364fc7; }
+.note-author { font-size: 11px; color: #6b7280; }
+.note-link { font-size: 11px; color: #1677ff; text-decoration: none; }
+.note-names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 11px; color: #8b8f98; }
+.chip.mini { padding: 2px 8px; font-size: 11px; }
+.note-err { font-size: 12px; color: #d4380d; }
+.note-err-inline { font-size: 11px; color: #b26a00; }
+.note-list { max-height: 190px; overflow-y: auto; }
+.note-empty { font-size: 12px; color: #8b8f98; padding: 6px 2px; }
+.note-item {
+  display: flex; gap: 8px; align-items: center; padding: 6px;
+  border: 1px solid #eceef2; border-radius: 10px; cursor: pointer; background: #fff;
+}
+.note-item:hover { border-color: #1677ff; }
+.note-item.selected { border-color: #1677ff; background: #f5f9ff; }
+.note-thumb {
+  width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: 0 0 auto;
+  background: #f2f3f5;
+}
+.note-thumb.blank {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #8b8f98;
+}
+.note-item-main { min-width: 0; flex: 1; }
+.note-item-title {
+  font-size: 13px; color: #1f2937; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-item-sub {
+  display: flex; align-items: center; gap: 6px; margin-top: 3px;
+  font-size: 11px; color: #8b8f98;
+}
+.note-dot { color: #c9ccd3; }
+.note-detail {
+  margin-top: 10px; padding: 10px; border: 1px solid #e5e6eb;
+  border-radius: 10px; background: #fafbfc;
+}
+.note-detail-head { display: flex; align-items: flex-start; gap: 8px; }
+.note-detail-title { flex: 1; font-size: 14px; font-weight: 700; color: #1f2937; }
+.note-cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-top: 8px; }
+.note-content {
+  margin-top: 8px; font-size: 12px; line-height: 1.6; color: #374151;
+  max-height: 120px; overflow-y: auto; white-space: pre-wrap;
+}
+.note-imgs { display: flex; gap: 6px; overflow-x: auto; margin-top: 8px; }
+.note-imgs img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
+.note-actions { margin-top: 10px; flex-wrap: wrap; }
+.note-places { gap: 4px; }
+.note-place {
+  display: flex; align-items: center; gap: 8px; padding: 6px;
+  border: 1px solid #eceef2; border-radius: 10px; background: #fff;
+}
+.note-place-main { flex: 1; min-width: 0; font-size: 12px; }
+.note-place-addr {
+  font-size: 11px; color: #8b8f98; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.note-rating { font-size: 11px; color: #d48806; margin-left: 6px; }
+.note-place-acts { display: flex; gap: 4px; flex: 0 0 auto; }
+#note-detail input {
+  width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid #d7d9e0;
+  border-radius: 8px; font-family: inherit;
+}
+#note-card img.is-broken { display: none; }

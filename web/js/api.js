@@ -68,6 +68,12 @@
     clearCityTrips: (city) => request('/api/trips?' + qs({ city }), { method: 'DELETE' }),
     listNotes: (city) => request('/api/notes' + (city ? '?' + qs({ city }) : '')),
     addNote: (payload) => request('/api/notes', post(payload)),
+    // P4：分享文案识别 / 单条笔记 / 地名提取与高德补全
+    parseNoteShare: (text) => request('/api/notes/parse', post({ text })),
+    searchNotes: (params) => request('/api/notes/search?' + qs(params)),
+    getNote: (id) => request('/api/notes/' + id),
+    notePlaces: (id, payload) => request('/api/notes/' + id + '/places', post(payload || {})),
+    deleteNote: (id) => request('/api/notes/' + id, { method: 'DELETE' }),
     updatePinNote: (id, note) =>
       request('/api/pins/' + id, {
         method: 'PATCH',

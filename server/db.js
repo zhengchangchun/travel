@@ -37,18 +37,40 @@ CREATE TABLE IF NOT EXISTS notes (
   title       TEXT,
   source      TEXT,
   source_type TEXT,
+  kind        TEXT,
   author      TEXT,
   content     TEXT,
   cover       TEXT,
   images      TEXT,
   tags        TEXT,
+  video_url   TEXT,
+  share_text  TEXT,
   fetched_at  TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 从笔记正文里提取出来、经高德补全的地点（「按笔记搜地方」的落点）
+CREATE TABLE IF NOT EXISTS note_places (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  note_id     INTEGER NOT NULL REFERENCES notes(id),
+  name        TEXT NOT NULL,
+  poi_name    TEXT,
+  city        TEXT,
+  poi_id      TEXT,
+  address     TEXT,
+  lng         REAL,
+  lat         REAL,
+  rating      REAL,
+  category    TEXT,
+  photo       TEXT,
+  resolved_at TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pins_trip ON pins(trip_id);
 CREATE INDEX IF NOT EXISTS idx_pins_poi ON pins(poi_id);
 CREATE INDEX IF NOT EXISTS idx_notes_city ON notes(city);
+CREATE INDEX IF NOT EXISTS idx_note_places_note ON note_places(note_id);
 
 CREATE TABLE IF NOT EXISTS pois (
   poi_id     TEXT PRIMARY KEY,
@@ -163,9 +185,12 @@ function createDb(filePath) {
   ensureColumn(db, 'notes', 'source_type', 'source_type TEXT');
   ensureColumn(db, 'notes', 'author', 'author TEXT');
   ensureColumn(db, 'notes', 'content', 'content TEXT');
+  ensureColumn(db, 'notes', 'kind', 'kind TEXT');
   ensureColumn(db, 'notes', 'cover', 'cover TEXT');
   ensureColumn(db, 'notes', 'images', 'images TEXT');
   ensureColumn(db, 'notes', 'tags', 'tags TEXT');
+  ensureColumn(db, 'notes', 'video_url', 'video_url TEXT');
+  ensureColumn(db, 'notes', 'share_text', 'share_text TEXT');
   ensureColumn(db, 'notes', 'fetched_at', 'fetched_at TEXT');
 
   const stmts = {
@@ -195,8 +220,8 @@ function createDb(filePath) {
     listNotesCity: db.prepare('SELECT * FROM notes WHERE city = ? ORDER BY id DESC'),
     deleteNote: db.prepare('DELETE FROM notes WHERE id = ?'),
     insertNoteFull: db.prepare(
-      `INSERT INTO notes (pin_id, city, url, title, source, source_type, author, content, cover, images, tags, fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (pin_id, city, url, title, source, source_type, kind, author, content, cover, images, tags, video_url, share_text, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     // 本地搜索：关键词命中标题/正文/作者；source 同时认 source 与 source_type（小红书/抖音…）
     searchNotes: db.prepare(
@@ -208,6 +233,15 @@ function createDb(filePath) {
     ),
     setNotePayload: db.prepare(
       'UPDATE notes SET author = ?, content = ?, cover = ?, images = ?, tags = ?, fetched_at = ? WHERE id = ?'
+    ),
+    setNoteIdent: db.prepare(
+      'UPDATE notes SET title = ?, source = ?, source_type = ?, kind = ?, url = ?, video_url = ?, share_text = ?, fetched_at = ? WHERE id = ?'
+    ),
+    listNotePlaces: db.prepare('SELECT * FROM note_places WHERE note_id = ? ORDER BY id'),
+    deleteNotePlaces: db.prepare('DELETE FROM note_places WHERE note_id = ?'),
+    insertNotePlace: db.prepare(
+      `INSERT INTO note_places (note_id, name, poi_name, city, poi_id, address, lng, lat, rating, category, photo, resolved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
 
     // ---- T2 选中模型 ----
@@ -365,6 +399,7 @@ function createDb(filePath) {
       return stmts.getNote.get(toNumber(info.lastInsertRowid));
     },
     // 带内容的完整入库（笔记本地缓存）
+    // P4：kind（note/video）与视频链接、原始分享文案也一起落库
     addNoteFull(note) {
       const info = stmts.insertNoteFull.run(
         note.pin_id ?? null,
@@ -373,14 +408,65 @@ function createDb(filePath) {
         note.title || null,
         note.source || null,
         note.source_type || null,
+        note.kind || null,
         note.author || null,
         note.content || null,
         note.cover || null,
         note.images ? JSON.stringify(note.images) : null,
         note.tags ? JSON.stringify(note.tags) : null,
+        note.video_url || null,
+        note.share_text || null,
         note.fetched_at || null
       );
       return stmts.getNote.get(toNumber(info.lastInsertRowid));
+    },
+    // 改身份信息（平台/形态/链接）；正文与图仍走 setNotePayload
+    setNoteIdent(id, patch = {}) {
+      const cur = stmts.getNote.get(id);
+      if (!cur) return null;
+      stmts.setNoteIdent.run(
+        patch.title != null ? patch.title : cur.title,
+        patch.source != null ? patch.source : cur.source,
+        patch.source_type != null ? patch.source_type : cur.source_type,
+        patch.kind != null ? patch.kind : cur.kind,
+        patch.url != null ? patch.url : cur.url,
+        patch.video_url != null ? patch.video_url : cur.video_url,
+        patch.share_text != null ? patch.share_text : cur.share_text,
+        new Date().toISOString(),
+        id
+      );
+      return stmts.getNote.get(id) || null;
+    },
+    // 地点候选整批替换（重跑提取/补全不堆历史垃圾）
+    replaceNotePlaces(noteId, rows) {
+      db.exec('BEGIN');
+      try {
+        stmts.deleteNotePlaces.run(noteId);
+        (rows || []).forEach((p) => {
+          stmts.insertNotePlace.run(
+            noteId,
+            p.name,
+            p.poi_name || null,
+            p.city || null,
+            p.poi_id || null,
+            p.address || null,
+            p.lng == null ? null : Number(p.lng),
+            p.lat == null ? null : Number(p.lat),
+            p.rating == null || p.rating === '' ? null : Number(p.rating),
+            p.category || null,
+            p.photo || null,
+            p.resolved_at || null
+          );
+        });
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return stmts.listNotePlaces.all(noteId);
+    },
+    listNotePlaces(noteId) {
+      return stmts.listNotePlaces.all(noteId);
     },
     searchNotes({ q = '', source = '', city = '', limit = 200 } = {}) {
       const like = '%' + q + '%';
@@ -413,6 +499,8 @@ function createDb(filePath) {
       return city ? stmts.listNotesCity.all(city) : stmts.listNotesAll.all();
     },
     deleteNote(id) {
+      // 地点候选跟笔记一起走（不留孤儿行）
+      stmts.deleteNotePlaces.run(id);
       const info = stmts.deleteNote.run(id);
       return { changes: info.changes };
     },

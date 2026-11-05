@@ -258,14 +258,44 @@ test('PATCH /api/notes/:id：给已有笔记补正文/作者（不清掉已有�
   }
 });
 
-test('POST /api/notes：缺 url → 400', async () => {
+test('POST /api/notes：url / share_text / title 全空 → 400', async () => {
   const app = await startApp();
   const base = 'http://127.0.0.1:' + app.server.address().port;
   try {
-    const r = await req(base, 'POST', '/api/notes', { title: 'no url' });
+    // P4 起 url 不再是必填（用户可能只贴一段分享文案或正文）
+    const r = await req(base, 'POST', '/api/notes', { content: '只给了正文' });
     assert.strictEqual(r.status, 400);
+    const ok = await req(base, 'POST', '/api/notes', { title: '只有标题也行' });
+    assert.strictEqual(ok.status, 200);
+    assert.strictEqual(ok.body.data.title, '只有标题也行');
+    assert.strictEqual(ok.body.data.url, '', '没链接就存空串');
   } finally {
     await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('存量库前滚：老库也能加 kind / video_url / share_text', async () => {
+  const dbPath = path.join(os.tmpdir(), 'travel-notes-mig-p4-' + process.pid + '.db');
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    const old = new DatabaseSync(dbPath);
+    old.exec(
+      `CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, pin_id INTEGER, city TEXT,
+        url TEXT NOT NULL, title TEXT, source TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));`
+    );
+    old.exec(`INSERT INTO notes (url, title) VALUES ('https://x.com/old', '老笔记')`);
+    old.close();
+
+    const db = createDb(dbPath);
+    const rows = db.listNotes();
+    assert.strictEqual(rows.length, 1);
+    const cols = db.raw.prepare('PRAGMA table_info(notes)').all().map((c) => c.name);
+    ['kind', 'video_url', 'share_text'].forEach((c) => assert.ok(cols.includes(c), '应前滚出 ' + c));
+    const placesCols = db.raw.prepare('PRAGMA table_info(note_places)').all().map((c) => c.name);
+    assert.ok(placesCols.includes('poi_id'), 'note_places 表应建出来');
+    db.raw.close();
+  } finally {
+    fs.rmSync(dbPath, { force: true });
   }
 });
 

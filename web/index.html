@@ -33,6 +33,21 @@
         </div>
       </section>
 
+      <section class="card" id="note-card">
+        <h2>笔记 → 找地方</h2>
+        <p class="hint">小红书 / 抖音 / 快手… App 里「分享 → 复制链接」，整段粘进来（图文、视频都收）</p>
+        <textarea id="note-share" rows="3" placeholder="粘贴分享文案 / 链接 / 正文"></textarea>
+        <div class="row">
+          <button id="note-parse-btn" class="ghost">识别</button>
+          <button id="note-save-btn" class="primary">存到本地</button>
+          <button id="note-clear-btn" class="ghost">清空</button>
+        </div>
+        <div id="note-preview" class="note-preview hidden"></div>
+        <h2 class="sub-head">本地笔记 <span id="note-count" class="count">0</span></h2>
+        <ul id="note-list" class="poi-list note-list"></ul>
+        <div id="note-detail" class="note-detail hidden"></div>
+      </section>
+
       <section class="card">
         <h2>住宿锚点</h2>
         <div id="base-box" class="base-box">
@@ -148,6 +163,7 @@
   <script src="/js/geo.js"></script>
   <script src="/js/diffplan.js"></script>
   <script src="/js/sources.js"></script>
+  <script src="/js/notes.js"></script>
   <script src="/js/planner.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/ui.js"></script>
