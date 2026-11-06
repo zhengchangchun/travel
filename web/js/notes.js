@@ -515,6 +515,25 @@
     const searchBtn = $('note-search-btn');
     if (fetchBtn) fetchBtn.onclick = onFetch;
     if (searchBtn) searchBtn.onclick = onSearch;
+    // 回车即抓 / 即搜（少一次鼠标移动）
+    const linkEl = $('note-link');
+    if (linkEl) {
+      linkEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onFetch();
+        }
+      });
+    }
+    const kwEl = $('note-keyword');
+    if (kwEl) {
+      kwEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onSearch();
+        }
+      });
+    }
     if (parseBtn) parseBtn.onclick = onParse;
     if (saveBtn) saveBtn.onclick = onParse; // 「识别」→ 出预览（存走预览里的按钮）
     if (clearBtn) {

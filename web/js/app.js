@@ -28,6 +28,10 @@
   // 必须在 state 之前声明：state 初始化时会读取它
   const DEFAULT_RATING_FILTER = '4.0';
 
+  // P8 操作便利：侧栏卡片折叠状态（localStorage）+「筛选 · 结果」分页
+  const CARDS_KEY = 'travel.cards';
+  const RESULT_PAGE = 300; // 一次渲染多少条（其余用「显示更多」按钮放）
+
   const state = {
     config: null,
     city: null,
@@ -47,6 +51,7 @@
     viewSeq: 0,
     cityTotal: 0,
     suppressView: false,
+    resultLimit: RESULT_PAGE, // 结果列表当前展示上限（「显示更多」递增）
   };
 
   const RATING_OPTIONS = [
@@ -96,6 +101,153 @@
       out.push(p);
     });
     return out;
+  }
+
+  // ---------- P8 操作便利：侧栏卡片可折叠（点标题条；状态记 localStorage） ----------
+  // 默认：城市 / 笔记收起（低频、占地方），搜索 / 筛选展开；住宿锚点看有没有设锚点
+  const cardState = {};
+
+  function loadCardState() {
+    try {
+      const raw = window.localStorage.getItem(CARDS_KEY);
+      const obj = raw ? JSON.parse(raw) : null;
+      if (obj && typeof obj === 'object') {
+        Object.keys(obj).forEach((k) => {
+          cardState[k] = !!obj[k];
+        });
+      }
+    } catch (err) {
+      /* 隐私模式 / 配额满：用默认展开策略 */
+    }
+  }
+
+  function saveCardState() {
+    try {
+      window.localStorage.setItem(CARDS_KEY, JSON.stringify(cardState));
+    } catch (err) {
+      /* 存不下不影响使用 */
+    }
+  }
+
+  function cardExpanded(name) {
+    if (Object.prototype.hasOwnProperty.call(cardState, name)) return cardState[name];
+    if (name === 'base') return !!(state.base && state.base.id);
+    if (name === 'city' || name === 'note') return false;
+    return true; // search / filter
+  }
+
+  function cardSections() {
+    return Array.prototype.slice.call(document.querySelectorAll('section.card[data-card]'));
+  }
+
+  function applyCardState() {
+    const cards = cardSections();
+    cards.forEach((sec) => {
+      const open = cardExpanded(sec.dataset.card);
+      sec.classList.toggle('collapsed', !open);
+      const bar = sec.querySelector('.card-bar');
+      if (bar) {
+        bar.setAttribute('role', 'button');
+        bar.setAttribute('tabindex', '0');
+        bar.setAttribute('aria-expanded', String(open));
+        bar.title = (open ? '收起' : '展开') + '这一块';
+      }
+    });
+    const all = $('cards-toggle-all');
+    if (all) {
+      const anyOpen = cards.some((sec) => !sec.classList.contains('collapsed'));
+      all.textContent = anyOpen ? '收起全部卡片' : '展开全部卡片';
+    }
+  }
+
+  function toggleCard(name) {
+    cardState[name] = !cardExpanded(name);
+    saveCardState();
+    applyCardState();
+  }
+
+  function toggleAllCards() {
+    const cards = cardSections();
+    const anyOpen = cards.some((sec) => !sec.classList.contains('collapsed'));
+    cards.forEach((sec) => {
+      cardState[sec.dataset.card] = !anyOpen;
+    });
+    saveCardState();
+    applyCardState();
+  }
+
+  function bindCardBars() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('section.card[data-card] > .card-bar'),
+      (bar) => {
+        const name = () => bar.closest('section.card').dataset.card;
+        bar.onclick = () => toggleCard(name());
+        bar.onkeydown = (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleCard(name());
+          }
+        };
+      }
+    );
+    const all = $('cards-toggle-all');
+    if (all) all.onclick = toggleAllCards;
+  }
+
+  // 筛选口径（人话，给结果条用）
+  function filterText() {
+    const parts = [];
+    if (state.onlySelected) parts.push('只看我选中的');
+    else if (state.showAll) parts.push('全部分类');
+    else if (state.activeCats.size) {
+      parts.push(Array.from(state.activeCats).map((k) => Cats.labelOf(k)).join('+'));
+    } else parts.push('未选分类');
+    if (state.ratingFilter && state.ratingFilter !== 'all') {
+      parts.push(state.ratingFilter === 'top' ? '满分' : '≥' + state.ratingFilter);
+    }
+    return parts.join(' · ');
+  }
+
+  function renderResultSummary(total, shown) {
+    const el = $('result-summary');
+    if (!el) return;
+    const bits = ['显示 ' + shown + ' / 本视野 ' + state.pois.length + ' 条', filterText()];
+    if (total > shown) bits.push('合条件共 ' + total + ' 条');
+    el.textContent = bits.join(' · ');
+    el.title = el.textContent;
+  }
+
+  // 「显示更多」：结果列表只渲染前 N 条，其余按页放（上万条时不再把侧栏撑到几十万像素）
+  function renderResultMore(rest) {
+    const box = $('result-list');
+    if (!box) return;
+    const old = box.querySelector('.result-more');
+    if (old) old.remove();
+    if (rest <= 0) return;
+    const li = document.createElement('li');
+    li.className = 'result-more';
+    const btn = document.createElement('button');
+    btn.className = 'ghost more-btn';
+    btn.textContent = '显示更多（还有 ' + rest + ' 条）';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      state.resultLimit += RESULT_PAGE;
+      refresh({ markers: false });
+    };
+    li.appendChild(btn);
+    box.appendChild(li);
+  }
+
+  function hideInfoCard() {
+    const el = $('infocard');
+    if (el) el.classList.add('hidden');
+  }
+
+  // 点地图空白关卡片：刚点过旗子（信息卡刚弹起来）时不关，避免「弹了又立刻被关掉」
+  let lastPickAt = 0;
+  function onMapBlankClick() {
+    if (Date.now() - lastPickAt < 400) return;
+    hideInfoCard();
   }
 
   function passesRating(p) {
@@ -220,6 +372,11 @@
     };
     saveBaseToStore();
     renderBase();
+    if (!cardExpanded('base')) {
+      cardState.base = true;
+      saveCardState();
+      applyCardState();
+    }
     refresh();
     UI.setStatus(
       '住宿锚点：' + (state.base.name || id) + '（周边 ' + Geo.humanDistance(state.baseRadiusM) + '）'
@@ -365,7 +522,10 @@
     const fit = !!(opts && opts.fit);
     const drawMarkers = !opts || opts.markers !== false;
     // 锚点不再强行常驻：分类/评分过滤说了算（没选住宿就不该冒出住宿旗子）
-    const list = currentList();
+    const full = currentList();
+    // 列表只渲染前 N 条（上万条时 DOM 会把侧栏撑到几十万像素、又卡又难滚）
+    const cap = Math.max(RESULT_PAGE, Number(state.resultLimit) || RESULT_PAGE);
+    const list = full.length > cap ? full.slice(0, cap) : full;
     const emptyText =
       !state.onlySelected && catFilterEmpty()
         ? '先点上面的分类（如 住宿），或勾「全部」'
@@ -377,10 +537,12 @@
       onSetBase: setBase,
       emptyText,
     });
-    $('result-count').textContent = String(list.length);
-    updateStatus(list);
+    renderResultMore(full.length - list.length);
+    $('result-count').textContent = String(full.length);
+    renderResultSummary(full.length, list.length);
+    updateStatus(full);
     updateViewCount();
-    if (drawMarkers) renderMap(list, fit);
+    if (drawMarkers) renderMap(full, fit);
     renderSelection();
     if (state.view === 'itinerary') renderItinerary();
   }
@@ -504,13 +666,28 @@
       if (state.activeCats.has(key)) state.activeCats.delete(key);
       else state.activeCats.add(key);
     }
+    state.resultLimit = RESULT_PAGE; // 换筛选 ⇒ 分页从头开始
     renderCatChips();
     refresh();
     fetchPoisInView(); // 分类变了 ⇒ 对当前视野重跑一次（先缓存后实时搜索）
   }
 
+  // 回到默认筛选：清掉分类/评分，回到「未选分类 · ≥4.0」的初始态
+  function onResetFilters() {
+    state.showAll = false;
+    state.activeCats.clear();
+    state.onlySelected = false;
+    state.ratingFilter = DEFAULT_RATING_FILTER;
+    state.resultLimit = RESULT_PAGE;
+    renderCatChips();
+    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    refresh();
+    UI.setStatus('已清空筛选，回到默认（未选分类 · ≥4.0）—— 点上面的分类开始看');
+  }
+
   function onPickPoi(poi) {
     state.cardPoi = poi;
+    lastPickAt = Date.now();
     flyTo(poi.lng, poi.lat, 15);
     window.TravelDetail.show($('infocard'), poi, state.city, {
       onAddPin,
@@ -588,6 +765,7 @@
     if (seq !== state.viewSeq) return; // 丢弃过期响应，只应用最后一次
     // ① 先落已有的旗（有多少画多少，不白屏）
     state.pois = dedupe(data.items || []);
+    state.resultLimit = RESULT_PAGE;
     UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
     refresh();
     // ② 实时搜索本视野（未选分类则不查高德，省配额）
@@ -685,6 +863,7 @@
     state.queriedAt[key] = Date.now(); // 记下这个框刚查过
     state.lastLiveBox = box;
     state.pois = dedupe(res.items || []);
+    state.resultLimit = RESULT_PAGE;
     UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
     await loadCityTotals(state.city);
     refresh();
@@ -775,6 +954,7 @@
 
   function onPickRating(key) {
     state.ratingFilter = key;
+    state.resultLimit = RESULT_PAGE;
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
     refresh();
   }
@@ -865,6 +1045,7 @@
     try {
       const results = await API.searchPoi({ city: state.city, keywords });
       state.pois = dedupe(results);
+      state.resultLimit = RESULT_PAGE;
       state.activeCats.clear();
       state.showAll = true; // 关键词搜索：不过滤分类
       renderCatChips();
@@ -982,6 +1163,9 @@
       if (e.key === 'Enter') doPoiSearch();
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
+    const clearFilterBtn = $('filter-clear-btn');
+    if (clearFilterBtn) clearFilterBtn.onclick = onResetFilters;
+    bindCardBars();
     const aroundBtn = $('base-around-btn');
     if (aroundBtn) aroundBtn.onclick = showAroundBase;
     const clearBtn = $('base-clear-btn');
@@ -1043,6 +1227,16 @@
     UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
     loadBaseFromStore();
     renderBase();
+    loadCardState(); // 侧栏卡片折叠状态（依赖 base 的默认展开策略）
+    applyCardState();
+
+    // Esc 关信息卡；点地图空白也关（不用去够卡片右上角那个 ×）
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      hideInfoCard();
+      const a = document.activeElement;
+      if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+    });
 
     Selection.subscribe(() => {
       refresh({ fit: false });
@@ -1075,6 +1269,7 @@
         jsApiSecurityCode: state.config.jsApiSecurityCode,
       });
       MapCtl.onMarkerClick((poi) => onPickPoi(poi));
+      if (MapCtl.onMapClick) MapCtl.onMapClick(() => onMapBlankClick());
       // 相机落定 → 立刻按新框裁剪已显示的旗；再防抖后加载（先缓存后实时搜索）
       MapCtl.onViewSettled((bounds) => {
         if (!state.suppressView) pruneToViewport(bounds);

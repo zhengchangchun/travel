@@ -41,7 +41,13 @@ function makeFakeMap() {
     },
     resize() {},
     remove() {},
-    add() {},
+    // 忠实模拟 AMap：add 支持数组，且会把每个覆盖物上图（setMap）
+    add(overlay) {
+      const list = Array.isArray(overlay) ? overlay : [overlay];
+      list.forEach((m) => {
+        if (m && typeof m.setMap === 'function') m.setMap(fake);
+      });
+    },
     setFitView() {},
   };
   return fake;

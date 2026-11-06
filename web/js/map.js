@@ -121,8 +121,18 @@
   function clearMarkers() {
     markerBatch += 1; // 取消未完成的分批渲染
     if (!map) return;
-    markers.forEach((m) => map.remove(m));
+    const all = Array.from(markers.values());
     markers.clear();
+    if (!all.length) return;
+    try {
+      if (typeof map.remove === 'function' && all.length > 1) {
+        map.remove(all); // 批量摘旗：逐面 remove 在几千面时会卡住
+        return;
+      }
+    } catch (err) {
+      /* 批量失败：退回逐面摘 */
+    }
+    all.forEach((m) => map.remove(m));
   }
 
   function addMarker(poi, selected) {
@@ -144,6 +154,46 @@
     return marker;
   }
 
+  // 建旗子但先不上图（批量 append 用：一批一次 map.add，逐面 setMap 会慢一个量级）
+  function createMarker(poi, selected) {
+    if (!map) return null;
+    const key = poiKey(poi);
+    if (markers.has(key)) return null;
+    const marker = new AMap.Marker({
+      position: [poi.lng, poi.lat],
+      content: flagHtml(poi, selected),
+      offset: new AMap.Pixel(-13, -34),
+      extData: { poi },
+      zIndex: selected ? 200 : 100,
+    });
+    marker.on('click', () => {
+      if (clickHandler) clickHandler(poi);
+    });
+    markers.set(key, marker);
+    return marker;
+  }
+
+  // 一批旗子一起上图：map.add(数组) 只触发一次内部刷新，比一面一面 setMap 快得多
+  function addChunk(items, isSelected) {
+    if (!map) return 0;
+    const batch = [];
+    (items || []).forEach((p) => {
+      const m = createMarker(p, isSelected ? isSelected(p) : false);
+      if (m) batch.push(m);
+    });
+    if (!batch.length) return 0;
+    try {
+      if (typeof map.add === 'function') {
+        map.add(batch);
+        return batch.length;
+      }
+    } catch (err) {
+      /* 批量失败：退回逐面上图 */
+    }
+    batch.forEach((m) => m.setMap(map));
+    return batch.length;
+  }
+
   // 分批落旗：视野内点很多时不抽稀，但分帧 append，避免主线程卡死
   const MARKER_CHUNK = 200;
   function setMarkers(list, isSelected) {
@@ -155,9 +205,8 @@
     const step = () => {
       if (token !== markerBatch) return; // 已被新批次取代，丢弃
       const end = Math.min(i + MARKER_CHUNK, items.length);
-      for (; i < end; i += 1) {
-        addMarker(items[i], isSelected ? isSelected(items[i]) : false);
-      }
+      addChunk(items.slice(i, end), isSelected);
+      i = end;
       if (i < items.length) {
         if (typeof requestAnimationFrame === 'function') requestAnimationFrame(step);
         else setTimeout(step, 0);
@@ -167,7 +216,9 @@
   }
 
   // 增量同步：只 补新增 / 删消失，保留不动的旗子（移动地图时不整屏重画，避免闪烁）
-  // 返回 { added, removed, kept }；未知/无 key 的点走 addMarker 的逻辑不变
+  // 新增的旗子同样分帧 append（MARKER_CHUNK/帧）：一个分类动辄上千个点，
+  // 一次同步建完会把主线程堵死好几秒，界面像卡死。
+  // 返回 { added, removed, kept }：added 是本次排队的数量（分帧画完，非瞬时值）
   function syncMarkers(list, isSelected) {
     if (!map) return { added: 0, removed: 0, kept: 0 };
     const items = list || [];
@@ -177,25 +228,40 @@
       if (!wanted.has(k)) wanted.set(k, p);
     });
     let removed = 0;
+    const gone = [];
     Array.from(markers.keys()).forEach((k) => {
       if (wanted.has(k)) return;
-      const m = markers.get(k);
-      try {
-        map.remove(m);
-      } catch (err) {
-        /* 已不在图上：忽略 */
-      }
+      gone.push(markers.get(k));
       markers.delete(k);
       removed += 1;
     });
-    let added = 0;
+    if (gone.length) {
+      try {
+        if (gone.length > 1 && typeof map.remove === 'function') map.remove(gone);
+        else gone.forEach((m) => map.remove(m));
+      } catch (err) {
+        /* 已不在图上：忽略 */
+      }
+    }
+    const toAdd = [];
     wanted.forEach((p, k) => {
-      if (markers.has(k)) return;
-      addMarker(p, isSelected ? isSelected(p) : false);
-      if (markers.has(k)) added += 1;
+      if (!markers.has(k)) toAdd.push(p);
     });
-    markerBatch += 1; // 让未画完的旧批次停手（只影响 setMarkers 的分帧）
-    return { added, removed, kept: markers.size - added };
+    markerBatch += 1; // 新批次生效：未画完的旧批次停手
+    const token = markerBatch;
+    let i = 0;
+    const step = () => {
+      if (token !== markerBatch) return; // 已被新批次取代，丢弃
+      const end = Math.min(i + MARKER_CHUNK, toAdd.length);
+      addChunk(toAdd.slice(i, end), isSelected);
+      i = end;
+      if (i < toAdd.length) {
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(step);
+        else setTimeout(step, 0);
+      }
+    };
+    step();
+    return { added: toAdd.length, removed, kept: markers.size };
   }
 
   // 增量落旗：只补尚无的旗子（不整体重画，避免闪烁）。返回新增数量。
@@ -326,6 +392,14 @@
     clickHandler = cb;
   }
 
+  // 点地图空白（非旗子）——用于关掉信息卡；需要时由 app.js 自行做「刚点过旗子」的去抖
+  function onMapClick(cb) {
+    if (!map || typeof map.on !== 'function') return;
+    map.on('click', () => {
+      if (typeof cb === 'function') cb();
+    });
+  }
+
   // ---------- 路线连线（T3） ----------
   let routeLines = [];
   let routeLabels = [];
@@ -430,6 +504,7 @@
     onMoveEnd,
     onViewSettled,
     onMarkerClick,
+    onMapClick,
     flagHtml,
     routeStyle,
     drawRoute,

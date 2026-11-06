@@ -49,9 +49,9 @@ test('地图旗子走增量：syncMarkers 保留不动的，只补/删变化的�
   const m = MAP.match(/function\s+syncMarkers[\s\S]*?\n  \}/);
   assert.ok(m, 'map.js 缺 syncMarkers');
   assert.match(m[0], /markers\.delete\(k\)/, '未删除消失的旗子');
-  assert.match(m[0], /map\.remove\(m\)/, '未从地图移除');
-  assert.match(m[0], /if \(markers\.has\(k\)\) return;/, '已有的旗子应跳过（不重画）');
-  assert.match(m[0], /addMarker\(p,/, '新增走 addMarker');
+  assert.match(m[0], /map\.remove\(/, '未从地图移除');
+  assert.match(m[0], /if \(!markers\.has\(k\)\)/, '已有的旗子应跳过（不重画）');
+  assert.match(m[0], /addChunk\(/, '新增走批量 addChunk');
   assert.ok(!/clearMarkers\(\)/.test(m[0]), 'syncMarkers 不应整屏清空');
   assert.match(MAP, /\n    syncMarkers,/, 'syncMarkers 未导出');
   assert.match(APP, /MapCtl\.syncMarkers\(/, 'renderMap 未走增量');
