@@ -136,6 +136,7 @@
       <div id="right-body" class="right-body">
         <section class="card pin-card">
           <h2>我的选择 <span id="selection-count" class="count">0</span></h2>
+          <p class="card-sub">挑点：在列表里点 ★ · 挑好再「规划行程」</p>
           <div class="row">
             <button id="only-selected-btn" class="chip toggle" title="只看我选中的">只看我选中的</button>
             <button id="plan-btn" class="primary" title="规划行程">规划行程</button>
@@ -161,8 +162,9 @@
           </div>
         </section>
 
-        <section class="card">
+        <section class="card trip-card">
           <h2>我的行程</h2>
+          <p class="card-sub">存档：按天保存的清单（与地图上的旗子无关）</p>
           <div class="row">
             <button id="trip-new-btn" class="ghost">新建行程</button>
             <button id="trip-delete-btn" class="ghost" title="删除当前行程">删除行程</button>
@@ -185,6 +187,7 @@
   </div>
 
   <script src="/js/categories.js"></script>
+  <script src="/js/errors.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/selection.js"></script>
   <script src="/js/score-color.js"></script>

@@ -182,7 +182,7 @@
       topStarHtml(data.rating) +
       '<span class="poi-tag">' + esc(label) + '</span>' +
       starButton(!!(handlers && handlers.isSelected && handlers.isSelected(data)), color) +
-      '<button class="card-close" title="关闭">×</button>' +
+      '<button class="card-close" title="关闭（按 Esc 也行，或点地图空白处）" aria-label="关闭">×</button>' +
       '</div>' +
       (meta.length
         ? '<div class="detail-meta note-chips">' +
@@ -204,7 +204,8 @@
       '<a class="btn amap" href="' + esc(data.amapUrl) + '" target="_blank" rel="noopener">去高德看评价</a>' +
       '<button class="btn primary add-pin">加入行程</button>' +
       '</div>' +
-      '<p class="detail-note">图片来源：高德（官方图 / 用户实拍，已在图上标明）；高德接口不提供评价正文，点「去高德看评价」看真实评价</p>';
+      '<p class="detail-note">图片来源：高德（官方图 / 用户实拍，已在图上标明）；高德接口不提供评价正文，点「去高德看评价」看真实评价</p>' +
+      '<p class="card-dismiss-hint">× / Esc / 点地图空白 都能关掉这个卡片</p>';
 
     card.classList.remove('hidden');
 

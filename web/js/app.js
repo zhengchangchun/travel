@@ -52,7 +52,16 @@
     cityTotal: 0,
     suppressView: false,
     resultLimit: RESULT_PAGE, // 结果列表当前展示上限（「显示更多」递增）
+    zoomTooLow: false, // 倍率不够、没加载地点（空态只提示这一件事）
+    markerInfo: null, // 上一次落旗回执（{shown,dropped}）：超上限时要在结果条里说明
   };
+
+  // 错误人话化（P9-②）：统一过一层，别把高德/后端的裸 code 用给用户看
+  function human(err) {
+    return window.TravelErrors
+      ? window.TravelErrors.humanize(err)
+      : String((err && err.message) || err || '');
+  }
 
   const RATING_OPTIONS = [
     { key: 'all', label: '全部' },
@@ -211,8 +220,19 @@
   function renderResultSummary(total, shown) {
     const el = $('result-summary');
     if (!el) return;
+    // 首屏空态（没选分类）：引导只在结果列表里说一次（带按钮），这里不重复说（P9-①）
+    if (!state.onlySelected && catFilterEmpty()) {
+      el.textContent = '—';
+      el.title = '先选一个分类（或勾「全部」）再看结果';
+      return;
+    }
     const bits = ['显示 ' + shown + ' / 本视野 ' + state.pois.length + ' 条', filterText()];
     if (total > shown) bits.push('合条件共 ' + total + ' 条');
+    // 落旗有上限：地图与列表口径对不上时要说清楚（P9-③）
+    const mi = state.markerInfo;
+    if (mi && mi.dropped > 0) {
+      bits.push('地图只落前 ' + mi.shown + ' 面（放大可看切片）');
+    }
     el.textContent = bits.join(' · ');
     el.title = el.textContent;
   }
@@ -440,14 +460,24 @@
   function renderMap(list, fit) {
     if (!MapCtl.isReady()) return;
     // 增量：只补新增 / 删消失，保留不动的旗子（移动地图时不整屏重画 ⇒ 不闪）
-    if (MapCtl.syncMarkers) MapCtl.syncMarkers(list, (p) => Selection.has(p));
-    else MapCtl.setMarkers(list, (p) => Selection.has(p));
+    const isSel = (p) => Selection.has(p);
+    if (MapCtl.syncMarkers) state.markerInfo = MapCtl.syncMarkers(list, isSel) || null;
+    else {
+      MapCtl.setMarkers(list, isSel);
+      state.markerInfo = null;
+    }
     if (fit) MapCtl.fitView();
   }
 
   function updateStatus(list) {
+    // 倍率不够时的空态：这是唯一的原因，只说这一句
+    if (state.zoomTooLow) {
+      UI.setStatus('放大地图以加载本区域地点');
+      return;
+    }
+    // 首屏/切城之后的未选分类态：不在状态栏重复引导，留给结果列表那一处 CTA（P9-①）
     if (!state.onlySelected && catFilterEmpty()) {
-      UI.setStatus('未选分类：点一个分类（如 住宿）查看地点');
+      UI.setStatus('');
       return;
     }
     UI.setStatus(
@@ -461,8 +491,23 @@
   }
 
   function renderSelection() {
-    $('selection-count').textContent = String(Selection.count());
+    const count = Selection.count();
+    $('selection-count').textContent = String(count);
     $('only-selected-btn').classList.toggle('active', state.onlySelected);
+    // 0 个点时「规划行程 / 自动成线」不可点（P9-⑦）：else 点了只会弹一句“先去挑点”
+    const noPin = count === 0;
+    const planBtn = $('plan-btn');
+    if (planBtn) {
+      planBtn.disabled = noPin;
+      planBtn.title = noPin
+        ? '先在下方列表里点 ★ 挑几个点，再来规划行程'
+        : '规划行程：按已挑的点自动排序并连线';
+    }
+    const autoBtn = $('auto-plan-btn');
+    if (autoBtn) {
+      autoBtn.disabled = noPin;
+      autoBtn.title = noPin ? '先在下方列表里点 ★ 挑几个点' : '按距离自动排序并连线';
+    }
     UI.renderSelectionPanel($('selection-list'), Selection.list(), {
       onLocate(pin) {
         flyTo(pin.lng, pin.lat, 15);
@@ -526,16 +571,28 @@
     // 列表只渲染前 N 条（上万条时 DOM 会把侧栏撑到几十万像素、又卡又难滚）
     const cap = Math.max(RESULT_PAGE, Number(state.resultLimit) || RESULT_PAGE);
     const list = full.length > cap ? full.slice(0, cap) : full;
-    const emptyText =
-      !state.onlySelected && catFilterEmpty()
-        ? '先点上面的分类（如 住宿），或勾「全部」'
+    const pristine = !state.onlySelected && catFilterEmpty();
+    // 空态只留一处引导（P9-①）：倍率不够说倍率，未选分类说分类 + 一个能点的动作
+    const emptyText = state.zoomTooLow
+      ? '放大地图以加载本区域地点'
+      : pristine
+        ? '还没选分类：点上面的分类开始，或'
         : undefined;
+    const emptyAction =
+      pristine && !state.zoomTooLow
+        ? {
+            label: '显示全部',
+            title: '勾上「全部」，把本视野的地点一次看全',
+            onClick: () => onToggleChip(ALL_CAT_KEY),
+          }
+        : null;
     UI.renderResults($('result-list'), list, onPickPoi, {
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
       isBase: baseIs,
       onSetBase: setBase,
       emptyText,
+      emptyAction,
     });
     renderResultMore(full.length - list.length);
     $('result-count').textContent = String(full.length);
@@ -742,14 +799,15 @@
     const zoom = MapCtl.getZoom();
     if (zoom != null && (zoom < MIN_MARKER_ZOOM || zoom < MIN_COLLECT_ZOOM)) {
       // 倍率阈值门控：不请求、不画点、不采集，只提示
+      state.zoomTooLow = true;
       state.pois = [];
       MapCtl.clearMarkers();
       UI.showLegend(false);
       UI.setViewHint('放大地图以加载本区域地点');
       refresh();
-      UI.setStatus('放大地图以加载本区域地点');
       return;
     }
+    state.zoomTooLow = false;
     const bbox = currentBbox();
     if (!bbox) return;
     const seq = (state.viewSeq += 1);
@@ -759,7 +817,7 @@
       data = await API.listPois({ city: state.city, bbox });
     } catch (err) {
       if (seq !== state.viewSeq) return;
-      UI.setStatus('读取视野内地点失败：' + err.message);
+      UI.setStatus('读取视野内地点失败：' + human(err));
       return;
     }
     if (seq !== state.viewSeq) return; // 丢弃过期响应，只应用最后一次
@@ -855,7 +913,7 @@
     } catch (err) {
       if (seq !== state.viewSeq) return;
       UI.setViewHint('');
-      UI.setStatus('实时搜索失败：' + err.message);
+      UI.setStatus('实时搜索失败：' + human(err));
       return;
     }
     if (seq !== state.viewSeq) return; // 丢弃过期响应
@@ -888,7 +946,7 @@
       return;
     }
     if (errors.length && errors.length >= calls) {
-      UI.setStatus('实时搜索失败（高德调用 ' + calls + ' 次全失败）：' + errors[0]);
+      UI.setStatus('实时搜索失败（高德调用 ' + calls + ' 次全失败）：' + human(errors[0]));
       return;
     }
     const parts = [
@@ -918,7 +976,7 @@
       parts.push('新增 ' + (Number(live.inserted) || 0) + ' 条');
     }
     parts.push('本区域 ' + state.pois.length + ' 条');
-    if (errors.length) parts.push('失败 ' + errors.length + ' 次：' + errors[0]);
+    if (errors.length) parts.push('失败 ' + errors.length + ' 次：' + human(errors[0]));
     UI.setStatus(parts.join(' · '));
   }
 
@@ -1034,7 +1092,7 @@
         box.appendChild(btn);
       });
     } catch (err) {
-      box.innerHTML = '<div class="hint">城市搜索失败：' + UI.esc(err.message) + '</div>';
+      box.innerHTML = '<div class="hint">城市搜索失败：' + UI.esc(human(err)) + '</div>';
     }
   }
 
@@ -1044,6 +1102,8 @@
     UI.setStatus('搜索「' + keywords + '」…');
     try {
       const results = await API.searchPoi({ city: state.city, keywords });
+      // 高德不可用/没结果时后端会回退到本地库（每条带 local 标记）—— 结果口径要对用户说清
+      const fromLocal = results.length > 0 && results[0].local === true;
       state.pois = dedupe(results);
       state.resultLimit = RESULT_PAGE;
       state.activeCats.clear();
@@ -1053,9 +1113,16 @@
       if (state.pois.length && MapCtl.isReady()) {
         flyTo(state.pois[0].lng, state.pois[0].lat, 15);
       }
-      UI.setStatus('「' + keywords + '」找到 ' + state.pois.length + ' 个结果');
+      UI.setStatus(
+        '「' +
+          keywords +
+          '」找到 ' +
+          state.pois.length +
+          ' 个结果' +
+          (fromLocal ? '（高德暂时不可用，来自本地已收录）' : '')
+      );
     } catch (err) {
-      UI.setStatus('搜索失败：' + err.message);
+      UI.setStatus('搜索失败：' + human(err));
     }
   }
 

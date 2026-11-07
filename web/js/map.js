@@ -196,11 +196,44 @@
 
   // 分批落旗：视野内点很多时不抽稀，但分帧 append，避免主线程卡死
   const MARKER_CHUNK = 200;
+
+  // 落旗上限（P9-③）：一个分类动辄几千个点，全画会把地图埋掉（旗子盖满、底图看不清）。
+  // 超出后优先保「已选中的点 + 住宿锚点」，其余按传入顺序截断，并回报 dropped 让上层说明。
+  const MARKER_LIMIT = 500;
+
+  function poiIdOf(p) {
+    return p ? p.id || p.poi_id || null : null;
+  }
+
+  function isBasePoi(p) {
+    const id = poiIdOf(p);
+    return !!baseId && !!id && id === baseId;
+  }
+
+  function capList(list, isSelected) {
+    const items = Array.isArray(list) ? list : [];
+    if (items.length <= MARKER_LIMIT) return { items, dropped: 0 };
+    const must = [];
+    const rest = [];
+    items.forEach((p) => {
+      const keep = (isSelected ? !!isSelected(p) : false) || isBasePoi(p);
+      (keep ? must : rest).push(p);
+    });
+    const room = Math.max(0, MARKER_LIMIT - must.length);
+    const shown = must.concat(rest.slice(0, room));
+    return { items: shown, dropped: items.length - shown.length };
+  }
+
+  function markerLimit() {
+    return MARKER_LIMIT;
+  }
+
   function setMarkers(list, isSelected) {
-    if (!map) return;
+    if (!map) return { shown: 0, dropped: 0 };
     clearMarkers();
     const token = markerBatch;
-    const items = list || [];
+    const capped = capList(list, isSelected);
+    const items = capped.items;
     let i = 0;
     const step = () => {
       if (token !== markerBatch) return; // 已被新批次取代，丢弃
@@ -213,6 +246,7 @@
       }
     };
     step();
+    return { shown: items.length, dropped: capped.dropped };
   }
 
   // 增量同步：只 补新增 / 删消失，保留不动的旗子（移动地图时不整屏重画，避免闪烁）
@@ -220,8 +254,9 @@
   // 一次同步建完会把主线程堵死好几秒，界面像卡死。
   // 返回 { added, removed, kept }：added 是本次排队的数量（分帧画完，非瞬时值）
   function syncMarkers(list, isSelected) {
-    if (!map) return { added: 0, removed: 0, kept: 0 };
-    const items = list || [];
+    if (!map) return { added: 0, removed: 0, kept: 0, shown: 0, dropped: 0 };
+    const capped = capList(list, isSelected);
+    const items = capped.items;
     const wanted = new Map();
     items.forEach((p) => {
       const k = poiKey(p);
@@ -261,7 +296,13 @@
       }
     };
     step();
-    return { added: toAdd.length, removed, kept: markers.size };
+    return {
+      added: toAdd.length,
+      removed,
+      kept: markers.size,
+      shown: items.length,
+      dropped: capped.dropped,
+    };
   }
 
   // 增量落旗：只补尚无的旗子（不整体重画，避免闪烁）。返回新增数量。
@@ -494,6 +535,8 @@
     addMarkers,
     syncMarkers,
     markerCount,
+    markerLimit,
+    capMarkers: capList,
     fitView,
     fitBbox,
     setBase,

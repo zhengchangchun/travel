@@ -633,7 +633,7 @@ button.danger:hover { background: #ad2102; }
   --line-2: rgba(255, 255, 255, .14);
   --ink: #e9edf6;
   --ink-2: #a7b1c0;
-  --ink-3: #6f7887;
+  --ink-3: #9aa3b2;
   --accent: #6d8bff;
   --accent-2: #35d0c0;
   --danger: #ff6b6b;
@@ -918,3 +918,43 @@ section.card.collapsed > .card-body { display: none; }
 }
 .result-more { list-style: none; padding: 4px 0 2px; }
 .result-more .more-btn { width: 100%; font-size: 12px; padding: 6px; }
+
+/* ============================================================
+   P9 体验修复（追加层，不改上面既有规则）
+   ① 空态只留一处引导 + 一个能点的动作
+   ② 错误说人话（见 js/errors.js）
+   ③ 落旗有上限（见 js/map.js 的 MARKER_LIMIT）
+   ④ 信息卡更好关（× 好点 + 告诉用户 Esc / 点空白也能关）
+   ⑤ 右栏两张卡不再长得一样  ⑦ 0 个点时「规划行程」置灰
+   ⑧ 次要文字对比度（--ink-3 提亮一档，小字也过 WCAG AA）
+   ============================================================ */
+
+/* ⑧ 次要文字：原 #6f7887 在深色卡底上只有 ~3.9:1（实测），小字过不了 AA ⇒ 已直接在 :root 里提亮一档 */
+
+/* ① 空态：一句话 + 一个动作按钮 */
+.poi-list .empty, .poi-item .empty { line-height: 1.8; }
+.empty-cta {
+  margin-left: 6px; padding: 3px 10px; font-size: 11.5px; border-radius: 999px;
+  vertical-align: baseline;
+}
+
+/* ④ 信息卡：× 做成看得见、点得中的按钮；底部补一句「还能怎么关」 */
+.card-close {
+  width: 26px; height: 26px; flex: none; margin-left: 2px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px; font-size: 17px; line-height: 1;
+  background: rgba(255, 255, 255, .06); color: var(--ink-2);
+}
+.card-close:hover { background: rgba(255, 255, 255, .16); color: var(--ink); }
+.card-dismiss-hint { margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
+
+/* ⑤ 右栏两张卡：一张是「挑点」（带主轴色），一张是「存档」（中性），不再撞脸 */
+.card-sub { margin: -2px 0 8px; font-size: 11.5px; color: var(--ink-3); }
+.pin-card { border-left: 3px solid var(--accent); }
+.pin-card h2 .count { margin-left: 2px; }
+.trip-card { background: rgba(255, 255, 255, .015); border-style: dashed; }
+.trip-card h2 { color: var(--ink-2); }
+
+/* ⑦ 不可点的按钮：鼠标给个交代 */
+button:disabled { cursor: not-allowed; }
+.pin-card .row button[disabled] { opacity: .4; }

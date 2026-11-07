@@ -692,6 +692,36 @@ function createDb(filePath) {
               .all(...params, lim, off);
       return { total, items: rows.map(mapPoiRow) };
     },
+    // P9-⑥ 本地关键词搜索：高德配额用尽 / 没结果时的回退，直接查本地已收录的 pois。
+    // 支持空格分开的多词：每个词都必须在 name/address 里出现（AND），按评分降序。
+    // 命中行带 local: true，调用方据此告诉用户「结果来自本地缓存」。
+    searchPoisLocal({ city, keywords, category, limit = 60 } = {}) {
+      const kw = String(keywords == null ? '' : keywords).trim();
+      if (!city || !kw) return [];
+      const where = ['city = ?'];
+      const params = [city];
+      if (category) {
+        where.push('category = ?');
+        params.push(category);
+      }
+      kw
+        .split(/\s+/)
+        .filter((t) => t)
+        .slice(0, 4)
+        .forEach((t) => {
+          where.push("(name LIKE ? OR COALESCE(address, '') LIKE ?)");
+          params.push('%' + t + '%', '%' + t + '%');
+        });
+      const lim = Math.max(1, Math.min(200, Number(limit) || 60));
+      const rows = db
+        .prepare(
+          'SELECT * FROM pois WHERE ' +
+            where.join(' AND ') +
+            " ORDER BY (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC LIMIT ?"
+        )
+        .all(...params, lim);
+      return rows.map((r) => ({ ...mapPoiRow(r), local: true }));
+    },
     poisStats(city) {
       const rows = stmts.countPoisByCat.all(city);
       const total = toNumber(stmts.countPoisCity.get(city).c);

@@ -11,14 +11,33 @@ module.exports = [
   {
     method: 'GET',
     path: '/api/poi/search',
-    handler(ctx) {
+    async handler(ctx) {
       const { city, category, keywords, page } = ctx.query;
       if (!city || !String(city).trim()) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 city');
       }
-      return cached(ctx, () =>
-        ctx.amap.searchPoi({ city: String(city).trim(), category, keywords, page })
-      );
+      const params = { city: String(city).trim(), category, keywords, page };
+      // P9-⑥ 本地回退：高德不可用（配额用尽 / 网络 / QPS）或没结果时，
+      // 直接查本地已收录的 pois（每条带 local:true），别让「搜索地点」只剩一句报错。
+      const localHit = () =>
+        ctx.db.searchPoisLocal({
+          city: params.city,
+          keywords,
+          category,
+          limit: 60,
+        });
+      let remote = null;
+      let remoteError = null;
+      try {
+        remote = await cached(ctx, () => ctx.amap.searchPoi(params));
+      } catch (err) {
+        remoteError = err;
+      }
+      if (Array.isArray(remote) && remote.length) return remote;
+      const hit = localHit();
+      if (hit.length) return hit;
+      if (remoteError) throw remoteError; // 本地也没有 ⇒ 如实报高德的原因
+      return Array.isArray(remote) ? remote : [];
     },
   },
   {

@@ -9,6 +9,13 @@
 (function () {
   const API = window.TravelAPI;
 
+  // 错误人话化（P9-②）：抓取/搜索的失败码不直接给用户看
+  function human(err) {
+    return window.TravelErrors
+      ? window.TravelErrors.humanize(err)
+      : String((err && err.message) || err || '');
+  }
+
   const st = {
     city: '',
     parsed: null, // 识别结果（手动贴文案时用）
@@ -81,7 +88,7 @@
       await refresh();
       await openDetail(r.note.id);
     } catch (err) {
-      setHint('抓取失败：' + err.message + '（' + (err.code || '') + '）', true);
+      setHint('抓取失败：' + human(err), true);
     } finally {
       st.busy = false;
     }
@@ -111,7 +118,7 @@
     } catch (err) {
       st.candidates = [];
       renderCandidates();
-      setHint('搜索失败：' + err.message + '（' + (err.code || '') + '）', true);
+      setHint('搜索失败：' + human(err), true);
     } finally {
       st.busy = false;
     }
@@ -177,7 +184,7 @@
       await openDetail(r.note.id);
       renderCandidates();
     } catch (err) {
-      setHint('抓取失败：' + err.message + '（' + err.code + '）', true);
+      setHint('抓取失败：' + human(err), true);
       if (btn) btn.textContent = c.exists ? '重抓' : '存到本地';
     } finally {
       st.busy = false;
