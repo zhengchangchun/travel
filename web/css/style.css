@@ -554,6 +554,9 @@ button.danger:hover { background: #ad2102; }
 .infocard img { max-width: 100%; }
 .infocard .badge-comment {
   position: absolute; left: 8px; bottom: 8px; z-index: 2;
+  /* top: auto 是必需的：上面基础规则写了 top:8px，不抹掉就会 top+bottom 同时生效，
+     把气泡拉成一张 200px 高的半透明黑块（用户 2026-11-09 截到的那个黑框） */
+  top: auto;
   background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px;
   padding: 3px 8px; border-radius: 999px; letter-spacing: .2px;
 }
