@@ -92,8 +92,8 @@
       zoom: 11,
       center: [120.15507, 30.27415],
       viewMode: '2D',
-      // 暗色主题：底图也跟着走暗色（不改的话深色界面里会嵌一块惨白地图）
-      mapStyle: 'amap://styles/dark',
+      // 底图用亮色（用户 2026-11-09）：暗色界面里嵌一块亮地图，两侧栏保持暗色
+      mapStyle: 'amap://styles/normal',
     });
     window.addEventListener('resize', onWindowResize);
     return map;

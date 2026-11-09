@@ -698,12 +698,33 @@ body {
 
 /* 侧栏 / 右栏 */
 #sidebar.col-left {
-  background: linear-gradient(180deg, #11151c 0%, #0e1117 100%);
+  /* 暗色侧栏 + 一点设计：两端色晕 + 细点阵纹理 + 内侧发丝线 + 向地图一侧的柔和投影 */
+  background-color: #0d1016;
+  background-image:
+    radial-gradient(120% 55% at 0% 0%, rgba(109, 139, 255, .13), transparent 62%),
+    radial-gradient(95% 45% at 100% 100%, rgba(53, 208, 192, .10), transparent 60%),
+    radial-gradient(circle, rgba(255, 255, 255, .075) 1px, transparent 1.2px),
+    linear-gradient(180deg, #12161f 0%, #0d1016 100%);
+  background-size: auto, auto, 20px 20px, auto;
   border-right: 1px solid var(--line);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .05), 10px 0 30px rgba(0, 0, 0, .35);
 }
 #right-panel.col-right {
-  background: linear-gradient(180deg, #11151c 0%, #0e1117 100%);
+  background-color: #0d1016;
+  background-image:
+    radial-gradient(120% 55% at 100% 0%, rgba(109, 139, 255, .13), transparent 62%),
+    radial-gradient(95% 45% at 0% 100%, rgba(255, 210, 63, .07), transparent 60%),
+    radial-gradient(circle, rgba(255, 255, 255, .075) 1px, transparent 1.2px),
+    linear-gradient(180deg, #12161f 0%, #0d1016 100%);
+  background-size: auto, auto, 20px 20px, auto;
   border-left: 1px solid var(--line);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, .05), -10px 0 30px rgba(0, 0, 0, .35);
+}
+/* 标题下一条渐变发丝：左右两栏各一道，给暗色一点结构感 */
+.brand { position: relative; padding-bottom: 10px; }
+.brand::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: linear-gradient(90deg, rgba(109, 139, 255, .65), rgba(53, 208, 192, .35) 55%, transparent);
 }
 .brand h1 { letter-spacing: -.2px; color: var(--ink); }
 .brand .sub, .hint { color: var(--ink-3); }
@@ -810,8 +831,8 @@ button:disabled { opacity: .45; }
 .trip-name { color: var(--ink-3); }
 .poi-list .empty, .note-empty { color: var(--ink-3); }
 
-/* 地图区与浮层（玻璃拟态） */
-#map-wrap { background: #0a0c11; }
+/* 地图区：底图用亮色（用户 2026-11-09），两侧保持暗色与地图形成对比 */
+#map-wrap { background: #eef1f6; }
 .map-status, .view-count, .score-legend {
   background: var(--glass); border: 1px solid var(--line-2); color: var(--ink);
   backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
