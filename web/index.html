@@ -94,6 +94,11 @@
             <button id="auto-plan-btn" class="ghost" title="按距离自动排序并连线">自动成线</button>
             <label class="check"><input type="checkbox" id="auto-return" /> 回到住宿</label>
           </div>
+          <!-- 实时耗时（选中点一变就算，不用先点「规划行程」） -->
+          <div id="quick-legs" class="quick-legs hidden">
+            <span id="ql-summary" class="ql-summary">—</span>
+            <span id="ql-modes" class="ql-modes"></span>
+          </div>
           <ul id="selection-list" class="poi-list"></ul>
           <div id="itinerary-panel" class="hidden">
             <div class="row itin-toolbar">
@@ -198,6 +203,7 @@
   <script src="/js/errors.js"></script>
   <script src="/js/citybox.js"></script>
   <script src="/js/rating.js"></script>
+  <script src="/js/quickroute.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/selection.js"></script>
   <script src="/js/score-color.js"></script>

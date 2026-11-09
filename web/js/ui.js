@@ -197,6 +197,7 @@
     }
   }
 
+  // 「我的选择」：序号 + 上一站到这里的耗时（实时）+ 上移/下移/定位/移除
   function renderSelectionPanel(container, pins, handlers) {
     container.innerHTML = '';
     if (!pins.length) {
@@ -204,27 +205,48 @@
         '<li class="empty">点列表里的 ★ 把想去的地方挑出来</li>';
       return;
     }
-    pins.forEach((pin) => {
+    const QR = window.TravelQuickRoute;
+    const legs = Array.isArray(handlers && handlers.legs) ? handlers.legs : [];
+    pins.forEach((pin, i) => {
       const color = window.TravelCategories.colorOf(pin.category);
       const label = window.TravelCategories.labelOf(pin.category);
       const li = document.createElement('li');
       li.className = 'poi-item sel-item';
+      const leg = i > 0 ? legs[i - 1] : null;
+      const legHtml =
+        '<div class="sel-leg' + (leg ? '' : ' start') + '">' +
+        esc(i === 0 ? '起点' : QR ? QR.legText(leg) : '') +
+        '</div>';
       li.innerHTML =
         '<div class="poi-head">' +
+        '<span class="sel-order">' + (i + 1) + '</span>' +
         '<span class="dot" style="background:' + esc(color) + '"></span>' +
         '<b class="poi-name">' + esc(pin.name) + '</b>' +
         '<span class="poi-tag">' + esc(label) + '</span>' +
         '</div>' +
         '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
+        legHtml +
         '<div class="sel-actions">' +
+        '<button class="up" title="往前挪一位"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button class="down" title="往后挪一位"' +
+        (i === pins.length - 1 ? ' disabled' : '') +
+        '>↓</button>' +
         '<button class="locate">定位</button>' +
         '<button class="del">移除</button>' +
         '</div>';
       li.onclick = () => handlers.onLocate(pin);
       const locate = li.querySelector('.locate');
       const del = li.querySelector('.del');
+      const up = li.querySelector('.up');
+      const down = li.querySelector('.down');
       if (locate) locate.onclick = (e) => { e.stopPropagation(); handlers.onLocate(pin); };
       if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
+      if (up && handlers.onMove) {
+        up.onclick = (e) => { e.stopPropagation(); handlers.onMove(i, -1); };
+      }
+      if (down && handlers.onMove) {
+        down.onclick = (e) => { e.stopPropagation(); handlers.onMove(i, 1); };
+      }
       container.appendChild(li);
     });
   }

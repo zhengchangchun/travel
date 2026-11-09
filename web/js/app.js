@@ -56,6 +56,11 @@
     resultLimit: RESULT_PAGE, // 结果列表当前展示上限（「显示更多」递增）
     zoomTooLow: false, // 倍率不够、没加载地点（空态只提示这一件事）
     markerInfo: null, // 上一次落旗回执（{shown,dropped}）：超上限时要在结果条里说明
+    liveMode: 'driving', // 实时耗时用哪种出行方式
+    liveLegs: [], // 相邻两点的耗时（[i] = 第 i+1 → 第 i+2 段）
+    liveEstimate: false, // 有没有路段是按直线估的（界面带 ≈）
+    liveNote: '', // 估算/失败的一句话说明
+    liveKey: '', // 上次算过的签名（城市|方式|点序列），一样就不重算
   };
 
   // 错误人话化（P9-②）：统一过一层，别把高德/后端的裸 code 用给用户看
@@ -68,6 +73,10 @@
   // 评分过滤：一个可拖的滑块（P10）—— 0 = 不限、5 = 只留满分，其余是「≥ N」
   const Rating = window.TravelRating;
   let ratingTimer = null; // 拖动时先看徒标，停下来再重算列表
+
+  // 实时耗时（P11）：选中点的顺序一变就重算，不用先点「规划行程」
+  const QuickRoute = window.TravelQuickRoute;
+  let liveTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -619,7 +628,111 @@
         onPickPoi(pin);
       },
       onRemove: onRemoveSelected,
+      onMove: onMoveSelectionPin,
+      legs: state.liveLegs,
     });
+    renderQuickLegs();
+    scheduleLiveLegs();
+  }
+
+  // ---------- 实时耗时：选中/排序一变就重算（不用先点「规划行程」） ----------
+  function renderQuickLegs() {
+    const box = $('quick-legs');
+    if (!box) return;
+    const pins = Selection.list();
+    const show = pins.length >= 2;
+    box.classList.toggle('hidden', !show);
+    const sum = $('ql-summary');
+    if (sum) {
+      sum.textContent = show
+        ? QuickRoute.summarize(state.liveLegs, state.liveMode, {
+            estimate: state.liveEstimate,
+            note: state.liveNote,
+          })
+        : '';
+      sum.title = state.liveNote || '选中点的先后顺序一变，这里就重算相邻两地要多久';
+    }
+    const modes = $('ql-modes');
+    if (!modes) return;
+    modes.innerHTML = '';
+    QuickRoute.MODES.forEach((m) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip mini' + (m.key === state.liveMode ? ' active' : '');
+      btn.textContent = m.label;
+      btn.title = '按' + m.label + '算耗时';
+      btn.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (m.key === state.liveMode) return;
+        state.liveMode = m.key;
+        state.liveKey = '';
+        scheduleLiveLegs(0);
+      };
+      modes.appendChild(btn);
+    });
+  }
+
+  function scheduleLiveLegs(delay) {
+    if (liveTimer) clearTimeout(liveTimer);
+    liveTimer = setTimeout(
+      () => {
+        liveTimer = null;
+        computeLiveLegs();
+      },
+      delay == null ? 700 : delay
+    );
+  }
+
+  // 先用直线估一版立刻上图，再拿真实路线纠正（失败就留着估算值，标 ≈）
+  async function computeLiveLegs() {
+    const pins = Selection.list();
+    const key = [state.city || '', state.liveMode, pins.map((p) => p.id).join(',')].join('|');
+    if (key === state.liveKey) return;
+    state.liveKey = key;
+    if (pins.length < 2) {
+      state.liveLegs = [];
+      state.liveEstimate = false;
+      state.liveNote = '';
+      renderSelection();
+      return;
+    }
+    state.liveLegs = QuickRoute.estimateLegs(pins, state.liveMode);
+    state.liveEstimate = true;
+    state.liveNote = '';
+    renderSelection();
+    try {
+      const data = await API.itineraryRoute(state.city, state.liveMode);
+      if (state.liveKey !== key) return; // 等结果期间又变了 ⇒ 这次作废
+      const legs = Array.isArray(data && data.legs) ? data.legs : [];
+      if (!legs.length) return;
+      const est = QuickRoute.estimateLegs(pins, state.liveMode);
+      state.liveLegs = legs.map((leg, i) => {
+        if (leg && leg.ok) {
+          return { ok: true, estimate: false, distance: leg.distance, duration: leg.duration };
+        }
+        const e = est[i] || { distance: 0, duration: 0 };
+        return { ok: false, estimate: true, distance: e.distance, duration: e.duration };
+      });
+      state.liveEstimate = state.liveLegs.some((l) => l.estimate);
+      const bad = state.liveLegs.filter((l) => !l.ok).length;
+      state.liveNote = bad ? bad + ' 段没拿到真实路线，按直线估算' : '';
+    } catch (err) {
+      if (state.liveKey !== key) return;
+      state.liveEstimate = true;
+      state.liveNote = '真实路线拿不到（' + human(err) + '）· 先按直线估算';
+    }
+    renderSelection();
+  }
+
+  async function onMoveSelectionPin(index, delta) {
+    const list = Selection.list();
+    const to = index + delta;
+    if (to < 0 || to >= list.length) return;
+    try {
+      await Selection.move(index, delta);
+    } catch (err) {
+      UI.setStatus('调整顺序失败：' + err.message);
+    }
   }
 
   function renderItinerary() {
