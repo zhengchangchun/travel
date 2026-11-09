@@ -36,6 +36,27 @@ function hookProgress(hooks, stage) {
   }
 }
 
+// 杀就要杀干净：子进程是 `node pw.cjs`，它下面还有 Chromium（持着浏览器 profile）。
+// 所以起进程时 detached（自成进程组），取消/超时时按「进程组」杀，否则 Chromium 会变成孤儿、
+// 下一次抓取会栽在「profile 被占用 / 登录态读不到」上。
+function killChildTree(child) {
+  if (!child) return;
+  const pid = Number(child.pid);
+  if (pid > 0 && typeof process.kill === 'function') {
+    try {
+      process.kill(-pid, 'SIGKILL');
+      return;
+    } catch (err) {
+      /* 进程组杀不了（已退出/无权限）⇒ 退回单杀 */
+    }
+  }
+  try {
+    child.kill('SIGKILL');
+  } catch (err) {
+    /* 已退出 */
+  }
+}
+
 // 平台 → 本机浏览器 profile（B站走官方接口，不需要浏览器）
 const PROFILE = { xhs: 'xhs', douyin: 'douyin', kuaishou: 'kuaishou' };
 
@@ -70,6 +91,7 @@ function runFetcher(argv, opts = {}) {
     try {
       child = spawnImpl(NODE, [PW_CJS, 'run', SCRIPT].concat(argv), {
         env: Object.assign({}, process.env, opts.env || {}),
+        detached: true, // 自成进程组：取消时能连它拉起的 Chromium 一起杀
       });
     } catch (err) {
       resolve(fail('FETCH_FAIL', '抓取器启动失败：' + err.message));
@@ -89,11 +111,7 @@ function runFetcher(argv, opts = {}) {
       if (done) return;
       done = true;
       if (timer) clearTimeout(timer);
-      try {
-        child.kill('SIGKILL');
-      } catch (e) {
-        /* 已退出 */
-      }
+      killChildTree(child);
       resolve(res);
     };
     const timer = setTimeout(() => finish(fail('TIMEOUT', '抓取超时（' + timeoutMs + 'ms）')), timeoutMs);
@@ -248,4 +266,5 @@ module.exports = {
   NODE,
   PROGRESS_PREFIX,
   DEFAULT_TIMEOUT_MS,
+  killChildTree,
 };

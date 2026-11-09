@@ -203,6 +203,33 @@ test('runFetcher：被取消时不 spawn / 立刻以 CANCELED 收尾，并把子
   assert.ok(child.killed >= 1, '取消后要把子进程杀掉');
 });
 
+test('runFetcher：取消/结束时把整个进程组杀掉（不然 Chromium 变孤儿占着 profile）', async () => {
+  const { killChildTree } = require('../server/note-fetch');
+  const realKill = process.kill;
+  const killed = [];
+  try {
+    process.kill = (pid, sig) => {
+      killed.push([pid, sig]);
+    };
+    killChildTree({ pid: 4321, kill: () => killed.push(['single', 'SIGKILL']) });
+    assert.deepStrictEqual(killed, [[-4321, 'SIGKILL']], '有 pid 就按进程组杀');
+    killed.length = 0;
+    // 假 child（无 pid，测试里常见）⇒ 退回单杀，不能把测试弄崩
+    const fake = { kill: () => killed.push(['single', 'SIGKILL']) };
+    killChildTree(fake);
+    assert.deepStrictEqual(killed, [['single', 'SIGKILL']]);
+    // 组杀失败（已退出）也要退回单杀
+    killed.length = 0;
+    process.kill = () => {
+      throw new Error('ESRCH');
+    };
+    killChildTree({ pid: 999, kill: () => killed.push(['single', 'SIGKILL']) });
+    assert.deepStrictEqual(killed, [['single', 'SIGKILL']]);
+  } finally {
+    process.kill = realKill;
+  }
+});
+
 test('fetchNote / searchNotes：取消后不再重试（原来会再来一次 90 秒）', async () => {
   // ① 第一次尝试中途被取消 ⇒ 直接 CANCELED，不再起第二次
   const { spawnImpl, calls } = fakeSpawn([], { stderr: 'boom' });
