@@ -11,6 +11,7 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const HTML = read('web/index.html');
 const CSS = read('web/css/style.css');
 const APP = read('web/js/app.js');
+const UI = read('web/js/ui.js');
 const MAP = read('web/js/map.js');
 const NOTES = read('web/js/notes.js');
 
@@ -32,6 +33,18 @@ test('筛选与结果在同一张卡里：chips / 评分 / 结果条 / 列表同
     .forEach((id) => {
       assert.ok(block.includes(id), 'filter 卡里缺 ' + id);
     });
+});
+
+test('分类 chip 只占一行：不折成两行（窄了先缩、再截断标签）', () => {
+  assert.match(CSS, /#chips \{[^}]*flex-wrap:\s*nowrap/, '#chips 必须不换行');
+  assert.match(CSS, /#chips \.chip \{[^}]*flex:\s*0\s+1\s+auto/, '分类 chip 要能被压缩');
+  assert.match(CSS, /#chips \.chip \{[^}]*min-width:\s*0/, '没有 min-width:0 压不下去');
+  assert.match(
+    CSS,
+    /#chips \.chip \.chip-label \{[^}]*text-overflow:\s*ellipsis/,
+    '标签要能省略号截断（否则会撑破气泡）'
+  );
+  assert.match(UI, /<span class="chip-label">/, 'ui.js 要把标签包一层，否则截断不了');
 });
 
 test('结果卡不再排在最后一张（不用滚过所有卡片才看到结果）', () => {

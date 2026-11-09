@@ -97,6 +97,11 @@ button.primary:hover { background: #0958d9; }
 
 /* 分类 chip */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 分类 chip：固定一行（窄了先缩、再截断标签，绝不折成第二行）——用户 2026-11-09 */
+#chips { flex-wrap: nowrap; gap: 5px; }
+#chips .chip { flex: 0 1 auto; min-width: 0; gap: 4px; padding: 5px 7px; font-size: 12px; }
+#chips .chip .dot { flex: none; width: 7px; height: 7px; }
+#chips .chip .chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid #d7d9e0; background: #fff; border-radius: 999px;

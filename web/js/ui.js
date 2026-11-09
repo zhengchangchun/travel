@@ -56,7 +56,7 @@
       btn.style.setProperty('--chip-color', cat.color);
       btn.innerHTML =
         '<span class="dot" style="background:' + esc(cat.color) + '"></span>' +
-        esc(cat.label);
+        '<span class="chip-label">' + esc(cat.label) + '</span>';
       btn.onclick = () => onToggle(cat.key);
       container.appendChild(btn);
     });
