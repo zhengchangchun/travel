@@ -206,6 +206,15 @@
     if (all) all.onclick = toggleAllCards;
   }
 
+  // 「i」说明点：悬停/聚焦由 CSS 出气泡；点在它身上别把卡片折叠了（冒泡会碰到标题条）
+  function bindTips() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tip'), (el) => {
+      ['click', 'mousedown', 'keydown'].forEach((type) => {
+        el.addEventListener(type, (e) => e.stopPropagation());
+      });
+    });
+  }
+
   // 筛选口径（人话，给结果条用）
   function filterText() {
     const parts = [];
@@ -1451,6 +1460,7 @@
     }
     if (clearFilterBtn) clearFilterBtn.onclick = onResetFilters;
     bindCardBars();
+    bindTips();
     const aroundBtn = $('base-around-btn');
     if (aroundBtn) aroundBtn.onclick = showAroundBase;
     const clearBtn = $('base-clear-btn');

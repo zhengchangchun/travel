@@ -83,7 +83,7 @@ test('结构：评分是一个滑块而不是一排选项', () => {
     '要有 0~5、0.5 一档的滑块'
   );
   assert.match(HTML, /id="rating-value"/, '要有显示当前值的徽标');
-  assert.match(HTML, /拖动滑块/, '要说明怎么用（0 = 不限）');
+  assert.match(HTML, /data-tip="拖动滑块调最低分：0 = 不限，5 = 只留满分"/, '要说明怎么用（收进 i 气泡）');
   assert.match(HTML, /<script src="\/js\/rating\.js">/, 'rating.js 要挂进页面（且在 app.js 之前）');
   assert.ok(HTML.indexOf('/js/rating.js') < HTML.indexOf('/js/app.js'), 'rating.js 必须先加载');
 });

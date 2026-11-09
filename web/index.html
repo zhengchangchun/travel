@@ -17,19 +17,18 @@
       </header>
 
       <section class="card" data-card="city">
-        <h2 class="card-bar">城市 <span class="bar-note">当前 <b id="current-city">—</b></span><span class="chev">⌄</span></h2>
+        <h2 class="card-bar">城市 <span class="bar-right"><span class="bar-note">当前 <b id="current-city">—</b></span><span class="tip" data-tip="打字即出建议 · ↑↓ 选、回车确认" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
         <div class="card-body">
           <div id="city-combo" class="combo">
             <input id="city-input" class="combo-input" placeholder="输入城市名，如 杭州" autocomplete="off"
                    role="combobox" aria-expanded="false" aria-controls="city-results" aria-autocomplete="list" />
             <div id="city-results" class="combo-list hidden" role="listbox" aria-label="城市建议"></div>
           </div>
-          <p class="hint">打字即出建议 · ↑↓ 选、回车确认</p>
         </div>
       </section>
 
       <section class="card" data-card="search">
-        <h2 class="card-bar">搜索地点<span class="chev">⌄</span></h2>
+        <h2 class="card-bar">搜索地点<span class="bar-right"><span class="chev">⌄</span></span></h2>
         <div class="card-body">
           <div class="row">
             <input id="poi-input" placeholder="如 西湖 / 火锅" autocomplete="off" />
@@ -39,18 +38,16 @@
       </section>
 
       <section class="card" data-card="filter">
-        <h2 class="card-bar">筛选 · 结果 <span id="result-count" class="count">0</span><span class="chev">⌄</span></h2>
+        <h2 class="card-bar">筛选 · 结果 <span id="result-count" class="count">0</span><span class="bar-right"><span class="tip" data-tip="默认不选；选中哪个分类就只显示哪个分类；勾「全部」显示所有分类" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
         <div class="card-body">
           <div id="chips" class="chips"></div>
-          <p class="hint">默认不选；选中哪个分类就只显示哪个分类；勾「全部」显示所有分类</p>
-          <div class="sub-head rating-head">评分过滤 <span id="rating-value" class="rating-value">≥ 4.0</span></div>
+          <div class="sub-head rating-head">评分过滤 <span id="rating-value" class="rating-value">≥ 4.0</span><span class="tip" data-tip="拖动滑块调最低分：0 = 不限，5 = 只留满分" tabindex="0" aria-label="用法说明">i</span></div>
           <div class="rating-slider">
             <span class="rating-end">不限</span>
             <input id="rating-slider" type="range" min="0" max="5" step="0.5" value="4"
                    aria-label="最低评分（0 为不限）" />
             <span class="rating-end">满分</span>
           </div>
-          <p class="hint">拖动滑块调最低分：0 = 不限，5 = 只留满分</p>
           <div class="result-tools">
             <span id="result-summary" class="result-summary">—</span>
             <button id="filter-clear-btn" class="ghost mini-btn" title="清空分类与评分筛选，回到默认（不选分类 · ≥4.0）">回到默认</button>
@@ -60,7 +57,7 @@
       </section>
 
       <section class="card" data-card="base">
-        <h2 class="card-bar">住宿锚点 <span class="bar-note"><b id="base-name">未设定</b></span><span class="chev">⌄</span></h2>
+        <h2 class="card-bar">住宿锚点 <span class="bar-right"><span class="bar-note"><b id="base-name">未设定</b></span><span class="tip" data-tip="先定住宿，再看它周边的美食与景点（一次查询 ≤4 次调用，其余走缓存）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
         <div class="card-body">
           <div id="base-box" class="base-box">
             <div class="base-sub"><span id="base-sub">在住宿结果里点「住这」定锚点</span></div>
@@ -75,15 +72,13 @@
               <button id="base-locate-btn" class="ghost" title="相机回到住宿锚点">回中</button>
               <button id="base-clear-btn" class="ghost">清除</button>
             </div>
-            <p class="hint">先定住宿，再看它周边的美食与景点（一次查询 ≤4 次调用，其余走缓存）</p>
           </div>
         </div>
       </section>
 
       <section class="card" id="note-card" data-card="note">
-        <h2 class="card-bar">笔记 → 找地方 <span class="bar-note">本地 <b id="note-count">0</b></span><span class="chev">⌄</span></h2>
+        <h2 class="card-bar">笔记 → 找地方 <span class="bar-right"><span class="bar-note">本地 <b id="note-count">0</b></span><span class="tip" data-tip="粘链接（小红书 / 抖音 / 快手 / B站）或整段分享文案，本机自己抓（用已登录的浏览器 profile）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
         <div class="card-body">
-          <p class="hint">粘链接（小红书 / 抖音 / 快手 / B站）或整段分享文案，本机自己抓（用已登录的浏览器 profile）</p>
           <div class="row">
             <input id="note-link" placeholder="粘贴链接 / 分享文案" autocomplete="off" />
             <button id="note-fetch-btn" class="primary">抓取</button>

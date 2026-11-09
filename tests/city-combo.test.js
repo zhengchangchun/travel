@@ -98,7 +98,7 @@ test('citybox：下拉顶部说明与空态都是人话', () => {
 
 test('结构：一个控件 —— 下拉挂在输入框上，且不再有独立的搜索按钮', () => {
   assert.match(HTML, /id="city-combo"/, '缺输入框 + 下拉的容器 #city-combo');
-  const comboBlock = HTML.match(/<div id="city-combo"[\s\S]*?<\/div>\s*<p class="hint">/);
+  const comboBlock = HTML.match(/<div id="city-combo"[\s\S]*?<div id="city-results"[^>]*><\/div>/);
   assert.ok(comboBlock, '#city-combo 结构不符合预期');
   assert.match(comboBlock[0], /<input id="city-input"[^>]*role="combobox"/, '输入框要是 combobox');
   assert.match(comboBlock[0], /aria-expanded="false"/, '下拉初始是收起的（aria）');
@@ -106,7 +106,7 @@ test('结构：一个控件 —— 下拉挂在输入框上，且不再有独立
   assert.match(comboBlock[0], /id="city-results" class="combo-list hidden"/, '下拉默认收起');
   assert.ok(!/city-search-btn/.test(HTML), '合成一个控件后不该再有单独的「搜索」按钮');
   assert.ok(!/id="city-results" class="result-list"/.test(HTML), '下拉不该再当独立结果列表');
-  assert.match(HTML, /↑↓ 选、回车确认/, '要告诉用户能怎么操作');
+  assert.match(HTML, /data-tip="打字即出建议 · ↑↓ 选、回车确认"/, '玩法说明应挂在 i 气泡上（不常驻页面）');
 });
 
 test('结构：打字就查（防抖）+ 上下键/回车/Esc + 点外面收起', () => {
