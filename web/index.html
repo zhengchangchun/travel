@@ -55,64 +55,6 @@
         </div>
       </section>
 
-      <section class="card" data-card="base">
-        <h2 class="card-bar">住宿锚点 <span class="bar-right"><span class="bar-note"><b id="base-name">未设定</b></span><span class="tip" data-tip="先定住宿，再看它周边的美食与景点（一次查询 ≤4 次调用，其余走缓存）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
-        <div class="card-body">
-          <div id="base-box" class="base-box">
-            <div class="base-sub"><span id="base-sub">在住宿结果里点「住这」定锚点</span></div>
-            <div class="row">
-              <select id="base-radius" title="周边半径">
-                <option value="500">500 m</option>
-                <option value="1000" selected>1 km</option>
-                <option value="2000">2 km</option>
-                <option value="5000">5 km</option>
-              </select>
-              <button id="base-around-btn" class="primary">看周边美食/景点</button>
-              <button id="base-locate-btn" class="ghost" title="相机回到住宿锚点">回中</button>
-              <button id="base-clear-btn" class="ghost">清除</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card" id="note-card" data-card="note">
-        <h2 class="card-bar">笔记 → 找地方 <span class="bar-right"><span class="bar-note">本地 <b id="note-count">0</b></span><span class="tip" data-tip="粘链接（小红书 / 抖音 / 快手 / B站）或整段分享文案，本机自己抓（用已登录的浏览器 profile）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
-        <div class="card-body">
-          <div class="row">
-            <input id="note-link" placeholder="粘贴链接 / 分享文案" autocomplete="off" />
-            <button id="note-fetch-btn" class="primary">抓取</button>
-          </div>
-          <div class="row">
-            <input id="note-keyword" placeholder="按关键词搜笔记，如 杭州咖啡" autocomplete="off" />
-            <select id="note-platform" title="搜哪个平台">
-              <option value="xhs">小红书</option>
-              <option value="douyin">抖音</option>
-              <option value="kuaishou">快手</option>
-            </select>
-            <button id="note-search-btn" class="ghost">搜笔记</button>
-          </div>
-          <div id="note-status" class="note-status"></div>
-          <div class="note-live">
-            <span id="note-progress" class="note-status"></span>
-            <button id="note-cancel-btn" class="ghost mini-btn hidden" title="停掉这次的抓取 / 搜索">取消</button>
-          </div>
-          <div id="note-candidates" class="hidden"></div>
-          <details class="note-manual">
-            <summary>手动贴正文（备用）</summary>
-            <textarea id="note-share" rows="3" placeholder="粘分享文案 / 正文"></textarea>
-            <div class="row">
-              <button id="note-parse-btn" class="ghost">识别</button>
-              <button id="note-save-btn" class="ghost">预览</button>
-              <button id="note-clear-btn" class="ghost">清空</button>
-            </div>
-            <div id="note-preview" class="note-preview hidden"></div>
-          </details>
-          <h2 class="sub-head">本地笔记</h2>
-          <ul id="note-list" class="poi-list note-list"></ul>
-          <div id="note-detail" class="note-detail hidden"></div>
-        </div>
-      </section>
-
     </aside>
 
     <!-- 中栏：地图 -->
@@ -167,6 +109,26 @@
           </div>
         </section>
 
+        <section class="card" data-card="base">
+          <h2 class="card-bar">住宿锚点 <span class="bar-right"><span class="bar-note"><b id="base-name">未设定</b></span><span class="tip" data-tip="先定住宿，再看它周边的美食与景点（一次查询 ≤4 次调用，其余走缓存）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
+          <div class="card-body">
+            <div id="base-box" class="base-box">
+              <div class="base-sub"><span id="base-sub">在住宿结果里点「住这」定锚点</span></div>
+              <div class="row">
+                <select id="base-radius" title="周边半径">
+                  <option value="500">500 m</option>
+                  <option value="1000" selected>1 km</option>
+                  <option value="2000">2 km</option>
+                  <option value="5000">5 km</option>
+                </select>
+                <button id="base-around-btn" class="primary">看周边美食/景点</button>
+                <button id="base-locate-btn" class="ghost" title="相机回到住宿锚点">回中</button>
+                <button id="base-clear-btn" class="ghost">清除</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="card trip-card">
           <h2>我的行程</h2>
           <p class="card-sub">存档：按天保存的清单（与地图上的旗子无关）</p>
@@ -176,6 +138,44 @@
             <span id="trip-name" class="trip-name">未创建</span>
           </div>
           <ul id="trip-list" class="poi-list"></ul>
+        </section>
+
+        <section class="card" id="note-card" data-card="note">
+          <h2 class="card-bar">笔记 → 找地方 <span class="bar-right"><span class="bar-note">本地 <b id="note-count">0</b></span><span class="tip" data-tip="粘链接（小红书 / 抖音 / 快手 / B站）或整段分享文案，本机自己抓（用已登录的浏览器 profile）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
+          <div class="card-body">
+            <div class="row">
+              <input id="note-link" placeholder="粘贴链接 / 分享文案" autocomplete="off" />
+              <button id="note-fetch-btn" class="primary">抓取</button>
+            </div>
+            <div class="row">
+              <input id="note-keyword" placeholder="按关键词搜笔记，如 杭州咖啡" autocomplete="off" />
+              <select id="note-platform" title="搜哪个平台">
+                <option value="xhs">小红书</option>
+                <option value="douyin">抖音</option>
+                <option value="kuaishou">快手</option>
+              </select>
+              <button id="note-search-btn" class="ghost">搜笔记</button>
+            </div>
+            <div id="note-status" class="note-status"></div>
+            <div class="note-live">
+              <span id="note-progress" class="note-status"></span>
+              <button id="note-cancel-btn" class="ghost mini-btn hidden" title="停掉这次的抓取 / 搜索">取消</button>
+            </div>
+            <div id="note-candidates" class="hidden"></div>
+            <details class="note-manual">
+              <summary>手动贴正文（备用）</summary>
+              <textarea id="note-share" rows="3" placeholder="粘分享文案 / 正文"></textarea>
+              <div class="row">
+                <button id="note-parse-btn" class="ghost">识别</button>
+                <button id="note-save-btn" class="ghost">预览</button>
+                <button id="note-clear-btn" class="ghost">清空</button>
+              </div>
+              <div id="note-preview" class="note-preview hidden"></div>
+            </details>
+            <h2 class="sub-head">本地笔记</h2>
+            <ul id="note-list" class="poi-list note-list"></ul>
+            <div id="note-detail" class="note-detail hidden"></div>
+          </div>
         </section>
       </div>
     </aside>

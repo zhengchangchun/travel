@@ -31,6 +31,13 @@ const PIN_IDS = [
   'route-modes',
   'route-totals',
   'route-legs',
+  // 个人的东西（用户 2026-11-09：住宿锚点应该放在右边，个人的都放右边）
+  'base-box',
+  'base-name',
+  'base-radius',
+  'note-card',
+  'note-link',
+  'note-detail',
 ];
 
 test('三栏骨架：左「全部」／中 地图／右「我挑的」，顺序正确', () => {

@@ -26,13 +26,37 @@ test('侧栏每张卡都带 data-card（可折叠的钩子）', () => {
 
 test('筛选与结果在同一张卡里：chips / 评分 / 结果条 / 列表同属 filter 卡', () => {
   const start = HTML.indexOf('data-card="filter"');
-  const end = HTML.indexOf('data-card="base"');
-  assert.ok(start >= 0 && end > start, 'filter 卡与 base 卡顺序不对');
+  const end = HTML.indexOf('id="map-wrap"');
+  assert.ok(start >= 0 && end > start, 'filter 卡范围不对');
   const block = HTML.slice(start, end);
   ['id="chips"', 'id="rating-slider"', 'id="result-summary"', 'id="filter-clear-btn"', 'id="result-list"']
     .forEach((id) => {
       assert.ok(block.includes(id), 'filter 卡里缺 ' + id);
     });
+});
+
+test('左栏只放浏览（城市/搜索/筛选），个人的卡都在右栏', () => {
+  const sideStart = HTML.indexOf('id="sidebar"');
+  const sideEnd = HTML.indexOf('id="map-wrap"');
+  const side = HTML.slice(sideStart, sideEnd);
+  const rightStart = HTML.indexOf('id="right-panel"');
+  const right = HTML.slice(rightStart);
+  ['city', 'search', 'filter'].forEach((name) => {
+    assert.ok(side.includes('data-card="' + name + '"'), '左栏缺 ' + name + ' 卡');
+  });
+  ['base', 'note'].forEach((name) => {
+    assert.ok(!side.includes('data-card="' + name + '"'), '左栏不该再有 ' + name + ' 卡');
+    assert.ok(right.includes('data-card="' + name + '"'), '右栏缺 ' + name + ' 卡');
+  });
+  // 锚点与笔记的具体元素也都在右栏
+  ['base-box', 'base-name', 'note-card', 'note-detail'].forEach((id) => {
+    assert.ok(right.includes('id="' + id + '"'), '右栏缺 ' + id);
+  });
+  // 「收起全部卡片」只管左栏（否则会从左边把右栏的卡也收了）
+  assert.match(APP, /function\s+sidebarCards/, '缺左栏卡片集合');
+  const toggler = APP.match(/function\s+toggleAllCards[\s\S]*?\n  \}/);
+  assert.ok(toggler, '缺 toggleAllCards');
+  assert.match(toggler[0], /sidebarCards\(\)/, '收起全部应只作用于左栏');
 });
 
 test('分类 chip 只占一行：不折成两行（窄了先缩、再截断标签）', () => {
@@ -47,10 +71,11 @@ test('分类 chip 只占一行：不折成两行（窄了先缩、再截断标�
   assert.match(UI, /<span class="chip-label">/, 'ui.js 要把标签包一层，否则截断不了');
 });
 
-test('结果卡不再排在最后一张（不用滚过所有卡片才看到结果）', () => {
+test('结果卡不再排在最后一张（左栏只到结果为止）', () => {
   const filterAt = HTML.indexOf('data-card="filter"');
-  const noteAt = HTML.indexOf('data-card="note"');
-  assert.ok(filterAt >= 0 && noteAt > filterAt, '结果/筛选应当排在笔记卡之前');
+  const mapAt = HTML.indexOf('id="map-wrap"');
+  assert.ok(filterAt >= 0 && mapAt > filterAt, '筛选/结果应在左栏靠尾部');
+  assert.ok(!/data-card="note"/.test(HTML.slice(0, mapAt)), '笔记卡已搬到右栏');
 });
 
 test('id 不重复（拆卡时最容易踩的坑）', () => {

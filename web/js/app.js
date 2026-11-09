@@ -150,6 +150,12 @@
     return Array.prototype.slice.call(document.querySelectorAll('section.card[data-card]'));
   }
 
+  // 左栏卡片（「收起全部卡片」只管左栏；右栏的锚点/笔记卡只能自己点标题条收起）
+  function sidebarCards() {
+    const side = $('sidebar');
+    return side ? Array.prototype.slice.call(side.querySelectorAll('section.card[data-card]')) : [];
+  }
+
   function applyCardState() {
     const cards = cardSections();
     cards.forEach((sec) => {
@@ -165,7 +171,7 @@
     });
     const all = $('cards-toggle-all');
     if (all) {
-      const anyOpen = cards.some((sec) => !sec.classList.contains('collapsed'));
+      const anyOpen = sidebarCards().some((sec) => !sec.classList.contains('collapsed'));
       all.textContent = anyOpen ? '收起全部卡片' : '展开全部卡片';
     }
   }
@@ -177,7 +183,7 @@
   }
 
   function toggleAllCards() {
-    const cards = cardSections();
+    const cards = sidebarCards();
     const anyOpen = cards.some((sec) => !sec.classList.contains('collapsed'));
     cards.forEach((sec) => {
       cardState[sec.dataset.card] = !anyOpen;

@@ -94,7 +94,7 @@ test('结构：评分是一个滑块而不是一排选项', () => {
     '刻度直接写 0 到 5 分'
   );
   assert.ok(!/rating-end/.test(HTML), '两端的「不限 / 满分」文字应删掉');
-  const filterCard = HTML.slice(HTML.indexOf('data-card="filter"'), HTML.indexOf('data-card="base"'));
+  const filterCard = HTML.slice(HTML.indexOf('data-card="filter"'), HTML.indexOf('id="map-wrap"'));
   assert.ok(!/不限|满分/.test(filterCard), '筛选区不该再出现这两个词');
   assert.match(HTML, /data-tip="拖动滑块调最低分：0 = 不过滤，5 = 只看 5 分"/, '要说明怎么用（收进 i 气泡）');
   assert.match(HTML, /<script src="\/js\/rating\.js">/, 'rating.js 要挂进页面（且在 app.js 之前）');
