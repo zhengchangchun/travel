@@ -143,7 +143,7 @@
       position: [poi.lng, poi.lat],
       content: flagHtml(poi, selected),
       offset: new AMap.Pixel(-13, -34),
-      extData: { poi },
+      extData: { poi, selected },
       zIndex: selected ? 200 : 100,
     });
     marker.on('click', () => {
@@ -163,7 +163,7 @@
       position: [poi.lng, poi.lat],
       content: flagHtml(poi, selected),
       offset: new AMap.Pixel(-13, -34),
-      extData: { poi },
+      extData: { poi, selected },
       zIndex: selected ? 200 : 100,
     });
     marker.on('click', () => {
@@ -347,10 +347,27 @@
     }
   }
 
-  // 设置住宿锚点（可传数组；旗子样式随 baseIds 变；重画由上层 refresh 负责）
+  // 设置住宿锚点（可传数组）。已落图的旗子不会重建 ⇒ 这里主动把「刚变成锚点 / 不再是锚点」那几面重画一遍，
+  // 否则金框和「住」角标要等下次重建才生效。
   function setBase(ids) {
     const list = Array.isArray(ids) ? ids : ids ? [ids] : [];
-    baseIds = list.filter((x) => x != null && x !== '').map(String);
+    const next = list.filter((x) => x != null && x !== '').map(String);
+    const before = baseIds;
+    baseIds = next;
+    if (!map || before.join('\u0000') === next.join('\u0000')) return;
+    markers.forEach((marker) => {
+      const data = (typeof marker.getExtData === 'function' && marker.getExtData()) || {};
+      const poi = data.poi;
+      if (!poi) return;
+      const id = String(poiIdOf(poi) || '');
+      const wasBase = before.indexOf(id) >= 0;
+      if (!wasBase && !isBaseId(id) && !isBaseId(poi.poi_id)) return; // 前后都不是锚点 ⇒ 样子没变
+      try {
+        marker.setContent(flagHtml(poi, !!data.selected));
+      } catch (err) {
+        /* 单面重画失败不影响其他 */
+      }
+    });
   }
 
   function flyTo(lng, lat, zoom) {
