@@ -277,12 +277,45 @@ button.danger:hover { background: #ad2102; }
 
 /* ---------- 评分色阶（T4） ---------- */
 .sub-head { font-size: 13px; margin: 10px 0 4px; color: #374151; }
-.rating-chips { margin-top: 2px; }
-.rating-chip.active {
-  border-color: #f59e0b;
-  background: #fff7e6;
-  color: #b45309;
-  font-weight: 600;
+
+/* P10：评分过滤改成一个可拖的滑块（默认 ≥4.0，0 = 不限、5 = 只留满分） */
+.rating-head { display: flex; align-items: center; gap: 8px; }
+.rating-value {
+  padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 200, 97, .16); border: 1px solid rgba(255, 200, 97, .6); color: var(--warn);
+}
+.rating-slider { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.rating-end { flex: none; font-size: 11px; color: var(--ink-3); }
+.rating-slider input[type="range"] {
+  flex: 1; min-width: 0; height: 16px; padding: 0; margin: 0; border: none;
+  background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer;
+}
+.rating-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%, var(--accent) var(--rating-pct, 80%),
+    rgba(255, 255, 255, .14) var(--rating-pct, 80%), rgba(255, 255, 255, .14) 100%
+  );
+}
+.rating-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; margin-top: -5.5px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--accent); box-shadow: 0 1px 5px rgba(0, 0, 0, .5);
+}
+.rating-slider input[type="range"]::-moz-range-track {
+  height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .14);
+}
+.rating-slider input[type="range"]::-moz-range-progress {
+  height: 4px; border-radius: 999px; background: var(--accent);
+}
+.rating-slider input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: #fff;
+  border: 2px solid var(--accent); box-shadow: 0 1px 5px rgba(0, 0, 0, .5);
+}
+.rating-slider input[type="range"]:focus-visible {
+  outline: none; border-radius: 999px; box-shadow: 0 0 0 3px rgba(109, 139, 255, .28);
 }
 .collect-progress { font-size: 12px; color: #1677ff; margin-top: 6px; min-height: 16px; }
 
@@ -744,9 +777,13 @@ button:disabled { opacity: .45; }
   border-color: color-mix(in srgb, var(--chip-color, var(--accent)) 70%, transparent);
   color: #fff;
 }
-.chip.toggle.active, .rating-chip.active {
+.chip.toggle.active {
   background: rgba(255, 200, 97, .16); border-color: rgba(255, 200, 97, .6); color: var(--warn);
 }
+
+/* 评分滑块深色层校对（滑块本体用上面的 var 令牌，这里只调文字与徒标色） */
+.rating-head { color: var(--ink-2); }
+.rating-value { color: var(--warn); }
 
 /* POI 列表 */
 .poi-item, .note-item, .note-cand, .note-place {

@@ -28,7 +28,7 @@ test('筛选与结果在同一张卡里：chips / 评分 / 结果条 / 列表同
   const end = HTML.indexOf('data-card="base"');
   assert.ok(start >= 0 && end > start, 'filter 卡与 base 卡顺序不对');
   const block = HTML.slice(start, end);
-  ['id="chips"', 'id="rating-chips"', 'id="result-summary"', 'id="filter-clear-btn"', 'id="result-list"']
+  ['id="chips"', 'id="rating-slider"', 'id="result-summary"', 'id="filter-clear-btn"', 'id="result-list"']
     .forEach((id) => {
       assert.ok(block.includes(id), 'filter 卡里缺 ' + id);
     });

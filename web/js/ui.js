@@ -62,20 +62,6 @@
     });
   }
 
-  // 评分过滤 chip：与分类 chip、只看选中可叠加
-  function renderRatingChips(container, options, active, onPick) {
-    if (!container) return;
-    container.innerHTML = '';
-    options.forEach((opt) => {
-      const btn = document.createElement('button');
-      btn.className = 'chip rating-chip' + (active === opt.key ? ' active' : '');
-      btn.dataset.key = opt.key;
-      btn.textContent = opt.label;
-      btn.onclick = () => onPick(opt.key);
-      container.appendChild(btn);
-    });
-  }
-
   function topStarHtml(poi) {
     const SC = window.TravelScoreColor;
     if (!SC || !SC.isTop(poi.rating)) return '';
@@ -290,7 +276,6 @@
     showMapError,
     hideMapError,
     renderChips,
-    renderRatingChips,
     showLegend,
     renderResults,
     renderSelectionPanel,

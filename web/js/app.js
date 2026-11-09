@@ -64,13 +64,9 @@
       : String((err && err.message) || err || '');
   }
 
-  const RATING_OPTIONS = [
-    { key: 'all', label: '全部' },
-    { key: '3.5', label: '≥3.5' },
-    { key: '4.0', label: '≥4.0' },
-    { key: '4.5', label: '≥4.5' },
-    { key: 'top', label: '★满分' },
-  ];
+  // 评分过滤：一个可拖的滑块（P10）—— 0 = 不限、5 = 只留满分，其余是「≥ N」
+  const Rating = window.TravelRating;
+  let ratingTimer = null; // 拖动时先看徒标，停下来再重算列表
 
   function $(id) {
     return document.getElementById(id);
@@ -744,7 +740,7 @@
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.resultLimit = RESULT_PAGE;
     renderCatChips();
-    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    renderRatingSlider();
     refresh();
     UI.setStatus('已清空筛选，回到默认（未选分类 · ≥4.0）—— 点上面的分类开始看');
   }
@@ -1020,8 +1016,39 @@
   function onPickRating(key) {
     state.ratingFilter = key;
     state.resultLimit = RESULT_PAGE;
-    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    renderRatingSlider();
     refresh();
+  }
+
+  // 只动界面（徒标 + 已填充部分），不动 state：拖动过程中先看数字，停下来再重算列表
+  function paintRating(value) {
+    const filter = Rating.valueToFilter(value);
+    const input = $('rating-slider');
+    if (input) {
+      input.style.setProperty('--rating-pct', Rating.percentOf(value));
+      input.setAttribute('aria-valuetext', Rating.ariaOf(filter));
+    }
+    const badge = $('rating-value');
+    if (badge) badge.textContent = Rating.labelOf(filter);
+  }
+
+  function renderRatingSlider() {
+    const input = $('rating-slider');
+    const value = Rating.filterToValue(state.ratingFilter);
+    if (input) input.value = String(value);
+    paintRating(value);
+  }
+
+  // 拖动 / 键盘调分：徒标实时跟手，列表与地图等停下手（140ms）再重算一次
+  function onRatingSlide(value) {
+    paintRating(value);
+    if (ratingTimer) clearTimeout(ratingTimer);
+    ratingTimer = setTimeout(() => {
+      ratingTimer = null;
+      const next = Rating.valueToFilter(value);
+      if (next === state.ratingFilter) return;
+      onPickRating(next);
+    }, 140);
   }
 
 
@@ -1038,7 +1065,7 @@
     state.trip = null; // N20：切城市必须重置当前行程，避免残留上一城市的行程
     UI.setViewHint('');
     renderCatChips();
-    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    renderRatingSlider();
     if (MapCtl.isReady()) MapCtl.clearMarkers();
     refresh();
     await refreshTrips();
@@ -1416,6 +1443,12 @@
     });
     $('only-selected-btn').onclick = onToggleOnlySelected;
     const clearFilterBtn = $('filter-clear-btn');
+    // 评分滑块（P10）：拖 = 实时跟手，松手后重算一次；键盘/点轨道也走同一个入口
+    const ratingSlider = $('rating-slider');
+    if (ratingSlider) {
+      ratingSlider.addEventListener('input', () => onRatingSlide(ratingSlider.value));
+      ratingSlider.addEventListener('change', () => onRatingSlide(ratingSlider.value));
+    }
     if (clearFilterBtn) clearFilterBtn.onclick = onResetFilters;
     bindCardBars();
     const aroundBtn = $('base-around-btn');
@@ -1476,7 +1509,7 @@
 
     Cats.init(state.config.categories);
     renderCatChips();
-    UI.renderRatingChips($('rating-chips'), RATING_OPTIONS, state.ratingFilter, onPickRating);
+    renderRatingSlider();
     loadBaseFromStore();
     renderBase();
     loadCardState(); // 侧栏卡片折叠状态（依赖 base 的默认展开策略）
