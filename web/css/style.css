@@ -1052,6 +1052,10 @@ section.card.collapsed > .card-body { display: none; }
 .pin-card h2 .count { margin-left: 2px; }
 .trip-card { background: rgba(255, 255, 255, .015); border-style: dashed; }
 .trip-card h2 { color: var(--ink-2); }
+/* 340px 栏里「新建行程 / 删除行程」会断成两行 ⇒ 按钮不许折行、行程名独占一行 */
+.trip-card .row { flex-wrap: wrap; row-gap: 6px; }
+.trip-card .row button { flex: none; white-space: nowrap; }
+.trip-card .trip-name { flex: 1 1 100%; margin-left: 0; }
 
 /* ⑦ 不可点的按钮：鼠标给个交代 */
 button:disabled { cursor: not-allowed; }
