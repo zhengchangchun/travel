@@ -28,15 +28,15 @@
     return Number.isFinite(n) ? clampValue(n) : 0;
   }
 
+  // 显示：只说数字（用户 2026-11-09：不要「不限 / 满分」这种词）
   function labelOf(filter) {
-    if (!filter || filter === 'all') return '不限';
-    if (filter === 'top') return '★ 满分';
-    return '≥ ' + filter;
+    return '≥ ' + filterToValue(filter).toFixed(1);
   }
 
+  // 无障碍说明：屏幕阅读器不靠猜，把含义说全
   function ariaOf(filter) {
-    if (!filter || filter === 'all') return '不限评分';
-    if (filter === 'top') return '只留满分';
+    if (!filter || filter === 'all') return '不过滤评分';
+    if (filter === 'top') return '只看 5 分';
     return '只看 ' + filter + ' 分及以上';
   }
 

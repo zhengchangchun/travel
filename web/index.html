@@ -41,12 +41,11 @@
         <h2 class="card-bar">筛选 · 结果 <span id="result-count" class="count">0</span><span class="bar-right"><span class="tip" data-tip="默认不选；选中哪个分类就只显示哪个分类，再点一下取消（可多选）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
         <div class="card-body">
           <div id="chips" class="chips"></div>
-          <div class="sub-head rating-head">评分过滤 <span id="rating-value" class="rating-value">≥ 4.0</span><span class="tip" data-tip="拖动滑块调最低分：0 = 不限，5 = 只留满分" tabindex="0" aria-label="用法说明">i</span></div>
+          <div class="sub-head rating-head">评分过滤 <span id="rating-value" class="rating-value">≥ 4.0</span><span class="tip" data-tip="拖动滑块调最低分：0 = 不过滤，5 = 只看 5 分" tabindex="0" aria-label="用法说明">i</span></div>
           <div class="rating-slider">
-            <span class="rating-end">不限</span>
             <input id="rating-slider" type="range" min="0" max="5" step="0.5" value="4"
-                   aria-label="最低评分（0 为不限）" />
-            <span class="rating-end">满分</span>
+                   aria-label="最低评分 0 到 5 分" />
+            <div class="rating-scale" aria-hidden="true"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
           </div>
           <div class="result-tools">
             <span id="result-summary" class="result-summary">—</span>

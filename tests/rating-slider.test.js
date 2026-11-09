@@ -52,14 +52,19 @@ test('rating：过滤键 → 滑块位置（认不出来当不限）', () => {
   });
 });
 
-test('rating：文案与无障碍说明是人话', () => {
+test('rating：界面上只说数字（不用「不限 / 满分」这种词），无障碍说明才展开讲', () => {
   const R = loadRating();
-  assert.strictEqual(R.labelOf('all'), '不限');
+  assert.strictEqual(R.labelOf('all'), '≥ 0.0', '0 分就是不过滤，但显示只说数字');
   assert.strictEqual(R.labelOf('4.0'), '≥ 4.0');
-  assert.match(R.labelOf('top'), /满分/);
-  assert.strictEqual(R.ariaOf('all'), '不限评分');
+  assert.strictEqual(R.labelOf('4.5'), '≥ 4.5');
+  assert.strictEqual(R.labelOf('top'), '≥ 5.0');
+  // 可见文案里不许出现中文词
+  ['all', 'top', '3.5', '4.0', '4.5'].forEach((f) => {
+    assert.ok(!/[\u4e00-\u9fa5]/.test(R.labelOf(f)), f + ' 的可见文案不该出现中文');
+  });
+  assert.strictEqual(R.ariaOf('all'), '不过滤评分');
   assert.strictEqual(R.ariaOf('4.5'), '只看 4.5 分及以上');
-  assert.match(R.ariaOf('top'), /满分/);
+  assert.strictEqual(R.ariaOf('top'), '只看 5 分');
 });
 
 test('rating：填充比例按 0~5 换算（不给 CSS 塞负数/超 100%）', () => {
@@ -83,7 +88,15 @@ test('结构：评分是一个滑块而不是一排选项', () => {
     '要有 0~5、0.5 一档的滑块'
   );
   assert.match(HTML, /id="rating-value"/, '要有显示当前值的徽标');
-  assert.match(HTML, /data-tip="拖动滑块调最低分：0 = 不限，5 = 只留满分"/, '要说明怎么用（收进 i 气泡）');
+  assert.match(
+    HTML,
+    /<div class="rating-scale"[^>]*><span>0<\/span><span>1<\/span><span>2<\/span><span>3<\/span><span>4<\/span><span>5<\/span><\/div>/,
+    '刻度直接写 0 到 5 分'
+  );
+  assert.ok(!/rating-end/.test(HTML), '两端的「不限 / 满分」文字应删掉');
+  const filterCard = HTML.slice(HTML.indexOf('data-card="filter"'), HTML.indexOf('data-card="base"'));
+  assert.ok(!/不限|满分/.test(filterCard), '筛选区不该再出现这两个词');
+  assert.match(HTML, /data-tip="拖动滑块调最低分：0 = 不过滤，5 = 只看 5 分"/, '要说明怎么用（收进 i 气泡）');
   assert.match(HTML, /<script src="\/js\/rating\.js">/, 'rating.js 要挂进页面（且在 app.js 之前）');
   assert.ok(HTML.indexOf('/js/rating.js') < HTML.indexOf('/js/app.js'), 'rating.js 必须先加载');
 });
