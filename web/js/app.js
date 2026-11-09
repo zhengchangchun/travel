@@ -469,11 +469,10 @@
     state.base = state.bases[state.bases.length - 1];
     saveBaseToStore();
     renderBase();
-    if (!cardExpanded('base')) {
-      cardState.base = true;
-      saveCardState();
-      applyCardState();
-    }
+    // 加了锚点就把这张卡展开（否则用户看不到刚加的列表）
+    cardState.base = true;
+    saveCardState();
+    applyCardState();
     refresh();
     UI.setStatus(
       '住宿锚点：' +
