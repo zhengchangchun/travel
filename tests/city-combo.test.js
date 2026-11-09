@@ -118,9 +118,17 @@ test('结构：打字就查（防抖）+ 上下键/回车/Esc + 点外面收起'
   assert.match(APP, /e\.key === 'ArrowDown'/, '缺 ↓ 键');
   assert.match(APP, /e\.key === 'Escape'/, '缺 Esc 收起');
   assert.match(APP, /function\s+pickCity/, '缺选中的落点');
+  const sched = APP.match(/function\s+scheduleCitySearch[\s\S]*?\n  \}/);
+  assert.ok(sched, '缺 scheduleCitySearch');
+  assert.match(
+    sched[0],
+    /cityOptions = \[\][\s\S]{0,200}setTimeout/,
+    '输入一变就要把上一轮建议作废（否则防抖窗口里回车会选中上一条查询的城市）'
+  );
+  assert.match(APP, /async function\s+onCityKey/, 'onCityKey 要是 async（回车得能等这次查询落地）');
+  assert.match(APP, /await runCitySearch\(q\)/, '下拉还空着就回车 ⇒ 等查询回来再选');
   assert.match(APP, /addEventListener\('click',[\s\S]{0,200}closeCityList\(\)/, '点外面应收起下拉');
-  assert.match(APP, /addEventListener\('blur',[\s\S]{0,320}closeCityList\(\)/, 'Tab 走开也要收起下拉');
-  assert.match(APP, /function\s+closeCityList[\s\S]{0,300}citySeq\s*\+=\s*1/, '收起时要把在飞的搜索作废（否则下拉会又被弹开）');
+  assert.match(APP, /addEventListener\('blur',[\s\S]{0,320}closeCityList\(\)/, 'Tab 走开也要收起下拉');  assert.match(APP, /function\s+closeCityList[\s\S]{0,300}citySeq\s*\+=\s*1/, '收起时要把在飞的搜索作废（否则下拉会又被弹开）');
   assert.match(APP, /setAttribute\('tabindex', '-1'\)/, '下拉项不进 Tab 序列（Tab 要能走出去）');
   assert.match(APP, /citySeq/, '快打字时要有「只认最后一次响应」的守卫');
   assert.match(APP, /setAttribute\('aria-expanded'/, '下拉开合要同步 aria-expanded');

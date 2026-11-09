@@ -1202,6 +1202,10 @@
       return;
     }
     citySeq += 1; // 让在飞的旧请求作废（下面的搜索会再自增一次）
+    // 输入一变旧建议立刻作废：否则「防抖 + 在飞」这段窗口里按回车会选中上一条查询的城市
+    cityOptions = [];
+    cityActive = -1;
+    renderCityList('loading');
     cityTimer = setTimeout(() => {
       cityTimer = null;
       runCitySearch(q);
@@ -1228,7 +1232,7 @@
     }
   }
 
-  function onCityKey(e) {
+  async function onCityKey(e) {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!cityListOpen() || !cityOptions.length) scheduleCitySearch(0);
@@ -1241,11 +1245,21 @@
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (cityListOpen() && cityOptions.length) {
+      if (cityOptions.length) {
         pickCity(CityBox.pickIndex(cityOptions, $('city-input').value, cityActive));
-      } else {
-        scheduleCitySearch(0);
+        return;
       }
+      // 结果还没回来就按了回车：等这次查询落地，再用同一套规则选
+      const input = $('city-input');
+      const q = input ? input.value.trim() : '';
+      if (!q) return;
+      if (cityTimer) {
+        clearTimeout(cityTimer);
+        cityTimer = null;
+      }
+      citySeq += 1; // 在飞的旧查询作废
+      await runCitySearch(q);
+      if (cityOptions.length) pickCity(CityBox.pickIndex(cityOptions, q, cityActive));
     }
   }
 
