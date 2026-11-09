@@ -1,23 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="旅迹">
   <defs>
     <linearGradient id="lujiBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#5f7dff"/>
-      <stop offset="0.55" stop-color="#6d8bff"/>
-      <stop offset="1" stop-color="#35d0c0"/>
+      <stop offset="0" stop-color="#5ee6a8"/>
+      <stop offset="1" stop-color="#17a673"/>
     </linearGradient>
   </defs>
 
-  <!-- 底板：圆角方，配色跟站点主按钮一致 -->
+  <!-- 底板：圆角方，绿色（用户 2026-11-09 选色） -->
   <rect x="1" y="1" width="62" height="62" rx="16" fill="url(#lujiBg)"/>
   <rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
 
-  <!-- 旅迹：三枚渐大的脚印一路走到目的地 -->
-  <circle cx="14.5" cy="50.5" r="3.8" fill="#ffffff" opacity="0.9"/>
-  <circle cx="22" cy="45" r="4.8" fill="#ffffff" opacity="0.95"/>
-  <circle cx="30" cy="39" r="5.8" fill="#ffffff"/>
+  <!-- 旅迹：一串脚印从左下点到目的地 -->
+  <path d="M13.5 52.5C20 51.5 21.5 44 26.5 41.5S33 40 36 37.5" fill="none" stroke="#ffffff"
+        stroke-width="4.6" stroke-linecap="round" stroke-dasharray="0.1 7.2" opacity="0.92"/>
+  <circle cx="13.5" cy="52.5" r="3.6" fill="#ffffff"/>
 
   <!-- 目的地：地图针 -->
   <path d="M42 11c-6 0-10.8 4.8-10.8 10.8 0 7.9 10.8 18.6 10.8 18.6s10.8-10.7 10.8-18.6C52.8 15.8 48 11 42 11z"
         fill="#ffffff"/>
-  <circle cx="42" cy="21.8" r="4.3" fill="url(#lujiBg)"/>
+  <circle cx="42" cy="21.8" r="4.1" fill="url(#lujiBg)"/>
 </svg>
