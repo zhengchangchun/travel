@@ -747,6 +747,8 @@ body {
 }
 /* 标题下一条渐变发丝：左右两栏各一道，给暗色一点结构感 */
 .brand { position: relative; padding-bottom: 10px; }
+.brand .brand-top { display: flex; align-items: center; gap: 8px; }
+.brand .brand-top h1 { flex: 1; min-width: 0; }
 .brand::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
   background: linear-gradient(90deg, rgba(109, 139, 255, .65), rgba(53, 208, 192, .35) 55%, transparent);
@@ -989,11 +991,34 @@ button:disabled { opacity: .45; }
    （追加层，不改上面既有规则；`.collapsed` 复用为卡片收起态）
    ============================================================ */
 
-/* 品牌区下面的「一次收起 / 展开全部卡片」 */
+/* 品牌区里的「一次收起 / 展开全部卡片」—— P11：文字换成一个小箭头素材 */
 .cards-toggle-all {
-  margin-top: 2px; padding: 3px 10px; font-size: 11px; border-radius: 999px;
+  margin-top: 0; width: 24px; height: 24px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: transparent;
   color: var(--ink-3, #6b7280);
 }
+.cards-toggle-all:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 「收起」控件统一成一个小箭头（.icon-chev）：展开时指向右，收起后翻向左 */
+.icon-chev {
+  width: 13px; height: 13px; display: block; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2.6;
+  stroke-linecap: round; stroke-linejoin: round;
+  transition: transform .18s ease;
+}
+.cards-toggle-all.is-collapsed .icon-chev,
+#right-panel.collapsed .panel-toggle .icon-chev { transform: rotate(180deg); }
+
+/* 右栏收起按钮：只剩箭头（窄条时整条可点，箭头也好点） */
+.panel-toggle {
+  width: 26px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+}
+#right-panel.collapsed .panel-toggle { width: 30px; height: 30px; padding: 0; }
+#right-panel .right-head { cursor: pointer; }
+#right-panel .right-head h2 { cursor: default; }
 
 /* 卡片标题条：整条可点，收起 / 展开 */
 section.card[data-card] > .card-bar .bar-right {

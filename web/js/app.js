@@ -184,7 +184,11 @@
     const all = $('cards-toggle-all');
     if (all) {
       const anyOpen = sidebarCards().some((sec) => !sec.classList.contains('collapsed'));
-      all.textContent = anyOpen ? '收起全部卡片' : '展开全部卡片';
+      // P11：文字换成一个小箭头（收起态箭头由 CSS 翻向左），文案退到 title / aria-label
+      all.classList.toggle('is-collapsed', !anyOpen);
+      const label = anyOpen ? '收起全部卡片' : '展开全部卡片';
+      all.title = label;
+      all.setAttribute('aria-label', label);
     }
   }
 
@@ -841,22 +845,23 @@
 
   async function onRemoveSelected(pin) {
     try {
-      await Selection.remove(pin.id);
+      // 传整个 pin：没有真高德 poi_id 的点（本地 key 是 pin:<行号>）只能按 pin 行删，否则后端按 poi_id 找不到
+      await Selection.remove(pin);
+      UI.setStatus('已移除：' + (pin && pin.name ? pin.name : ''));
     } catch (err) {
-      UI.setStatus('移除失败：' + err.message);
+      UI.setStatus('移除失败：' + human(err));
     }
   }
 
-  // 行程视图删点：DELETE /api/pins/:id → 刷新选中集、地图旗子与计数
+  // 行程视图删点：没有真 poi_id 时按 pin 行删 → 刷新选中集、地图旗子与计数
   async function onRemoveFromItinerary(pin) {
     if (!(await confirmDialog('从行程中删除「' + pin.name + '」？'))) return;
     try {
-      if (pin.pinId != null) await API.deletePin(pin.pinId);
-      else await Selection.remove(pin);
+      await Selection.remove(pin); // 内部按「有没有真 poi_id」选删法
       await reloadSelection();
       UI.setStatus('已删除：' + pin.name);
     } catch (err) {
-      UI.setStatus('删除失败：' + err.message);
+      UI.setStatus('删除失败：' + human(err));
     }
   }
 
@@ -883,7 +888,10 @@
     const collapsed = panel.classList.toggle('collapsed');
     const btn = $('panel-toggle');
     if (btn) {
-      btn.textContent = collapsed ? '展开 ›' : '收起 ‹';
+      // P11：按钮只剩一个小箭头（收起态由 CSS 翻向左），文案退到 title / aria-label
+      const label = collapsed ? '展开右栏' : '收起右栏';
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
       btn.setAttribute('aria-expanded', String(!collapsed));
     }
     if (MapCtl.resize) {
@@ -1535,9 +1543,11 @@
       async (pin) => {
         try {
           await API.deletePin(pin.id);
-          await refreshTrips();
+          // 走 reloadSelection：选中集 / 行程卡 / 地图旗子 / 计数一次对齐（两张清单不再打架）
+          await reloadSelection();
+          UI.setStatus('已从行程删除：' + pin.name);
         } catch (err) {
-          UI.setStatus('删除失败：' + err.message);
+          UI.setStatus('删除失败：' + human(err));
         }
       }
     );
@@ -1600,7 +1610,7 @@
         tel: poi.tel,
         photo: poi.photo,
       });
-      await refreshTrips();
+      await reloadSelection(); // 选中集 / ★ 星标 / 「我的行程」卡一起对齐
       UI.setStatus('已加入行程：' + poi.name);
     } catch (err) {
       UI.setStatus('加入行程失败：' + err.message);
@@ -1671,6 +1681,14 @@
       };
     }
     $('panel-toggle').onclick = onTogglePanel;
+    // 窄条时整条「我挑的」都能点开（抽屉惯例）；按钮自己已处理，别翻两次
+    const rightHead = document.querySelector('#right-panel .right-head');
+    if (rightHead) {
+      rightHead.onclick = (e) => {
+        if (e.target && e.target.closest && e.target.closest('#panel-toggle')) return;
+        onTogglePanel();
+      };
+    }
     $('itinerary-back').onclick = () => setView('list');
     $('itinerary-copy').onclick = onCopyItinerary;
     $('itinerary-download').onclick = onDownloadItinerary;
@@ -1719,7 +1737,8 @@
 
     Selection.subscribe(() => {
       refresh({ fit: false });
-      if (!state.trip) syncTripFromServer();
+      // P11 修复：原来只在「还没有行程」时才同步 ⇒ 移除一个点之后「我的行程」卡一直是旧清单（像删不掉）
+      syncTripFromServer();
     });
 
     bind();

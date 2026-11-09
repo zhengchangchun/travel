@@ -13,9 +13,12 @@
     <!-- 左栏：全部（浏览用） -->
     <aside id="sidebar" class="col-left">
       <header class="brand">
-        <h1><img class="brand-logo" src="/img/logo.svg" alt="" width="26" height="26" />旅迹</h1>
+        <div class="brand-top">
+          <h1><img class="brand-logo" src="/img/logo.svg" alt="" width="26" height="26" />旅迹</h1>
+          <button id="cards-toggle-all" class="cards-toggle-all ghost" type="button"
+                  title="把侧栏卡片一次收起 / 展开" aria-label="把侧栏卡片一次收起 / 展开"><svg class="icon-chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" /></svg></button>
+        </div>
         <p class="sub">选城 → 看推荐 → 按分类过滤 → 地图落旗 → 存行程</p>
-        <button id="cards-toggle-all" class="cards-toggle-all ghost" title="把侧栏卡片一次收起 / 展开">收起全部卡片</button>
       </header>
 
       <section class="card" data-card="city">
@@ -79,8 +82,8 @@
     <aside id="right-panel" class="col-right">
       <div class="right-head">
         <h2>我挑的</h2>
-        <button id="panel-toggle" class="panel-toggle" title="收起 / 展开右栏"
-                aria-controls="right-body" aria-expanded="true">收起 ‹</button>
+        <button id="panel-toggle" class="panel-toggle" type="button" title="收起右栏"
+                aria-controls="right-body" aria-expanded="true" aria-label="收起右栏"><svg class="icon-chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" /></svg></button>
       </div>
       <div id="right-body" class="right-body">
         <section class="card pin-card">

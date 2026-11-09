@@ -33,6 +33,11 @@
     };
   }
 
+  // 本地合成的 key（pin:<pins.id>）：说明这条 pin 没有真高德 poi_id（见 mapPin）
+  function isSyntheticKey(key) {
+    return /^pin:\d+$/.test(String(key));
+  }
+
   function toPayload(poi) {
     return {
       id: keyOf(poi),
@@ -92,7 +97,22 @@
     const key = keyOf(poi);
     if (!key || ids.has(key)) return;
     ids.add(key);
-    pins.push(mapPin(Object.assign({ photo: undefined }, poi, { poi_id: key })));
+    // 乐观占位：pinId 必须是 pins.id（数字），还没落库就先留 null。
+    // 不能走 mapPin —— 那里的 pinId 取的是传进来的 id 字段，会把高德 poi_id 当成 pin 行号
+    pins.push({
+      id: key,
+      pinId: null,
+      poi_id: poi.poi_id != null ? poi.poi_id : key,
+      name: poi.name,
+      address: poi.address,
+      lng: poi.lng,
+      lat: poi.lat,
+      category: poi.category,
+      rating: poi.rating,
+      cost: poi.cost,
+      tel: poi.tel,
+      photo: poi.photo,
+    });
     notify();
     try {
       const res = await API.selectPoi({ city, poi: toPayload(poi) });
@@ -109,6 +129,7 @@
   }
 
   async function remove(poiOrKey) {
+    const item = typeof poiOrKey === 'string' ? null : poiOrKey;
     const key = typeof poiOrKey === 'string' ? poiOrKey : keyOf(poiOrKey);
     if (!key || !ids.has(key)) return;
     const backupPins = pins.slice();
@@ -117,7 +138,17 @@
     pins = pins.filter((p) => p.id !== key);
     notify();
     try {
-      await API.unselectPoi({ city, poiId: key });
+      // 没有真 poi_id 的点（本地 key 是 pin:<行号>）：后端按 poi_id 查不到，必然 404「未选中该地点 pin:<n>」
+      // ⇒ 只能删 pin 行；有真 poi_id 的仍走 /api/selection（顺带把同 poi_id 的重复行一起清）
+      if (isSyntheticKey(key)) {
+        const rowId =
+          item && typeof item.pinId === 'number' && Number.isFinite(item.pinId)
+            ? item.pinId
+            : Number(String(key).slice(4));
+        await API.deletePin(rowId);
+      } else {
+        await API.unselectPoi({ city, poiId: key });
+      }
     } catch (err) {
       pins = backupPins;
       ids = backupIds;
