@@ -10,6 +10,7 @@
   const Geo = window.TravelGeo;
   const Planner = window.TravelPlanner;
   const Notes = window.TravelNotes;
+  const CityBox = window.TravelCityBox;
 
   // 住宿锚点持久化键（localStorage；服务端持久化后续再上）
   const BASE_KEY = 'travel.base';
@@ -138,10 +139,16 @@
     }
   }
 
+  // 窄屏（与 CSS 的 1100px 断点同口径）：侧栏被压到 42vh，城市这类入口默认展开，否则入口看不见
+  function narrowScreen() {
+    return typeof window.innerWidth === 'number' && window.innerWidth <= 1100;
+  }
+
   function cardExpanded(name) {
     if (Object.prototype.hasOwnProperty.call(cardState, name)) return cardState[name];
     if (name === 'base') return !!(state.base && state.base.id);
-    if (name === 'city' || name === 'note') return false;
+    if (name === 'city') return narrowScreen(); // 只在窄屏默认展开（宽屏保持收起，侧栏短）
+    if (name === 'note') return false;
     return true; // search / filter
   }
 
@@ -1072,27 +1079,173 @@
     await loadCityView(state.city);
   }
 
-  async function doCitySearch() {
-    const q = $('city-input').value.trim();
-    if (!q) return;
+  // ---------- 城市选择：输入框 + 下拉建议合成一个控件（P10） ----------
+  // 打字（防抖）→ 下拉出建议 → ↑↓ 选、回车/点一下确认；Esc 或点外面收起。
+  // 搜索失败时退化成「只切名字」一项，不让用户卡在死路上。
+  let citySeq = 0; // 快打字时先发的请求可能后回：只认最后一次
+  let cityTimer = null;
+  let cityOptions = [];
+  let cityActive = -1;
+
+  function cityComboEl() {
+    return $('city-combo');
+  }
+
+  function cityListOpen() {
     const box = $('city-results');
-    box.innerHTML = '<div class="hint">搜索中…</div>';
-    try {
-      const cities = await API.searchCity(q);
+    return !!(box && !box.classList.contains('hidden'));
+  }
+
+  function closeCityList() {
+    const box = $('city-results');
+    const input = $('city-input');
+    if (cityTimer) {
+      clearTimeout(cityTimer);
+      cityTimer = null;
+    }
+    // 在飞的搜索一并作废：否则结果回来会把刚收起（或点了外面）的下拉又弹开
+    citySeq += 1;
+    cityOptions = [];
+    cityActive = -1;
+    if (box) {
+      box.classList.add('hidden');
       box.innerHTML = '';
-      if (!cities.length) {
-        box.innerHTML = '<div class="hint">没找到城市「' + UI.esc(q) + '」</div>';
-        return;
-      }
-      cities.slice(0, 6).forEach((city) => {
-        const btn = document.createElement('button');
-        btn.className = 'city-item';
-        btn.textContent = city.name;
-        btn.onclick = () => setCity(city);
-        box.appendChild(btn);
-      });
+    }
+    if (input) input.setAttribute('aria-expanded', 'false');
+  }
+
+  function comboHeadEl(text, cls) {
+    const el = document.createElement('div');
+    el.className = 'combo-head' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    return el;
+  }
+
+  function cityItemEl(opt, index) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'city-item' + (index === cityActive ? ' active' : '');
+    btn.setAttribute('role', 'option');
+    btn.setAttribute('aria-selected', index === cityActive ? 'true' : 'false');
+    btn.setAttribute('tabindex', '-1'); // 用 ↑↓ 选；Tab 直接走出这个控件（否则 Tab 会逐个跳选项）
+    const name = document.createElement('b');
+    name.textContent = opt.name;
+    btn.appendChild(name);
+    if (opt.sub) {
+      const sub = document.createElement('span');
+      sub.className = 'combo-sub';
+      sub.textContent = opt.sub;
+      btn.appendChild(sub);
+    }
+    // 别让 input 先 blur（blur 会收起下拉，点就落空了）
+    btn.onmousedown = (e) => e.preventDefault();
+    btn.onclick = () => pickCity(index);
+    return btn;
+  }
+
+  // mode: 'loading' | 'failed' | 'empty' | 'options'
+  function renderCityList(mode) {
+    const box = $('city-results');
+    const input = $('city-input');
+    if (!box) return;
+    const q = input ? input.value.trim() : '';
+    box.innerHTML = '';
+    if (mode === 'loading') {
+      box.appendChild(comboHeadEl('搜索中…'));
+    } else if (mode === 'failed') {
+      box.appendChild(comboHeadEl('城市搜索失败 · 你仍可以直接用这个名字'));
+      cityOptions.forEach((opt, i) => box.appendChild(cityItemEl(opt, i)));
+    } else if (!cityOptions.length) {
+      box.appendChild(comboHeadEl(CityBox.emptyText(q), 'combo-empty'));
+    } else {
+      box.appendChild(comboHeadEl(CityBox.statusText(cityOptions.length, q)));
+      cityOptions.forEach((opt, i) => box.appendChild(cityItemEl(opt, i)));
+    }
+    box.classList.remove('hidden');
+    if (input) input.setAttribute('aria-expanded', 'true');
+  }
+
+  async function runCitySearch(q) {
+    const seq = ++citySeq;
+    renderCityList('loading');
+    let results = null;
+    let failed = null;
+    try {
+      results = await API.searchCity(q);
     } catch (err) {
-      box.innerHTML = '<div class="hint">城市搜索失败：' + UI.esc(human(err)) + '</div>';
+      failed = err;
+    }
+    // 过期响应 / 输入已经变了 ⇒ 丢掉这次结果
+    const input = $('city-input');
+    if (seq !== citySeq || !input || input.value.trim() !== q) return;
+    if (failed) {
+      const opt = CityBox.rawOption(q, human(failed).slice(0, 40));
+      cityOptions = opt ? [opt] : [];
+      cityActive = CityBox.pickIndex(cityOptions, q, -1);
+      renderCityList(cityOptions.length ? 'failed' : 'empty');
+      return;
+    }
+    cityOptions = CityBox.buildOptions(q, results).slice(0, 6);
+    cityActive = CityBox.pickIndex(cityOptions, q, -1);
+    renderCityList(cityOptions.length ? 'options' : 'empty');
+  }
+
+  function scheduleCitySearch(delay) {
+    const input = $('city-input');
+    const q = input ? input.value.trim() : '';
+    if (cityTimer) {
+      clearTimeout(cityTimer);
+      cityTimer = null;
+    }
+    if (!q) {
+      closeCityList();
+      return;
+    }
+    citySeq += 1; // 让在飞的旧请求作废（下面的搜索会再自增一次）
+    cityTimer = setTimeout(() => {
+      cityTimer = null;
+      runCitySearch(q);
+    }, delay == null ? 200 : delay);
+  }
+
+  function moveCityActive(delta) {
+    if (!cityOptions.length) return;
+    cityActive = CityBox.moveActive(cityActive, delta, cityOptions.length);
+    renderCityList('options');
+  }
+
+  function pickCity(index) {
+    const opt = cityOptions[index];
+    if (!opt) return;
+    const input = $('city-input');
+    closeCityList();
+    if (input) input.value = '';
+    setCity(opt.raw ? { name: opt.name } : opt.city);
+    if (opt.raw) {
+      UI.setStatus('已切到「' + opt.name + '」（地图没动，先放大到目标区域再采集）');
+    } else {
+      UI.setStatus('已切到 ' + opt.city.name);
+    }
+  }
+
+  function onCityKey(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!cityListOpen() || !cityOptions.length) scheduleCitySearch(0);
+      else moveCityActive(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (e.key === 'Escape') {
+      closeCityList();
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (cityListOpen() && cityOptions.length) {
+        pickCity(CityBox.pickIndex(cityOptions, $('city-input').value, cityActive));
+      } else {
+        scheduleCitySearch(0);
+      }
     }
   }
 
@@ -1221,9 +1374,27 @@
   }
 
   function bind() {
-    $('city-search-btn').onclick = doCitySearch;
-    $('city-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doCitySearch();
+    const cityInput = $('city-input');
+    if (cityInput) {
+      cityInput.addEventListener('input', () => scheduleCitySearch());
+      cityInput.addEventListener('keydown', onCityKey);
+      cityInput.addEventListener('focus', () => {
+        if (cityInput.value.trim()) scheduleCitySearch(0); // 回来继续看上次没选完的建议
+      });
+      cityInput.addEventListener('blur', () => {
+        // Tab 走开也要收起（点下拉项时 mousedown 已被 preventDefault，不会走到这里）
+        setTimeout(() => {
+          const combo = cityComboEl();
+          if (combo && combo.contains(document.activeElement)) return;
+          if (cityListOpen()) closeCityList();
+        }, 120);
+      });
+    }
+    // 点/点到外面收起下拉（下拉项自己的 mousedown 已 preventDefault，不会先触发 blur）
+    document.addEventListener('click', (e) => {
+      const combo = cityComboEl();
+      if (!cityListOpen() || !combo || combo.contains(e.target)) return;
+      closeCityList();
     });
     $('poi-search-btn').onclick = doPoiSearch;
     $('poi-input').addEventListener('keydown', (e) => {

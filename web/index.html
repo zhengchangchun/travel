@@ -19,11 +19,12 @@
       <section class="card" data-card="city">
         <h2 class="card-bar">城市 <span class="bar-note">当前 <b id="current-city">—</b></span><span class="chev">⌄</span></h2>
         <div class="card-body">
-          <div class="row">
-            <input id="city-input" placeholder="搜索城市，如 杭州" autocomplete="off" />
-            <button id="city-search-btn" class="primary">搜索</button>
+          <div id="city-combo" class="combo">
+            <input id="city-input" class="combo-input" placeholder="输入城市名，如 杭州" autocomplete="off"
+                   role="combobox" aria-expanded="false" aria-controls="city-results" aria-autocomplete="list" />
+            <div id="city-results" class="combo-list hidden" role="listbox" aria-label="城市建议"></div>
           </div>
-          <div id="city-results" class="result-list"></div>
+          <p class="hint">打字即出建议 · ↑↓ 选、回车确认</p>
         </div>
       </section>
 
@@ -188,6 +189,7 @@
 
   <script src="/js/categories.js"></script>
   <script src="/js/errors.js"></script>
+  <script src="/js/citybox.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/selection.js"></script>
   <script src="/js/score-color.js"></script>
