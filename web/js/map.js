@@ -3,7 +3,7 @@
   let map = null;
   let AMap = null;
   const markers = new Map();
-  let baseId = null; // 住宿锚点的 poi_id（旗子单独高亮）
+  let baseIds = []; // 住宿锚点（可多个）的 poi_id：旗子单独高亮
   let clickHandler = null;
   let markerBatch = 0; // 分批落旗的批次号：新批次会取消未画完的旧批次
 
@@ -34,7 +34,7 @@
     const label = window.TravelCategories.labelOf(poi.category);
     const top = SC ? SC.isTop(poi.rating) : false;
     const noRating = !poi.rating;
-    const isBase = !!baseId && (poi.id === baseId || poi.poi_id === baseId);
+    const isBase = isBaseId(poi.id) || isBaseId(poi.poi_id);
     return (
       '<div class="flag' + (selected ? ' selected' : '') + (top ? ' top' : '') +
       (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + '" data-category="' +
@@ -205,9 +205,13 @@
     return p ? p.id || p.poi_id || null : null;
   }
 
+  function isBaseId(id) {
+    return !!id && baseIds.indexOf(String(id)) >= 0;
+  }
+
   function isBasePoi(p) {
     const id = poiIdOf(p);
-    return !!baseId && !!id && id === baseId;
+    return isBaseId(id) || (!!p && isBaseId(p.poi_id));
   }
 
   function capList(list, isSelected) {
@@ -343,9 +347,10 @@
     }
   }
 
-  // 设置住宿锚点（旗子样式随 baseId 变；重画由上层 refresh 负责）
-  function setBase(poiId) {
-    baseId = poiId || null;
+  // 设置住宿锚点（可传数组；旗子样式随 baseIds 变；重画由上层 refresh 负责）
+  function setBase(ids) {
+    const list = Array.isArray(ids) ? ids : ids ? [ids] : [];
+    baseIds = list.filter((x) => x != null && x !== '').map(String);
   }
 
   function flyTo(lng, lat, zoom) {

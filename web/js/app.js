@@ -12,8 +12,10 @@
   const Notes = window.TravelNotes;
   const CityBox = window.TravelCityBox;
 
-  // 住宿锚点持久化键（localStorage；服务端持久化后续再上）
-  const BASE_KEY = 'travel.base';
+  // 住宿锚点持久化键（localStorage）：支持多个锚点（一个行程可能换几次酒店）
+  const BASES_KEY = 'travel.bases'; // [{id,name,lng,lat,...}, ...]
+  const BASE_ACTIVE_KEY = 'travel.baseActiveId'; // 当前锚点（看周边/回中/成线用它）
+  const BASE_KEY = 'travel.base'; // 旧版单锚点键，只用于迁移
   const BASE_RADIUS_KEY = 'travel.baseRadiusM';
 
   // 切城市落主城区用的倍率；倍率阈值是「是否加载视野内地点」的唯一门控
@@ -42,7 +44,8 @@
     view: 'list',
     cardPoi: null,
     ratingFilter: DEFAULT_RATING_FILTER,
-    base: null, // 住宿锚点（{id,name,lng,lat,category,rating,address,city}），localStorage 持久化
+    bases: [], // 住宿锚点可以有多个（换酒店/多层住宿）
+    base: null, // 其中「当前」那个（看周边/回中/自动成线用它）
     baseRadiusM: 1000, // 锚点周边半径（米）
     autoReturn: false, // 自动成线：是否闭环回到住宿
     queriedAt: {}, // 刚查过的视野框（key → 时间戳），TTL 内不重复打接口
@@ -140,7 +143,7 @@
 
   function cardExpanded(name) {
     if (Object.prototype.hasOwnProperty.call(cardState, name)) return cardState[name];
-    if (name === 'base') return !!(state.base && state.base.id);
+    if (name === 'base') return state.bases.length > 0;
     if (name === 'city') return narrowScreen(); // 只在窄屏默认展开（宽屏保持收起，侧栏短）
     if (name === 'note') return false;
     return true; // search / filter
@@ -319,25 +322,53 @@
     return state.pois.filter(passesFilters);
   }
 
-  // ---------- 住宿锚点：先定住宿，再看它周边的美食/景点；锚点常驻显示 ----------
+  // ---------- 住宿锚点（可多个）：先定住宿，再看它周边的美食/景点；锚点常驻显示 ----------
+
+  function normalizeBase(b) {
+    const id = baseIdOf(b);
+    return {
+      id,
+      poi_id: id,
+      name: b.name || '',
+      address: b.address || '',
+      lng: Number(b.lng),
+      lat: Number(b.lat),
+      category: b.category || 'stay',
+      rating: b.rating || '',
+      city: b.city || '',
+    };
+  }
 
   function loadBaseFromStore() {
     try {
-      const raw = window.localStorage.getItem(BASE_KEY);
-      state.base = raw ? JSON.parse(raw) : null;
+      const rawList = window.localStorage.getItem(BASES_KEY);
+      let list = rawList ? JSON.parse(rawList) : null;
+      if (!Array.isArray(list)) {
+        // 迁移：旧版只存了一个 travel.base
+        const old = window.localStorage.getItem(BASE_KEY);
+        const one = old ? JSON.parse(old) : null;
+        list = one && one.id ? [one] : [];
+      }
+      state.bases = list.filter((b) => b && b.id).map(normalizeBase);
+      const activeId = window.localStorage.getItem(BASE_ACTIVE_KEY) || '';
+      state.base =
+        state.bases.find((b) => String(baseIdOf(b)) === String(activeId)) || state.bases[0] || null;
       const r = Number(window.localStorage.getItem(BASE_RADIUS_KEY));
       if (Number.isFinite(r) && r > 0) state.baseRadiusM = r;
     } catch (err) {
+      state.bases = [];
       state.base = null;
     }
-    if (!state.base || !state.base.id) state.base = null;
   }
 
   function saveBaseToStore() {
     try {
-      if (state.base) window.localStorage.setItem(BASE_KEY, JSON.stringify(state.base));
-      else window.localStorage.removeItem(BASE_KEY);
+      if (state.bases.length) window.localStorage.setItem(BASES_KEY, JSON.stringify(state.bases));
+      else window.localStorage.removeItem(BASES_KEY);
+      if (state.base) window.localStorage.setItem(BASE_ACTIVE_KEY, String(baseIdOf(state.base)));
+      else window.localStorage.removeItem(BASE_ACTIVE_KEY);
       window.localStorage.setItem(BASE_RADIUS_KEY, String(state.baseRadiusM));
+      window.localStorage.removeItem(BASE_KEY); // 旧键已迁移，不再写
     } catch (err) {
       /* 隐私模式/配额满：不影响主流程 */
     }
@@ -347,63 +378,95 @@
     return poi ? poi.id || poi.poi_id || null : null;
   }
 
-  function baseIs(poi) {
-    const b = baseIdOf(state.base);
-    const id = baseIdOf(poi);
-    return !!b && !!id && b === id;
+  function findBaseIndex(id) {
+    const key = String(id == null ? '' : id);
+    if (!key) return -1;
+    return state.bases.findIndex((b) => String(baseIdOf(b)) === key);
   }
 
-  // 锚点在当前视野内时，无论分类/评分过滤都把它带上（旗子用金色「住」标）
+  // 是不是锚点之一（地图上打金框 / 列表里标「★住这」）
+  function baseIs(poi) {
+    return findBaseIndex(baseIdOf(poi)) >= 0;
+  }
+
+  // 是不是「当前」那个（看周边/回中/成线只对它生效）
+  function baseActiveIs(poi) {
+    return !!state.base && String(baseIdOf(state.base)) === String(baseIdOf(poi) || '');
+  }
+
+  // 锚点卡：列表（点名字切当前、× 删一个）+ 当前那个的周边摘要 + 半径/看周边/回中/清除
   function renderBase() {
     const nameEl = $('base-name');
     if (!nameEl) return;
     const subEl = $('base-sub');
+    const listEl = $('base-list');
     const aroundBtn = $('base-around-btn');
     const clearBtn = $('base-clear-btn');
     const locateBtn = $('base-locate-btn');
     const radiusSel = $('base-radius');
+    const n = state.bases.length;
     if (radiusSel) radiusSel.value = String(state.baseRadiusM);
-    if (state.base) {
-      nameEl.textContent = state.base.name || state.base.id;
+
+    if (listEl) {
+      listEl.innerHTML = '';
+      state.bases.forEach((b) => {
+        const li = document.createElement('li');
+        const isActive = baseActiveIs(b);
+        li.className = 'base-row' + (isActive ? ' active' : '');
+        const nameBtn = document.createElement('button');
+        nameBtn.type = 'button';
+        nameBtn.className = 'base-row-name';
+        nameBtn.textContent = b.name || b.id;
+        nameBtn.title =
+          (b.address ? b.address + ' · ' : '') + (isActive ? '当前锚点' : '点一下设为当前锚点');
+        nameBtn.onclick = () => setActiveBase(b.id);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'mini-btn base-row-del';
+        del.textContent = '×';
+        del.title = '删除这个锚点';
+        del.onclick = () => removeBase(b.id);
+        li.appendChild(nameBtn);
+        li.appendChild(del);
+        listEl.appendChild(li);
+      });
+      listEl.classList.toggle('hidden', n === 0);
+    }
+
+    if (n === 0) {
+      nameEl.textContent = '未设定';
+      if (subEl) subEl.textContent = '在住宿结果里点「住这」定锚点';
+    } else {
+      nameEl.textContent = n > 1 ? n + ' 个' : state.base.name || baseIdOf(state.base);
       const cityNote =
         state.city && state.base.city && state.base.city !== state.city
           ? '（' + state.base.city + '）'
           : '';
       if (subEl) {
         subEl.textContent =
+          (n > 1 ? '当前 ' + (state.base.name || baseIdOf(state.base)) + ' · ' : '') +
           '周边 ' +
           Geo.humanDistance(state.baseRadiusM) +
-          cityNote +
-          ' · ' +
-          (state.base.address || '');
+          cityNote;
       }
-      if (aroundBtn) aroundBtn.disabled = false;
-      if (clearBtn) clearBtn.disabled = false;
-      if (locateBtn) locateBtn.disabled = false;
-    } else {
-      nameEl.textContent = '未设定';
-      if (subEl) subEl.textContent = '在住宿结果里点「住这」定锚点';
-      if (aroundBtn) aroundBtn.disabled = true;
-      if (clearBtn) clearBtn.disabled = true;
-      if (locateBtn) locateBtn.disabled = true;
     }
-    if (MapCtl.setBase) MapCtl.setBase(baseIdOf(state.base));
+    const any = n > 0;
+    if (aroundBtn) aroundBtn.disabled = !any;
+    if (clearBtn) clearBtn.disabled = !any;
+    if (locateBtn) locateBtn.disabled = !any;
+    if (MapCtl.setBase) MapCtl.setBase(state.bases.map((b) => baseIdOf(b)));
   }
 
+  // 点「住这」：没在锚点里就加上（并设为当前），已经是就取消它
   function setBase(poi) {
     const id = baseIdOf(poi);
     if (!id) return;
-    state.base = {
-      id,
-      poi_id: id,
-      name: poi.name || '',
-      address: poi.address || '',
-      lng: Number(poi.lng),
-      lat: Number(poi.lat),
-      category: poi.category || 'stay',
-      rating: poi.rating || '',
-      city: state.city || '',
-    };
+    if (findBaseIndex(id) >= 0) {
+      removeBase(id);
+      return;
+    }
+    state.bases.push(normalizeBase(Object.assign({}, poi, { id, city: state.city || '' })));
+    state.base = state.bases[state.bases.length - 1];
     saveBaseToStore();
     renderBase();
     if (!cardExpanded('base')) {
@@ -413,16 +476,49 @@
     }
     refresh();
     UI.setStatus(
-      '住宿锚点：' + (state.base.name || id) + '（周边 ' + Geo.humanDistance(state.baseRadiusM) + '）'
+      '住宿锚点：' +
+        (state.base.name || id) +
+        (state.bases.length > 1
+          ? '（共 ' + state.bases.length + ' 个，当前这个是）'
+          : '（周边 ' + Geo.humanDistance(state.baseRadiusM) + '）')
+    );
+  }
+
+  function setActiveBase(id) {
+    const hit = state.bases[findBaseIndex(id)];
+    if (!hit) return;
+    state.base = hit;
+    saveBaseToStore();
+    renderBase();
+    refresh();
+    UI.setStatus('当前锚点：' + (hit.name || baseIdOf(hit)));
+  }
+
+  function removeBase(id) {
+    const idx = findBaseIndex(id);
+    if (idx < 0) return;
+    const removed = state.bases[idx];
+    const wasActive = String(baseIdOf(state.base) || '') === String(id == null ? '' : id);
+    state.bases.splice(idx, 1);
+    if (wasActive) state.base = state.bases[0] || null;
+    saveBaseToStore();
+    renderBase();
+    refresh();
+    UI.setStatus(
+      '已移除锚点：' +
+        ((removed && removed.name) || id) +
+        (state.bases.length ? '（还剩 ' + state.bases.length + ' 个）' : '')
     );
   }
 
   function clearBase() {
+    if (!state.bases.length) return;
+    state.bases = [];
     state.base = null;
     saveBaseToStore();
     renderBase();
     refresh();
-    UI.setStatus('已清除住宿锚点');
+    UI.setStatus('已清除全部住宿锚点');
   }
 
   // 相机回到住宿锚点（不改变筛选，也不重新打接口）

@@ -17,22 +17,49 @@ test('侧栏有「住宿锚点」卡片：名称/半径/看周边/清除 四个�
   assert.match(HTML, /id="base-name"/, 'index 缺 #base-name');
   assert.match(HTML, /id="base-sub"/, 'index 缺 #base-sub');
   assert.match(HTML, /id="base-radius"/, 'index 缺半径选择 #base-radius');
-  assert.match(HTML, /id="base-around-btn"[^>]*>看周边美食\/景点/, 'index 缺「看周边」按钮');
+  assert.match(HTML, /id="base-around-btn"[^>]*>看周边/, 'index 缺「看周边」按钮');
   assert.match(HTML, /id="base-clear-btn"/, 'index 缺清除按钮');
   assert.match(HTML, /<script src="\/js\/geo\.js"><\/script>/, 'index 未引 geo.js');
 });
 
-test('锚点状态与持久化：state.base/baseRadiusM + localStorage 读写', () => {
-  assert.match(APP, /base:\s*null/, 'state 缺 base');
+test('锚点状态与持久化：state.bases（可多个）+ localStorage 读写 + 旧键迁移', () => {
+  assert.match(APP, /base:\s*null/, 'state 缺 base（当前锚点）');
+  assert.match(APP, /bases:\s*\[\]/, 'state 缺 bases（可多个锚点）');
   assert.match(APP, /baseRadiusM:\s*\d+/, 'state 缺 baseRadiusM');
-  assert.match(APP, /const BASE_KEY = 'travel\.base'/, '缺锚点持久化键');
+  assert.match(APP, /const BASES_KEY = 'travel\.bases'/, '缺多锚点持久化键');
+  assert.match(APP, /const BASE_ACTIVE_KEY = 'travel\.baseActiveId'/, '缺「当前锚点」持久化键');
   assert.match(APP, /const BASE_RADIUS_KEY = 'travel\.baseRadiusM'/, '缺半径持久化键');
   assert.match(APP, /function\s+loadBaseFromStore/, '缺 loadBaseFromStore');
   assert.match(APP, /function\s+saveBaseToStore/, '缺 saveBaseToStore');
-  assert.match(APP, /localStorage\.getItem\(BASE_KEY\)/, '未从 localStorage 读锚点');
-  assert.match(APP, /localStorage\.setItem\(BASE_KEY/, '未把锚点写 localStorage');
+  assert.match(APP, /localStorage\.getItem\(BASES_KEY\)/, '未从 localStorage 读多锚点');
+  assert.match(APP, /localStorage\.setItem\(BASES_KEY/, '未把多锚点写 localStorage');
+  // 旧版单锚点数据要能迁移过来
+  assert.match(APP, /localStorage\.getItem\(BASE_KEY\)/, '旧单锚点键要留着做迁移');
   // 启动时恢复
   assert.match(APP, /loadBaseFromStore\(\);\s*\n\s*renderBase\(\);/m, '启动未恢复锚点');
+});
+
+test('多个锚点：加/切当前/删一个/清全部，且地图支持多个锚点', () => {
+  assert.match(APP, /function\s+setBase\(poi\)/, '缺 setBase');
+  // 再点「住这」＝取消这个锚点（列表里已有就不重复加）
+  const setter = APP.match(/function\s+setBase\(poi\)[\s\S]*?\n  \}/);
+  assert.ok(setter, '缺 setBase 函数体');
+  assert.match(setter[0], /findBaseIndex\(id\)\s*>=\s*0/, '应先看是否已是锚点');
+  assert.match(setter[0], /state\.bases\.push/, '新锚点要 push 进列表');
+  assert.match(APP, /function\s+setActiveBase/, '缺「切当前锚点」');
+  assert.match(APP, /function\s+removeBase/, '缺「删一个锚点」');
+  assert.match(APP, /function\s+clearBase/, '缺「清空」');
+  assert.match(APP, /state\.bases\.splice/, '删一个应 splice');
+  // 卡片里要有列表容器（多个锚点名 + ×）
+  assert.match(HTML, /<ul id="base-list" class="base-list hidden"><\/ul>/, '缺锚点列表容器');
+  assert.match(APP, /base-row-name/, '缺行内「点名字切当前」按钮');
+  assert.match(APP, /base-row-del/, '缺行内删除按钮');
+  // 地图：多锚点高亮
+  assert.match(MAP, /baseIds/, 'map.js 应按多个锚点高亮');
+  assert.match(MAP, /function\s+setBase\(ids\)[\s\S]{0,160}map\(String\)/, 'map.setBase 应接收数组');
+  assert.match(APP, /MapCtl\.setBase\(state\.bases\.map/, '渲染时应把全部锚点交给地图');
+  // 「住这」按钮对锚点之一即视为已选中
+  assert.match(APP, /function\s+baseIs[\s\S]{0,120}findBaseIndex/, 'baseIs 应看整个列表');
 });
 
 test('定锚点：setBase/clearBase + 列表与详情卡两个入口', () => {

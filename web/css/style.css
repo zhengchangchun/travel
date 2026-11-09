@@ -1052,6 +1052,29 @@ section.card.collapsed > .card-body { display: none; }
 .pin-card h2 .count { margin-left: 2px; }
 .trip-card { background: rgba(255, 255, 255, .015); border-style: dashed; }
 .trip-card h2 { color: var(--ink-2); }
+/* 住宿锚点卡（可多个）：列表行 = 名字（点一下切当前） + × 删一个 */
+.base-list {
+  list-style: none; margin: 6px 0 8px; padding: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 132px; overflow-y: auto;
+}
+.base-row {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid var(--line-2); border-radius: 9px;
+  background: rgba(255, 255, 255, .03);
+}
+.base-row.active { border-color: rgba(255, 210, 63, .65); background: rgba(255, 210, 63, .12); }
+.base-row-name {
+  flex: 1; min-width: 0; padding: 2px 0; border: none; background: none;
+  text-align: left; font-size: 12.5px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.base-row-name:hover { color: var(--accent); border: none; }
+.base-row.active .base-row-name { color: var(--warn); font-weight: 600; }
+.base-row-del { flex: none; padding: 0 5px; line-height: 1.5; color: var(--ink-3); }
+.base-row-del:hover { color: var(--danger); border-color: var(--danger); }
+
 /* 340px 栏里「新建行程 / 删除行程」会断成两行 ⇒ 按钮不许折行、行程名独占一行 */
 .trip-card .row { flex-wrap: wrap; row-gap: 6px; }
 .trip-card .row button { flex: none; white-space: nowrap; }
