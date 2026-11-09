@@ -1027,12 +1027,8 @@ section.card.collapsed > .card-body { display: none; }
 
 /* ⑧ 次要文字：原 #6f7887 在深色卡底上只有 ~3.9:1（实测），小字过不了 AA ⇒ 已直接在 :root 里提亮一档 */
 
-/* ① 空态：一句话 + 一个动作按钮 */
+/* ① 空态：只在「倍率不够」时写一句话（CTA 已删，用户 2026-11-09） */
 .poi-list .empty, .poi-item .empty { line-height: 1.8; }
-.empty-cta {
-  margin-left: 6px; padding: 3px 10px; font-size: 11.5px; border-radius: 999px;
-  vertical-align: baseline;
-}
 
 /* ④ 信息卡：× 做成看得见、点得中的按钮；底部补一句「还能怎么关」 */
 .card-close {

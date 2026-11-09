@@ -22,8 +22,7 @@
   // 按视野自动采集的最低倍率（默认 13）；与落点阈值同值
   const MIN_COLLECT_ZOOM = 13;
 
-  // 分类 chip 里的「全部」（不是真实分类 key，仅 UI 用）
-  const ALL_CAT_KEY = '__all__';
+  // 分类筛选：多选，选中的都显示（不再有「全部」这一项；要看全就叠满四个，或直接用关键词搜）
 
   // 默认评分过滤＝已勾选「≥4.0」（用户 2026-11-02：默认过滤条件勾选 4 分以上）
   // 必须在 state 之前声明：state 初始化时会读取它
@@ -43,7 +42,6 @@
     view: 'list',
     cardPoi: null,
     ratingFilter: DEFAULT_RATING_FILTER,
-    showAll: false, // 是否勾了「全部」分类；未勾且没选具体分类 ⇒ 不显示地点
     base: null, // 住宿锚点（{id,name,lng,lat,category,rating,address,city}），localStorage 持久化
     baseRadiusM: 1000, // 锚点周边半径（米）
     autoReturn: false, // 自动成线：是否闭环回到住宿
@@ -219,10 +217,9 @@
   function filterText() {
     const parts = [];
     if (state.onlySelected) parts.push('只看我选中的');
-    else if (state.showAll) parts.push('全部分类');
-    else if (state.activeCats.size) {
-      parts.push(Array.from(state.activeCats).map((k) => Cats.labelOf(k)).join('+'));
-    } else parts.push('未选分类');
+    else if (!state.activeCats.size) parts.push('未选分类');
+    else if (state.activeCats.size >= Cats.all().length) parts.push('全部分类');
+    else parts.push(Array.from(state.activeCats).map((k) => Cats.labelOf(k)).join('+'));
     if (state.ratingFilter && state.ratingFilter !== 'all') {
       parts.push(state.ratingFilter === 'top' ? '满分' : '≥' + state.ratingFilter);
     }
@@ -232,10 +229,10 @@
   function renderResultSummary(total, shown) {
     const el = $('result-summary');
     if (!el) return;
-    // 首屏空态（没选分类）：引导只在结果列表里说一次（带按钮），这里不重复说（P9-①）
+    // 首屏空态（没选分类）：结果条只写个占位符，不写引导（用户 2026-11-09）
     if (!state.onlySelected && catFilterEmpty()) {
       el.textContent = '—';
-      el.title = '先选一个分类（或勾「全部」）再看结果';
+      el.title = '先选一个分类（可多选）再看结果';
       return;
     }
     const bits = ['显示 ' + shown + ' / 本视野 ' + state.pois.length + ' 条', filterText()];
@@ -292,9 +289,8 @@
     return Number.isFinite(n) && n >= min;
   }
 
-  // 分类过滤：默认不选中＝不显示；勾「全部」＝全部显示；否则只看选中的分类（可多选）
+  // 分类过滤：没选就不显示；选了就只看选中的（可多选；不再有「全部」那一项）
   function passesCat(p) {
-    if (state.showAll) return true;
     if (!state.activeCats.size) return false;
     return state.activeCats.has(p.category);
   }
@@ -306,9 +302,9 @@
     return true;
   }
 
-  // 未勾「全部」且未选具体分类：默认的空筛选态
+  // 未选分类：默认的空筛选态
   function catFilterEmpty() {
-    return !state.showAll && state.activeCats.size === 0;
+    return state.activeCats.size === 0;
   }
 
   function currentList() {
@@ -446,7 +442,6 @@
       return;
     }
     state.onlySelected = false;
-    state.showAll = false;
     state.activeCats = new Set(['food', 'sight']);
     renderCatChips();
     UI.setStatus(
@@ -462,11 +457,8 @@
     fetchPoisInView();
   }
 
-  // 分类 chip：“全部”首位 + 真实分类；选中态由 showAll / activeCats 决定
   function renderCatChips() {
-    const chips = [{ key: ALL_CAT_KEY, label: '全部', color: '#8a9099' }].concat(Cats.all());
-    const selected = state.showAll ? new Set([ALL_CAT_KEY]) : state.activeCats;
-    UI.renderChips($('chips'), chips, selected, onToggleChip);
+    UI.renderChips($('chips'), Cats.all(), state.activeCats, onToggleChip);
   }
 
   function renderMap(list, fit) {
@@ -583,28 +575,14 @@
     // 列表只渲染前 N 条（上万条时 DOM 会把侧栏撑到几十万像素、又卡又难滚）
     const cap = Math.max(RESULT_PAGE, Number(state.resultLimit) || RESULT_PAGE);
     const list = full.length > cap ? full.slice(0, cap) : full;
-    const pristine = !state.onlySelected && catFilterEmpty();
-    // 空态只留一处引导（P9-①）：倍率不够说倍率，未选分类说分类 + 一个能点的动作
-    const emptyText = state.zoomTooLow
-      ? '放大地图以加载本区域地点'
-      : pristine
-        ? '还没选分类：点上面的分类开始，或'
-        : undefined;
-    const emptyAction =
-      pristine && !state.zoomTooLow
-        ? {
-            label: '显示全部',
-            title: '勾上「全部」，把本视野的地点一次看全',
-            onClick: () => onToggleChip(ALL_CAT_KEY),
-          }
-        : null;
+    // 空态只说「倍率不够」这件事（用户 2026-11-09：未选分类时列表就空着，不要再放那块空态引导）
+    const emptyText = state.zoomTooLow ? '放大地图以加载本区域地点' : undefined;
     UI.renderResults($('result-list'), list, onPickPoi, {
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
       isBase: baseIs,
       onSetBase: setBase,
       emptyText,
-      emptyAction,
     });
     renderResultMore(full.length - list.length);
     $('result-count').textContent = String(full.length);
@@ -727,14 +705,8 @@
   }
 
   function onToggleChip(key) {
-    if (key === ALL_CAT_KEY) {
-      state.showAll = !state.showAll;
-      if (state.showAll) state.activeCats.clear();
-    } else {
-      state.showAll = false;
-      if (state.activeCats.has(key)) state.activeCats.delete(key);
-      else state.activeCats.add(key);
-    }
+    if (state.activeCats.has(key)) state.activeCats.delete(key);
+    else state.activeCats.add(key);
     state.resultLimit = RESULT_PAGE; // 换筛选 ⇒ 分页从头开始
     renderCatChips();
     refresh();
@@ -743,7 +715,6 @@
 
   // 回到默认筛选：清掉分类/评分，回到「未选分类 · ≥4.0」的初始态
   function onResetFilters() {
-    state.showAll = false;
     state.activeCats.clear();
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
@@ -843,9 +814,9 @@
   }
 
   // 实时搜索：本次视野查哪个分类。未选分类（默认）⇒ null ⇒ 不打高德（省配额）；
-  // 单选某分类 ⇒ 只查它；多选 / 勾「全部」⇒ 一次全类型查（不加关键词，返回后按 typecode 归类）
+  // 单选某分类 ⇒ 只查它；多选（或关键词搜索的全选）⇒ 一次全类型查（不加关键词，返回后按 typecode 归类）
   function liveCategory() {
-    if (!state.activeCats.size && !state.showAll) return null;
+    if (!state.activeCats.size) return null;
     if (state.activeCats.size === 1) return Array.from(state.activeCats)[0];
     return 'all';
   }
@@ -1066,7 +1037,6 @@
     state.city = city.name || city;
     $('current-city').textContent = state.city;
     state.activeCats.clear();
-    state.showAll = false; // 新城市回到「先不选中」
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.pois = [];
@@ -1309,8 +1279,8 @@
       const fromLocal = results.length > 0 && results[0].local === true;
       state.pois = dedupe(results);
       state.resultLimit = RESULT_PAGE;
-      state.activeCats.clear();
-      state.showAll = true; // 关键词搜索：不过滤分类
+      // 关键词搜索：不过滤分类 ⇒ 四个分类 chip 全选中（列表与 chip 说的是同一件事）
+      state.activeCats = new Set(Cats.all().map((c) => c.key));
       renderCatChips();
       refresh();
       if (state.pois.length && MapCtl.isReady()) {

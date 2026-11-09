@@ -58,14 +58,16 @@ test('默认评分过滤：初始即勾选 ≥4.0，切城市保持同一默认'
   );
 });
 
-test('默认不选分类：未勾「全部」且未选分类不显示地点，选住宿只显示住宿', () => {
-  assert.match(APP, /showAll:\s*false/, '默认 showAll 应为 false');
+test('默认不选分类：未选分类不显示地点，选了就只看选中的那些', () => {
+  assert.ok(!/showAll/.test(APP), '「全部」那个隐藏模式应该已经删干净');
+  assert.ok(!/ALL_CAT_KEY/.test(APP), '「全部」chip 常量应已删除');
   assert.match(APP, /function\s+passesCat/, '缺分类过滤函数 passesCat');
   assert.match(APP, /if\s*\(!state\.activeCats\.size\)\s*return false/, '未选分类应不显示地点');
   assert.match(APP, /state\.activeCats\.has\(p\.category\)/, '选中分类后应只显示该分类');
   assert.match(APP, /function\s+catFilterEmpty/, '缺空筛选态判定 catFilterEmpty');
-  assert.match(APP, /ALL_CAT_KEY/, '缺「全部」chip 常量');
-  assert.match(APP, /label:\s*'全部'/, '缺「全部」chip 文案');
+  assert.match(APP, /return state\.activeCats\.size === 0/, '空筛选态＝没选任何分类');
+  // 分类 chip 就是四个真实分类，一个不多一个不少
+  assert.match(APP, /UI\.renderChips\(\$\('chips'\), Cats\.all\(\)/, '分类 chip 只渲染真实分类');
   // 只看我选中的：显式挑的点不受分类/评分过滤影响
   assert.match(
     APP,
@@ -77,11 +79,13 @@ test('默认不选分类：未勾「全部」且未选分类不显示地点，�
 test('切城市重置回「先不选中」；关键词搜索不过滤分类', () => {
   const m = APP.match(/function\s+setCity[\s\S]*?\n  \}/);
   assert.ok(m, '未找到 setCity');
-  assert.match(m[0], /state\.showAll\s*=\s*false/, 'setCity 未重置 showAll');
   assert.match(m[0], /state\.activeCats\.clear\(\)/, 'setCity 未清分类');
   const s = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/);
   assert.ok(s, '未找到 doPoiSearch');
-  assert.match(s[0], /state\.showAll\s*=\s*true/, '关键词搜索应不过滤分类');
+  assert.match(
+    s[0],
+    /state\.activeCats = new Set\(Cats\.all\(\)\.map/, '关键词搜索应不过滤分类（四个 chip 全选中）'
+  );
 });
 
 test('双口径计数：当前视野 N 条 · 全城已收录 M 条', () => {

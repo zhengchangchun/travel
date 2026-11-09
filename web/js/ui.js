@@ -142,26 +142,17 @@
     handlers = handlers || {};
     const list = Array.isArray(pois) ? pois : [];
     if (!list.length) {
+      // 空态：只在给了文案时写一句；不再有 CTA（用户 2026-11-09 把空态引导也删了）
       container.replaceChildren
         ? container.replaceChildren()
         : (container.innerHTML = '');
-      const empty = document.createElement('li');
-      empty.className = 'empty';
-      empty.textContent = handlers.emptyText || '没有结果';
-      // 空态 CTA：首屏只说一次引导，并且给一个能点的动作（P9-①）
-      const action = handlers.emptyAction;
-      if (action && action.label) {
-        const btn = document.createElement('button');
-        btn.className = 'primary empty-cta';
-        btn.textContent = action.label;
-        if (action.title) btn.title = action.title;
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          if (typeof action.onClick === 'function') action.onClick();
-        };
-        empty.appendChild(btn);
+      const text = handlers.emptyText;
+      if (text) {
+        const empty = document.createElement('li');
+        empty.className = 'empty';
+        empty.textContent = text;
+        container.appendChild(empty);
       }
-      container.appendChild(empty);
       return;
     }
     const DIFF = window.TravelDiff;

@@ -98,40 +98,35 @@ test('index.html：errors.js 在 app.js / notes.js 之前加载', () => {
   assert.ok(at('/js/errors.js') < at('/js/notes.js'), 'errors.js 应在 notes.js 之前');
 });
 
-// ---------- ① 首屏空态：一处引导 + 一个动作 ----------
+// ---------- ① 首屏空态：不唠叨（用户 2026-11-09 又收紧了：连「显示全部」那块引导也不要） ----------
 
-test('ui.js：空态支持 emptyAction（能点的 CTA），点了会回调', () => {
+test('ui.js：空态只在给了文案时写一句，不再有 CTA', () => {
   const { win, doc } = loadUi(UI);
   const box = fakeBox();
-  let hits = 0;
-  win.TravelUI.renderResults(box, [], () => {}, {
-    emptyText: '还没选分类：点上面的分类开始，或',
-    emptyAction: { label: '显示全部', title: '勾上「全部」', onClick: () => { hits += 1; } },
-  });
-  assert.strictEqual(box.children.length, 1, '空态应只渲染一条');
-  const empty = box.children[0];
-  assert.match(empty.textContent, /还没选分类/);
-  assert.strictEqual(empty.children.length, 1, 'CTA 应挂在空态条目里');
-  const btn = empty.children[0];
-  assert.strictEqual(btn.textContent, '显示全部');
-  assert.match(btn.className, /empty-cta/);
-  btn.onclick({ stopPropagation() {} });
-  assert.strictEqual(hits, 1, 'CTA 点击应回调');
+  win.TravelUI.renderResults(box, [], () => {}, { emptyText: '放大地图以加载本区域地点' });
+  assert.strictEqual(box.children.length, 1, '空态一条');
+  assert.match(box.children[0].textContent, /放大地图/, '文案照写');
+  assert.strictEqual(box.children[0].children.length, 0, '不再挂 CTA 按钮');
+
+  // 不给文案就什么都不渲染（未选分类时就该是空的）
+  const box2 = fakeBox();
+  win.TravelUI.renderResults(box2, [], () => {}, {});
+  assert.strictEqual(box2.children.length, 0, '没文案就别占位置');
+  assert.ok(!/emptyAction|empty-cta/.test(UI), 'ui.js 不该再留 CTA 那份代码');
   void doc;
 });
 
-test('app.js：首屏空态不复读（状态栏闭嘴、结果条让位、列表说一次）', () => {
-  assert.ok(!APP.includes('未选分类：点一个分类（如 住宿）查看地点'), '状态栏那条重复引导应删掉');
-  assert.match(APP, /UI\.setStatus\(''\);/, '未选分类态状态栏应为空（引导只留一处）');
+test('app.js：未选分类时列表空着、状态栏闭嘴；只有「倍率不够」才说一句', () => {
+  assert.ok(!/显示全部/.test(APP), '「显示全部」这个引导应彻底删掉');
+  assert.ok(!/emptyAction/.test(APP), 'emptyAction 应不再传');
+  assert.match(APP, /UI\.setStatus\(''\);/, '未选分类态状态栏应为空');
   assert.match(APP, /el\.textContent = '—'/, '未选分类态结果条应为占位符');
-  assert.match(APP, /label: '显示全部'/, '空态要给一个能点的动作');
-  assert.match(APP, /emptyAction,/, 'emptyAction 要传进 renderResults');
-  assert.match(APP, /state\.zoomTooLow = true/, '倍率不够要单独标记（那时空态理由是「放大」）');
+  assert.match(APP, /state\.zoomTooLow = true/, '倍率不够要单独标记（那时才说「放大」）');
   assert.match(APP, /\? '放大地图以加载本区域地点'/, '倍率不够时空态只说这一句');
 });
 
-test('CSS：空态 CTA 有样式', () => {
-  assert.match(CSS, /\.empty-cta\s*\{[^}]*border-radius/s, '缺 .empty-cta 样式');
+test('CSS：空态 CTA 的样式一并清掉', () => {
+  assert.ok(!/\.empty-cta/.test(CSS), 'CSS 不该再留 .empty-cta');
 });
 
 // ---------- ③ 落旗上限 ----------

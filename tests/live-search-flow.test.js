@@ -38,7 +38,7 @@ test('实时搜索前端资产：API.liveInView + liveSearchViewport + liveCateg
 test('默认不选分类 ⇒ 不打高德（省配额）；单选分类 ⇒ 只查该分类', () => {
   assert.match(
     APP,
-    /if\s*\(!state\.activeCats\.size\s*&&\s*!state\.showAll\)\s*return null/,
+    /if\s*\(!state\.activeCats\.size\)\s*return null/,
     'liveCategory 未在「未选分类」时返回 null'
   );
   assert.match(APP, /state\.activeCats\.size === 1/, 'liveCategory 未处理单选');
