@@ -77,6 +77,9 @@
     // P5：自己抓（本机浏览器 + 平台已登录 profile）
     fetchNote: (payload) => request('/api/notes/fetch', post(payload)),
     discoverNotes: (payload) => request('/api/notes/discover', post(payload)),
+    startNoteJob: (payload) => request('/api/notes/jobs', post(payload)),
+    getNoteJob: (id) => request('/api/notes/jobs/' + id),
+    cancelNoteJob: (id) => request('/api/notes/jobs/' + id + '/cancel', post({})),
     refreshNote: (id) => request('/api/notes/' + id + '/refresh', post({})),
     updatePinNote: (id, note) =>
       request('/api/pins/' + id, {

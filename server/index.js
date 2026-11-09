@@ -18,6 +18,7 @@ const poiRoutes = require('./routes/poi');
 const poisRoutes = require('./routes/pois');
 const tripsRoutes = require('./routes/trips');
 const notesRoutes = require('./routes/notes');
+const { createNoteJobs } = require('./note-jobs');
 const selectionRoutes = require('./routes/selection');
 const routeRoutes = require('./routes/route');
 
@@ -172,6 +173,8 @@ function createApp(opts = {}) {
     HttpError,
     // 笔记抓取（P5）：可注入（测试里换成假抓取器，不起浏览器）
     noteFetch: opts.noteFetch || require('./note-fetch'),
+    // 笔记长任务（P10-⑩）：抓取/搜索的后台任务表（内存），可注入
+    noteJobs: opts.noteJobs || createNoteJobs(opts.noteJobsOpts || {}),
     // 地名补全兜底（OSM/Photon，免 key）：高德没配额时用，可注入
     osm: opts.osm || require('./geocode-osm'),
     routeIntervalMs:

@@ -933,6 +933,11 @@ section.card.collapsed > .card-body { display: none; }
 .result-summary { flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink-3, #6b7280); }
 .mini-btn { padding: 3px 8px; font-size: 11px; border-radius: 8px; flex: none; }
 
+/* P10-⑩：长任务（抓取/搜索）的进度行 + 取消按钮 —— 一行内左进度右取消 */
+.note-live { display: flex; align-items: center; gap: 8px; }
+.note-live #note-progress { flex: 1; min-width: 0; margin-top: 6px; }
+.note-live #note-cancel-btn { margin-top: 6px; }
+
 /* 结果列表：独立滚动，一屏内完成「改筛选 → 看结果」 */
 .result-scroll {
   max-height: clamp(200px, 42vh, 560px); overflow-y: auto; overscroll-behavior: contain;

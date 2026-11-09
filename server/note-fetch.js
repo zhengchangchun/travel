@@ -16,6 +16,25 @@ const PW_CJS =
   path.join(process.env.HOME || '', '.nanobot', 'workspace', 'tools', 'browser', 'pw.cjs');
 const SCRIPT = path.join(ROOT, 'tools', 'note-fetch.cjs');
 const DEFAULT_TIMEOUT_MS = Number(process.env.TRAVEL_FETCH_TIMEOUT_MS) || 90000;
+// 抓取器在 stdout 上吐的进度行（`#progress 打开搜索页`）。它不参与结果解析（结果取最后一行 JSON）
+const PROGRESS_PREFIX = '#progress ';
+
+// 长任务钩子（P10-⑩）：让上层能看到「现在到哪一步」、并在取消时把子进程杀掉
+function hookCanceled(hooks) {
+  try {
+    return !!(hooks && typeof hooks.isCanceled === 'function' && hooks.isCanceled());
+  } catch (err) {
+    return false;
+  }
+}
+
+function hookProgress(hooks, stage) {
+  try {
+    if (hooks && typeof hooks.onProgress === 'function') hooks.onProgress(stage);
+  } catch (err) {
+    /* 进度上报失败不影响抓取 */
+  }
+}
 
 // 平台 → 本机浏览器 profile（B站走官方接口，不需要浏览器）
 const PROFILE = { xhs: 'xhs', douyin: 'douyin', kuaishou: 'kuaishou' };
@@ -41,7 +60,12 @@ function fail(error, message, extra) {
 function runFetcher(argv, opts = {}) {
   const spawnImpl = opts.spawnImpl || spawn;
   const timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT_MS;
+  const hooks = opts.hooks || {};
   return new Promise((resolve) => {
+    if (hookCanceled(hooks)) {
+      resolve(fail('CANCELED', '已取消'));
+      return;
+    }
     let child;
     try {
       child = spawnImpl(NODE, [PW_CJS, 'run', SCRIPT].concat(argv), {
@@ -51,8 +75,15 @@ function runFetcher(argv, opts = {}) {
       resolve(fail('FETCH_FAIL', '抓取器启动失败：' + err.message));
       return;
     }
+    // 把子进程交给上层：取消时可以直接 kill
+    try {
+      if (typeof hooks.onChild === 'function') hooks.onChild(child);
+    } catch (err) {
+      /* 忽略 */
+    }
     let out = '';
     let err = '';
+    let tail = ''; // 未成行的 stdout 尾巴（进度行按行解析）
     let done = false;
     const finish = (res) => {
       if (done) return;
@@ -66,10 +97,27 @@ function runFetcher(argv, opts = {}) {
       resolve(res);
     };
     const timer = setTimeout(() => finish(fail('TIMEOUT', '抓取超时（' + timeoutMs + 'ms）')), timeoutMs);
-    if (child.stdout) child.stdout.on('data', (d) => (out += d.toString()));
+    if (child.stdout)
+      child.stdout.on('data', (d) => {
+        const text = d.toString();
+        out += text;
+        tail += text;
+        const lines = tail.split('\n');
+        tail = lines.pop();
+        lines.forEach((l) => {
+          const t = l.trim();
+          if (t.startsWith(PROGRESS_PREFIX)) hookProgress(hooks, t.slice(PROGRESS_PREFIX.length).trim());
+        });
+        // 取消要快：一有输出就查一次，别等超时
+        if (hookCanceled(hooks)) finish(fail('CANCELED', '已取消'));
+      });
     if (child.stderr) child.stderr.on('data', (d) => (err += d.toString()));
     child.on('error', (e) => finish(fail('FETCH_FAIL', '抓取器跑不起来：' + e.message)));
     child.on('close', () => {
+      if (hookCanceled(hooks)) {
+        finish(fail('CANCELED', '已取消'));
+        return;
+      }
       const lines = out
         .split('\n')
         .map((l) => l.trim())
@@ -88,8 +136,13 @@ function runFetcher(argv, opts = {}) {
   });
 }
 
+// 重试前先看有没有被取消（取消后不要再起一次）
+function retryAllowed(hooks) {
+  return !hookCanceled(hooks);
+}
+
 // 单条：给链接就抓（小红书/抖音/快手走浏览器，B站走官方接口）
-async function fetchNote({ url, timeoutMs, spawnImpl } = {}) {
+async function fetchNote({ url, timeoutMs, spawnImpl, hooks } = {}) {
   const u = String(url || '').trim();
   if (!u) return fail('BAD_REQUEST', '缺少 url');
   const platform = platformOfUrl(u);
@@ -98,27 +151,39 @@ async function fetchNote({ url, timeoutMs, spawnImpl } = {}) {
   const profile = profileFor(platform);
   if (!profile) return fail('BAD_PLATFORM', '这个平台还不支持抓取：' + platform);
   const argv = ['--profile', profile, 'url', platform, u];
-  const first = await runFetcher(argv, { timeoutMs, spawnImpl });
-  // 同一个浏览器 profile 被别的进程占着时会瞬挂 ⇒ 隔一秒再试一次
-  if (first && first.ok !== true && (first.error === 'TIMEOUT' || first.error === 'FETCH_FAIL')) {
+  const first = await runFetcher(argv, { timeoutMs, spawnImpl, hooks });
+  // 同一个浏览器 profile 被别的进程占着时会瞬挂 ⇒ 隔一秒再试一次（取消后不再试）
+  if (
+    first &&
+    first.ok !== true &&
+    (first.error === 'TIMEOUT' || first.error === 'FETCH_FAIL') &&
+    retryAllowed(hooks)
+  ) {
     await new Promise((r) => setTimeout(r, 1200));
-    return runFetcher(argv, { timeoutMs, spawnImpl });
+    if (!retryAllowed(hooks)) return fail('CANCELED', '已取消');
+    return runFetcher(argv, { timeoutMs, spawnImpl, hooks });
   }
   return first;
 }
 
 // 按关键词搜（目前小红书已通；其它平台如实报未实现）
-async function searchNotes({ platform, keyword, limit, timeoutMs, spawnImpl } = {}) {
+async function searchNotes({ platform, keyword, limit, timeoutMs, spawnImpl, hooks } = {}) {
   const p = String(platform || 'xhs');
   const kw = String(keyword || '').trim();
   if (!kw) return fail('BAD_REQUEST', '缺少 keyword');
   const profile = profileFor(p);
   if (!profile) return fail('BAD_PLATFORM', '这个平台还不支持按关键词搜：' + p);
   const argv = ['--profile', profile, 'search', p, kw, String(Number(limit) || 12)];
-  const first = await runFetcher(argv, { timeoutMs, spawnImpl });
-  if (first && first.ok !== true && (first.error === 'TIMEOUT' || first.error === 'FETCH_FAIL')) {
+  const first = await runFetcher(argv, { timeoutMs, spawnImpl, hooks });
+  if (
+    first &&
+    first.ok !== true &&
+    (first.error === 'TIMEOUT' || first.error === 'FETCH_FAIL') &&
+    retryAllowed(hooks)
+  ) {
     await new Promise((r) => setTimeout(r, 1200));
-    return runFetcher(argv, { timeoutMs, spawnImpl });
+    if (!retryAllowed(hooks)) return fail('CANCELED', '已取消');
+    return runFetcher(argv, { timeoutMs, spawnImpl, hooks });
   }
   return first;
 }
@@ -181,4 +246,6 @@ module.exports = {
   PW_CJS,
   SCRIPT,
   NODE,
+  PROGRESS_PREFIX,
+  DEFAULT_TIMEOUT_MS,
 };

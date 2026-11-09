@@ -23,6 +23,7 @@
     detail: null,
     candidates: [],
     busy: false,
+    job: '', // 正在跑的任务 id（P10-⑩）：有没有值决定界面显示不显示「取消」
     hooks: {},
   };
 
@@ -57,9 +58,100 @@
     el.classList.toggle('note-err', !!isErr);
   }
 
+  // 长任务的进度行（P10-⑩）：显示「已 N 秒 · 当前到哪一步」，旁边是可以点的「取消」
+  function setProgress(text) {
+    const el = $('note-progress');
+    if (el) el.textContent = text || '';
+  }
+
+  function setLive(on) {
+    const btn = $('note-cancel-btn');
+    if (btn) btn.classList.toggle('hidden', !on);
+    if (!on) setProgress('');
+  }
+
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  // 抓一条 / 搜一批都是「本机浏览器跑十几秒到几分钟」：交给服务端后台任务，界面上看得到进度、随时能取消
+  const JOB_POLL_MS = 500;
+  const JOB_MAX_MS = 6 * 60 * 1000; // 兜底：超过 6 分钟就当它卡住了
+
+  async function runJob(kind, body, title) {
+    const started = Date.now();
+    let cur = null;
+    try {
+      cur = await API.startNoteJob(Object.assign({ kind }, body));
+    } catch (err) {
+      return { ok: false, canceled: false, err };
+    }
+    const id = cur && cur.id ? cur.id : '';
+    if (!id) {
+      return { ok: false, canceled: false, err: { code: 'BAD_RESPONSE', message: '后端没给任务号' } };
+    }
+    st.job = id;
+    setLive(true);
+    const paint = (job) => {
+      const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
+      const stage = job && job.status === 'running' && job.stage ? ' · ' + job.stage : '';
+      setProgress(title + '：已 ' + secs + ' 秒' + stage);
+    };
+    paint(cur);
+    try {
+      while (Date.now() - started < JOB_MAX_MS) {
+        await sleep(JOB_POLL_MS);
+        if (st.job !== id) return { ok: false, canceled: true }; // 被取消 / 被新任务顶替
+        try {
+          cur = await API.getNoteJob(id);
+        } catch (err) {
+          continue; // 一次读不到不算结束，接着等
+        }
+        if (!cur || cur.status === 'running') {
+          paint(cur);
+          continue;
+        }
+        break;
+      }
+    } finally {
+      if (st.job === id) {
+        st.job = '';
+        setLive(false);
+      }
+    }
+    if (cur && cur.status === 'done') return { ok: true, result: cur.result };
+    if (cur && cur.status === 'canceled') return { ok: false, canceled: true };
+    if (cur && cur.status === 'failed') {
+      return { ok: false, canceled: false, err: { code: cur.error, message: cur.message } };
+    }
+    // 超过兜底时长还在跑：把服务端那个任务也取消掉
+    try {
+      await API.cancelNoteJob(id);
+    } catch (err) {
+      /* 忽略 */
+    }
+    return { ok: false, canceled: false, err: { code: 'TIMEOUT', message: '任务跑太久（超过 6 分钟）' } };
+  }
+
+  async function onCancelJob() {
+    const id = st.job;
+    st.job = '';
+    setLive(false);
+    setHint('已取消（本机浏览器那一步也停了）');
+    if (!id) return;
+    try {
+      await API.cancelNoteJob(id);
+    } catch (err) {
+      /* 已经跑完/没了都无所谓 */
+    }
+  }
+
   // ---------- ① 抓取（链接 / 分享文案） ----------
   async function onFetch() {
-    if (st.busy) return;
+    if (st.busy) {
+      setHint('上一个任务还在跑：等它跑完，或点「取消」', true);
+      return;
+    }
     const linkEl = $('note-link');
     const raw = String((linkEl && linkEl.value) || $('note-share').value || '').trim();
     if (!raw) {
@@ -67,28 +159,39 @@
       return;
     }
     st.busy = true;
-    setHint('抓取中…本机浏览器在跑，一般 10–25 秒');
+    setHint('抓取中：本机浏览器在跑');
     try {
-      const r = await API.fetchNote({ share_text: raw, city: st.city, save: true });
+      const r = await runJob('fetch', { share_text: raw, city: st.city, save: true }, '抓取');
+      if (r.canceled) {
+        setHint('已取消（没写入任何内容）');
+        return;
+      }
+      if (!r.ok) {
+        setHint('抓取失败：' + human(r.err), true);
+        return;
+      }
+      const note = r.result && r.result.note;
+      if (!note) {
+        setHint('抓取返回里没有笔记内容', true);
+        return;
+      }
       setHint(
         '抓好了：' +
-          (r.note.title || '(无标题)') +
+          (note.title || '(无标题)') +
           ' · ' +
-          (r.note.images || []).length +
+          (note.images || []).length +
           ' 张图' +
-          (r.updated ? ' · 更新了已有记录' : '')
+          (r.result.updated ? ' · 更新了已有记录' : '')
       );
       if (linkEl) linkEl.value = '';
       // 抓完顺手提地名（零调用）
       try {
-        await API.notePlaces(r.note.id, {});
+        await API.notePlaces(note.id, {});
       } catch (err) {
         /* 提取失败不影响抓取结果 */
       }
       await refresh();
-      await openDetail(r.note.id);
-    } catch (err) {
-      setHint('抓取失败：' + human(err), true);
+      await openDetail(note.id);
     } finally {
       st.busy = false;
     }
@@ -96,7 +199,10 @@
 
   // ---------- ② 按关键词搜一批候选 ----------
   async function onSearch() {
-    if (st.busy) return;
+    if (st.busy) {
+      setHint('上一个任务还在跑：等它跑完，或点「取消」', true);
+      return;
+    }
     const kwEl = $('note-keyword');
     const pfEl = $('note-platform');
     const keyword = String((kwEl && kwEl.value) || '').trim();
@@ -105,20 +211,26 @@
       return;
     }
     st.busy = true;
-    setHint('搜「' + keyword + '」中…（本机浏览器，10–25 秒）');
+    setHint('搜「' + keyword + '」中：本机浏览器在跑');
     try {
-      const r = await API.discoverNotes({
-        keyword,
-        platform: (pfEl && pfEl.value) || 'xhs',
-        limit: 12,
-      });
-      st.candidates = r.items || [];
+      const r = await runJob(
+        'discover',
+        { keyword, platform: (pfEl && pfEl.value) || 'xhs', limit: 12 },
+        '搜「' + keyword + '」'
+      );
+      if (r.canceled) {
+        setHint('已取消（上次搜到的候选还在）');
+        return;
+      }
+      if (!r.ok) {
+        st.candidates = [];
+        renderCandidates();
+        setHint('搜索失败：' + human(r.err), true);
+        return;
+      }
+      st.candidates = (r.result && r.result.items) || [];
       setHint('搜到 ' + st.candidates.length + ' 条候选，点「存到本地」会把正文和图一起抓回来');
       renderCandidates();
-    } catch (err) {
-      st.candidates = [];
-      renderCandidates();
-      setHint('搜索失败：' + human(err), true);
     } finally {
       st.busy = false;
     }
@@ -168,24 +280,39 @@
   }
 
   async function saveCandidate(c, btn) {
-    if (st.busy) return;
+    if (st.busy) {
+      setHint('上一个任务还在跑：等它跑完，或点「取消」', true);
+      return;
+    }
     st.busy = true;
     if (btn) btn.textContent = '抓取中…';
-    setHint('抓取《' + (c.title || '').slice(0, 20) + '》中…');
+    setHint('抓《' + (c.title || '').slice(0, 20) + '》中：本机浏览器在跑');
     try {
-      const r = await API.fetchNote({ url: c.url, city: st.city, save: true });
+      const r = await runJob(
+        'fetch',
+        { url: c.url, city: st.city, save: true },
+        '抓《' + (c.title || '').slice(0, 12) + '》'
+      );
+      if (r.canceled) {
+        setHint('已取消');
+        renderCandidates();
+        return;
+      }
+      if (!r.ok || !r.result || !r.result.note) {
+        setHint(r.ok ? '抓取返回里没有笔记内容' : '抓取失败：' + human(r.err), true);
+        renderCandidates();
+        return;
+      }
+      const note = r.result.note;
       try {
-        await API.notePlaces(r.note.id, {});
+        await API.notePlaces(note.id, {});
       } catch (err) {
         /* 忽略 */
       }
-      setHint('已存到本地：' + (r.note.title || '') + ' · ' + (r.note.images || []).length + ' 张图');
+      setHint('已存到本地：' + (note.title || '') + ' · ' + (note.images || []).length + ' 张图');
       await refresh();
-      await openDetail(r.note.id);
+      await openDetail(note.id);
       renderCandidates();
-    } catch (err) {
-      setHint('抓取失败：' + human(err), true);
-      if (btn) btn.textContent = c.exists ? '重抓' : '存到本地';
     } finally {
       st.busy = false;
     }
@@ -412,17 +539,28 @@
     const refBtn = $('note-refresh-btn');
     if (refBtn) {
       refBtn.onclick = async () => {
-        if (st.busy) return;
+        if (st.busy) {
+          setHint('上一个任务还在跑：等它跑完，或点「取消」', true);
+          return;
+        }
         st.busy = true;
-        setHint('重抓中…');
+        setHint('重抓中：本机浏览器在跑');
         try {
-          const r = await API.refreshNote(note.id);
-          st.detail = r.note;
-          setHint('已重抓：' + (r.note.title || '') + ' · ' + (r.note.images || []).length + ' 张图');
+          const r = await runJob('refresh', { note_id: note.id }, '重抓');
+          if (r.canceled) {
+            setHint('已取消');
+            return;
+          }
+          if (!r.ok || !r.result || !r.result.note) {
+            setHint(r.ok ? '重抓返回里没有笔记内容' : '重抓失败：' + human(r.err), true);
+            return;
+          }
+          st.detail = r.result.note;
+          setHint(
+            '已重抓：' + (r.result.note.title || '') + ' · ' + (r.result.note.images || []).length + ' 张图'
+          );
           await refresh();
           renderDetail();
-        } catch (err) {
-          setHint('重抓失败：' + err.message, true);
         } finally {
           st.busy = false;
         }
@@ -520,8 +658,10 @@
     const clearBtn = $('note-clear-btn');
     const fetchBtn = $('note-fetch-btn');
     const searchBtn = $('note-search-btn');
+    const cancelBtn = $('note-cancel-btn');
     if (fetchBtn) fetchBtn.onclick = onFetch;
     if (searchBtn) searchBtn.onclick = onSearch;
+    if (cancelBtn) cancelBtn.onclick = onCancelJob;
     // 回车即抓 / 即搜（少一次鼠标移动）
     const linkEl = $('note-link');
     if (linkEl) {

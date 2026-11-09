@@ -22,6 +22,16 @@ function ok(extra) {
   return Object.assign({ ok: true }, extra);
 }
 
+// 进度（P10-⑩）：服务端按 `#progress ` 前缀解析，只用来在界面上显示「跑到哪一步」；
+// 它不参与结果解析（结果永远是最后一行 JSON）。
+function progress(msg) {
+  try {
+    process.stdout.write('#progress ' + msg + '\n');
+  } catch (e) {
+    /* 写不出去不影响抓取 */
+  }
+}
+
 // 打开页面：给足超时，失败重试一次（同一 profile 被别的进程占着时会瞬挂）
 async function open(page, url, waitMs) {
   page.setDefaultTimeout(60000);
@@ -64,11 +74,13 @@ async function xhsSearch({ page, keyword, limit }) {
       }
     }
   });
+  progress('打开小红书搜索页');
   const navErr = await open(
     page,
     'https://www.xiaohongshu.com/search_result?keyword=' + encodeURIComponent(keyword),
     0
   );
+  progress('等搜索接口返回（最多 30 秒）');
   const deadline = Date.now() + 30000;
   while (!got.length && Date.now() < deadline) await page.waitForTimeout(800);
   if (!got.length) {
@@ -110,7 +122,9 @@ async function xhsSearch({ page, keyword, limit }) {
 
 // 详情：读 window.__INITIAL_STATE__.note.noteDetailMap
 async function xhsNote({ page, url }) {
+  progress('打开笔记页');
   await open(page, url, 6000);
+  progress('读取正文与图');
   const data = await page.evaluate(() => {
     const st = window.__INITIAL_STATE__ || {};
     const map = (st.note && st.note.noteDetailMap) || {};
@@ -158,7 +172,9 @@ async function douyinNote({ page, url }) {
     }
   });
   page.setDefaultNavigationTimeout(60000);
+  progress('打开抖音视频页');
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  progress('等详情接口返回（最多 30 秒）');
   const deadline = Date.now() + 30000;
   while (!got.length && Date.now() < deadline) await page.waitForTimeout(800);
   const detail = got.map((j) => j.aweme_detail).filter(Boolean)[0];
@@ -194,6 +210,7 @@ async function douyinNote({ page, url }) {
 
 // ---------- 抖音搜索：试一次，把风控原因说清楚 ----------
 async function douyinSearch({ page, keyword }) {
+  progress('打开抖音搜索页（风控比较严）');
   const err = await open(page, 'https://www.douyin.com/search/' + encodeURIComponent(keyword) + '?type=general', 8000);
   const info = await page.evaluate(() => ({
     title: document.title,
@@ -210,6 +227,7 @@ async function douyinSearch({ page, keyword }) {
 
 // ---------- 快手（网页端要登录，未登录时如实报） ----------
 async function kuaishouNote({ page, url }) {
+  progress('打开快手视频页（要登录态）');
   await open(page, url, 6000);
   const blocked = await page.evaluate(() =>
     /result":2|请登录|扫码登录|登录快手/.test(document.body ? document.body.innerText.slice(0, 400) : '')
@@ -228,6 +246,7 @@ async function kuaishouNote({ page, url }) {
 }
 
 module.exports = async ({ page, context, args }) => {
+  progress('准备抓取（等平台页面自己发请求）');
   // 抓取也走「别像机器人」的常规处理（网页端风控会看这些指纹）
   try {
     if (context && context.addInitScript) {

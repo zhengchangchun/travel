@@ -166,6 +166,67 @@ async function ingestFetched(ctx, r, opts = {}) {
   return { note: toPublic(note), download, saved: true, updated, stats: r.stats || null };
 }
 
+/**
+ * 笔记长任务（P10-⑩）：抓一条 / 搜一批要跑 10–90 秒，不能让前端干等一个可能卡死的请求。
+ * 起任务立刻拿 id → 轮询 GET /api/notes/jobs/:id 看「跑到哪一步 + 已多少秒」→ 随时 POST …/cancel。
+ * 同步接口（/api/notes/fetch、/api/notes/discover）保留着（命令行/测试还在用），两者走同一份实现。
+ */
+
+// 抓一条：读链接 → 本机浏览器抓回来 → 按需要落图落库
+async function fetchAndIngest(ctx, { url, city, save, hooks }) {
+  const r = await ctx.noteFetch.fetchNote({ url, hooks });
+  if (!r || r.ok !== true) {
+    const info = r || {};
+    throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
+  }
+  const out = await ingestFetched(ctx, r, { city: city || null, save: !!save });
+  return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
+}
+
+// 搜一批候选：封面也下到本地（否则页面直连平台 CDN 会 403，且「下载后缓存到本地」不成立）
+async function discoverItems(ctx, { platform, keyword, limit, hooks }) {
+  const r = await ctx.noteFetch.searchNotes({ platform, keyword, limit, hooks });
+  if (!r || r.ok !== true) {
+    const info = r || {};
+    throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '搜索失败');
+  }
+  const items = [];
+  for (const it of r.items || []) {
+    let cover = it.cover_url || '';
+    if (cover) {
+      const got = await downloadImages([cover], NOTE_IMG_DIR, {
+        referer: refererForPlatform(r.platform),
+      });
+      cover = got[0] && got[0].ok ? '/notes-img/' + got[0].file : '';
+    }
+    items.push(Object.assign({}, it, { cover_url: cover, exists: !!ctx.db.findNoteByUrl(it.url) }));
+  }
+  return { platform, keyword, total: items.length, items };
+}
+
+// 重抓已有一条（对「只存了标题封面」的候选记录很有用）
+async function refreshNoteById(ctx, id, hooks) {
+  const existing = findNote(ctx.db, Number(id));
+  if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
+  if (!existing.url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这条笔记没有链接，没法重抓');
+  const r = await ctx.noteFetch.fetchNote({ url: existing.url, hooks });
+  if (!r || r.ok !== true) {
+    const info = r || {};
+    throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
+  }
+  const out = await ingestFetched(ctx, r, { city: existing.city, save: true });
+  return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
+}
+
+// 把一个链接/分享文案解析成 url（同步接口与任务接口共用，行为一致）
+function urlFromBody(ctx, body) {
+  const raw = String((body && (body.url || body.share_text)) || '').trim();
+  if (!raw) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 url（或 share_text）');
+  const parsed = /^https?:\/\//.test(raw) ? { url: raw } : parseShareText(raw);
+  if (!parsed || !parsed.url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这段文字里没找到链接');
+  return parsed.url;
+}
+
 module.exports = [
   // 分享文案解析（纯解析、零调用、不落库）——页面「识别」按钮走这条
   {
@@ -277,27 +338,13 @@ module.exports = [
     },
   },
   // 自己抓：给链接（或分享文案）→ 本机浏览器（已登录 profile）把笔记/视频抓回来，落图到本地
-  // save=1 才写库（不给就只返回预览，用户确认后再存）
+  // save=1 才写库（不给就只返回预览，用户确认后再存）。同步版口径不变；前端走 /api/notes/jobs（有进度、能取消）
   {
     method: 'POST',
     path: '/api/notes/fetch',
     async handler(ctx) {
       const b = ctx.body || {};
-      const raw = String(b.url || b.share_text || '').trim();
-      if (!raw) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 url（或 share_text）');
-      const parsed = /^https?:\/\//.test(raw) ? { url: raw } : parseShareText(raw);
-      const url = parsed.url;
-      if (!url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这段文字里没找到链接');
-      const r = await ctx.noteFetch.fetchNote({ url });
-      if (!r || r.ok !== true) {
-        const info = r || {};
-        throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
-      }
-      const out = await ingestFetched(ctx, r, {
-        city: b.city || null,
-        save: !!b.save,
-      });
-      return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
+      return fetchAndIngest(ctx, { url: urlFromBody(ctx, b), city: b.city || null, save: !!b.save });
     },
   },
   // 按关键词搜笔记（目前小红书已通；返回候选，不写库，用户挑完再抓）
@@ -310,44 +357,71 @@ module.exports = [
       if (!keyword) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 keyword');
       const platform = String(b.platform || 'xhs');
       const limit = Math.min(Math.max(1, Number(b.limit) || 10), 30);
-      const r = await ctx.noteFetch.searchNotes({ platform, keyword, limit });
-      if (!r || r.ok !== true) {
-        const info = r || {};
-        throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '搜索失败');
-      }
-      const items = [];
-      // 候选项的封面也下到本地（否则页面直连平台 CDN 会 403，且「下载后缓存到本地」不成立）
-      for (const it of r.items || []) {
-        let cover = it.cover_url || '';
-        if (cover) {
-          const got = await downloadImages([cover], NOTE_IMG_DIR, {
-            referer: refererForPlatform(r.platform),
-          });
-          cover = got[0] && got[0].ok ? '/notes-img/' + got[0].file : '';
-        }
-        items.push(
-          Object.assign({}, it, { cover_url: cover, exists: !!ctx.db.findNoteByUrl(it.url) })
-        );
-      }
-      return { platform, keyword, total: items.length, items };
+      return discoverItems(ctx, { platform, keyword, limit });
     },
   },
-  // 重新抓一遍（对「只存了标题封面」的候选记录很有用）
+  // ---------- 长任务：起任务拿 id → 轮询看进度 → 可取消 ----------
+  {
+    method: 'POST',
+    path: '/api/notes/jobs',
+    handler(ctx) {
+      const b = ctx.body || {};
+      const kind = String(b.kind || '');
+      if (kind === 'discover') {
+        const keyword = String(b.keyword || '').trim();
+        if (!keyword) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 keyword');
+        const platform = String(b.platform || 'xhs');
+        const limit = Math.min(Math.max(1, Number(b.limit) || 10), 30);
+        const job = ctx.noteJobs.start('discover', { platform, keyword, limit }, (hooks) =>
+          discoverItems(ctx, { platform, keyword, limit, hooks })
+        );
+        return ctx.noteJobs.view(job);
+      }
+      if (kind === 'fetch') {
+        const url = urlFromBody(ctx, b);
+        const job = ctx.noteJobs.start('fetch', { url }, (hooks) =>
+          fetchAndIngest(ctx, { url, city: b.city || null, save: !!b.save, hooks })
+        );
+        return ctx.noteJobs.view(job);
+      }
+      if (kind === 'refresh') {
+        const noteId = Number(b.note_id || b.id);
+        if (!noteId) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 note_id');
+        // 与 /api/notes/:id/refresh 同一份实现；同步版先校验存在性，避免任务起了才发现没这条
+        const existing = findNote(ctx.db, noteId);
+        if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${noteId} 不存在`);
+        const job = ctx.noteJobs.start('refresh', { note_id: noteId }, (hooks) =>
+          refreshNoteById(ctx, noteId, hooks)
+        );
+        return ctx.noteJobs.view(job);
+      }
+      throw new ctx.HttpError(400, 'BAD_REQUEST', '不认识的 kind：' + (kind || '(空)'));
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/notes/jobs/:id',
+    handler(ctx) {
+      const job = ctx.noteJobs.get(ctx.params.id);
+      if (!job) throw new ctx.HttpError(404, 'NOT_FOUND', '没有这个任务：' + ctx.params.id);
+      return ctx.noteJobs.view(job);
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/notes/jobs/:id/cancel',
+    handler(ctx) {
+      const job = ctx.noteJobs.cancel(ctx.params.id);
+      if (!job) throw new ctx.HttpError(404, 'NOT_FOUND', '没有这个任务：' + ctx.params.id);
+      return ctx.noteJobs.view(job);
+    },
+  },
+  // 重新抓一遍（对「只存了标题封面」的候选记录很有用）；前端走 /api/notes/jobs（kind=refresh）
   {
     method: 'POST',
     path: '/api/notes/:id/refresh',
     async handler(ctx) {
-      const id = Number(ctx.params.id);
-      const existing = findNote(ctx.db, id);
-      if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
-      if (!existing.url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这条笔记没有链接，没法重抓');
-      const r = await ctx.noteFetch.fetchNote({ url: existing.url });
-      if (!r || r.ok !== true) {
-        const info = r || {};
-        throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
-      }
-      const out = await ingestFetched(ctx, r, { city: existing.city, save: true });
-      return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
+      return refreshNoteById(ctx, ctx.params.id);
     },
   },
   // 给已有笔记补内容/补图（用户手动提供时走这里）
