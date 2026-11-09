@@ -949,6 +949,8 @@ section.card[data-card] > .card-bar .bar-right {
   flex: none; margin-left: auto; display: flex; align-items: center; gap: 6px; min-width: 0;
 }
 section.card[data-card] > .card-bar .bar-right .chev { margin-left: 0; }
+/* 右侧一组按内容宽 ⇒ 里面的信息带不能再用「标题条的 46%」量（否则被截成「未…」） */
+section.card[data-card] > .card-bar .bar-right .bar-note { max-width: 132px; }
 
 /* “i” 说明点（P10）：解释性文字收进悬停/聚焦才展开的气泡，不再常驻占地方 */
 .tip {
