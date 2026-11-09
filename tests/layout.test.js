@@ -40,6 +40,13 @@ const PIN_IDS = [
   'note-detail',
 ];
 
+// 产品名（用户 2026-11-09：改名叫「旅迹」，网页也叫旅迹）
+test('产品名：页面标题与品牌都叫「旅迹」，不再出现旧名', () => {
+  assert.match(HTML, /<title>旅迹<\/title>/, '页面 title 应为「旅迹」');
+  assert.match(HTML, /<h1>🧭 旅迹<\/h1>/, '品牌标题应为「旅迹」');
+  assert.ok(!/城市旅行规划器/.test(HTML), '页面上不该再出现旧名');
+});
+
 test('三栏骨架：左「全部」／中 地图／右「我挑的」，顺序正确', () => {
   const { l, m, r } = slice();
   assert.ok(l >= 0, '缺左栏 #sidebar');
