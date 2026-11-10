@@ -23,7 +23,7 @@ const APIJS = read('web/js/api.js');
 // ---------- ① 收起控件 = 小箭头 ----------
 
 test('两个「收起」控件都换成了内联箭头素材，按钮里不再有文字', () => {
-  ['panel-toggle', 'cards-toggle-all'].forEach((id) => {
+  ['panel-toggle', 'sidebar-toggle'].forEach((id) => {
     const m = HTML.match(new RegExp('<button[^>]*id="' + id + '"[\\s\\S]*?</button>'));
     assert.ok(m, '缺按钮 ' + id);
     assert.match(m[0], /class="icon-chev"/, id + ' 应内含 .icon-chev 小箭头');
@@ -32,12 +32,12 @@ test('两个「收起」控件都换成了内联箭头素材，按钮里不再�
   });
   // 文案退到 title / aria-label，别丢可发现性
   assert.match(HTML, /id="panel-toggle"[\s\S]*?aria-label="收起右栏"/);
-  assert.match(HTML, /id="cards-toggle-all"[\s\S]*?aria-label="把侧栏卡片一次收起 \/ 展开"/);
+  assert.match(HTML, /id="sidebar-toggle"[\s\S]*?aria-label="收起左栏"/);
 });
 
 test('.icon-chev 有定义，且收起态翻向左（rotate 180）', () => {
   assert.match(CSS, /\.icon-chev\s*\{[^}]*stroke:\s*currentColor/, '.icon-chev 应继承文字色');
-  assert.match(CSS, /\.cards-toggle-all\.is-collapsed\s+\.icon-chev/, '「收起全部卡片」收起态要翻箭头');
+  assert.match(CSS, /#sidebar\.collapsed\s+\.sidebar-toggle\s+\.icon-chev\s*\{\s*transform:\s*none/, '左栏收起后箭头要翻向右（＝展开方向）');
   assert.match(
     CSS,
     /#right-panel\.collapsed\s+\.panel-toggle\s+\.icon-chev\s*\{\s*transform:\s*rotate\(180deg\)/,
@@ -47,12 +47,34 @@ test('.icon-chev 有定义，且收起态翻向左（rotate 180）', () => {
   assert.match(CSS, /#right-panel\s+\.right-head\s*\{\s*cursor:\s*pointer/);
 });
 
-test('app.js：收起控件只切 class / 改 aria，不再写 textContent', () => {
-  const all = APP.match(/const all = \$\('cards-toggle-all'\);[\s\S]*?\n    \}/);
-  assert.ok(all, '缺 applyCardState 里的「收起全部卡片」分支');
-  assert.match(all[0], /classList\.toggle\('is-collapsed'/, '收起态应切 is-collapsed');
-  assert.ok(!/all\.textContent/.test(all[0]), '不该再往按钮里写文字');
+test('左栏那个箭头点下去真的把整列收起来（P12：原来只能折叠卡片 ⇒ 看着像没反应）', () => {
+  // 展开态箭头指左（＝收起方向）
+  assert.match(CSS, /\.sidebar-toggle\s+\.icon-chev\s*\{\s*transform:\s*rotate\(180deg\)/);
+  // 收起态：列宽变窄条 + 卡片隐藏 + 只留品牌标
+  assert.match(CSS, /#sidebar\.collapsed\s*\{[^}]*width:\s*46px/, '左栏收起后要收成窄条');
+  assert.match(CSS, /#sidebar\.collapsed\s+section\.card\s*\{\s*display:\s*none/, '左栏收起后卡片要藏起来');
+  assert.match(CSS, /#sidebar\.collapsed\s+\.brand-name[^{]*\{\s*display:\s*none/);
 
+  const js = APP.match(/function onToggleSidebar\(\)[\s\S]*?\n  \}/);
+  assert.ok(js, '缺 onToggleSidebar（左栏收起开关）');
+  assert.match(js[0], /classList\.contains\('collapsed'\)/, '要按当前态取反');
+  assert.match(js[0], /applySidebarCollapsed\(/, '要落到 applySidebarCollapsed（切 class ＋ 改 aria）');
+  assert.match(js[0], /saveSidebarCollapsed\(/, '要记住收起状态');
+  assert.match(js[0], /MapCtl\.resize/, '收起后地图变宽，必须让 AMap resize 一次');
+
+  const apply = APP.match(/function applySidebarCollapsed\(collapsed\)[\s\S]*?\n  \}/);
+  assert.ok(apply, '缺 applySidebarCollapsed');
+  assert.match(apply[0], /classList\.toggle\('collapsed'/, '收起态应切 #sidebar 的 collapsed');
+  assert.match(apply[0], /aria-expanded/, '应同步 aria-expanded');
+  assert.ok(!/textContent/.test(apply[0]), '不该往按钮里写文字');
+
+  // 绑定与开机恢复
+  assert.match(APP, /sidebarToggle\.onclick = onToggleSidebar/);
+  assert.match(APP, /applySidebarCollapsed\(loadSidebarCollapsed\(\)\)/, '刷新后要保持上次的收起状态');
+  // 窄条可点开（与右栏抽屉惯例一致）
+  assert.match(APP, /#sidebar\s+\.brand/);
+
+  // 右栏按钮仍不写文字
   const panel = APP.match(/function onTogglePanel\(\)[\s\S]*?\n  \}/);
   assert.ok(panel, '缺 onTogglePanel');
   assert.ok(!/btn\.textContent/.test(panel[0]), '右栏按钮不该再写「收起 ‹ / 展开 ›」文字');

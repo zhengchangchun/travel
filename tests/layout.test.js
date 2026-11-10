@@ -43,7 +43,7 @@ const PIN_IDS = [
 // 产品名（用户 2026-11-09：改名叫「旅迹」，网页也叫旅迹）
 test('产品名与 logo：页面标题「旅迹」、品牌前是 logo 图而不是 emoji', () => {
   assert.match(HTML, /<title>旅迹<\/title>/, '页面 title 应为「旅迹」');
-  assert.match(HTML, /<h1><img class="brand-logo" src="\/img\/logo\.svg"[^>]*\/>旅迹<\/h1>/, '品牌应为 logo + 旅迹');
+  assert.match(HTML, /<h1><img class="brand-logo" src="\/img\/logo\.svg"[^>]*\/><span class="brand-name">旅迹<\/span><\/h1>/, '品牌应为 logo + 旅迹（文字包一层，左栏收成窄条时只藏字）');
   assert.match(HTML, /rel="icon"[^>]*logo\.svg/, '缺 favicon（svg）');
   assert.ok(!/🧭/.test(HTML), '名字前面不要那个小图标/emoji');
   assert.ok(!/城市旅行规划器/.test(HTML), '页面上不该再出现旧名');

@@ -440,6 +440,11 @@ button.danger:hover { background: #ad2102; }
   #right-panel.collapsed { width: 100%; min-width: 0; }
   #right-panel.collapsed .right-body { display: block; }
   #right-panel.collapsed .right-head h2 { display: block; }
+  /* 窄屏左栏是整幅一行：收起＝只留品牌行那条（卡片仍隐藏），照样看得见效果 */
+  #sidebar.collapsed { width: 100%; min-width: 0; max-height: none; padding: 12px 16px; }
+  #sidebar.collapsed .brand-top { flex-direction: row; gap: 8px; }
+  #sidebar.collapsed .brand-top h1 { flex: 1; justify-content: flex-start; }
+  #sidebar.collapsed .brand-name { display: inline; }
   .right-body { overflow-y: visible; }
   .infocard { width: auto; left: 12px; right: 12px; }
 }
@@ -991,14 +996,29 @@ button:disabled { opacity: .45; }
    （追加层，不改上面既有规则；`.collapsed` 复用为卡片收起态）
    ============================================================ */
 
-/* 品牌区里的「一次收起 / 展开全部卡片」—— P11：文字换成一个小箭头素材 */
-.cards-toggle-all {
+/* 品牌区里的小箭头 = 左栏整列收起 / 展开（与右栏 .panel-toggle 对称） */
+.sidebar-toggle {
   margin-top: 0; width: 24px; height: 24px; padding: 0; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 999px; background: transparent;
   color: var(--ink-3, #6b7280);
 }
-.cards-toggle-all:hover { color: var(--accent); border-color: var(--accent); }
+.sidebar-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 左栏收起态：整列收成窄条，只留品牌标与小箭头（点窄条任意处都能开回来） */
+#sidebar { transition: width .2s ease, min-width .2s ease; }
+#sidebar.collapsed { width: 46px; min-width: 46px; padding: 12px 6px; }
+#sidebar.collapsed .brand { padding-bottom: 0; cursor: pointer; }
+#sidebar.collapsed .brand::after { display: none; }
+#sidebar.collapsed .brand-top { flex-direction: column; gap: 10px; }
+#sidebar.collapsed .brand-top h1 { flex: none; justify-content: center; }
+#sidebar.collapsed .brand-name,
+#sidebar.collapsed .brand .sub { display: none; }
+#sidebar.collapsed section.card { display: none; }
+#sidebar.collapsed .sidebar-toggle { width: 30px; height: 30px; }
+/* 展开态指左（＝收起方向），收起后翻向右（＝展开方向）：箭头的方向就是这一栏要去的方向 */
+.sidebar-toggle .icon-chev { transform: rotate(180deg); }
+#sidebar.collapsed .sidebar-toggle .icon-chev { transform: none; }
 
 /* 「收起」控件统一成一个小箭头（.icon-chev）：展开时指向右，收起后翻向左 */
 .icon-chev {
@@ -1007,7 +1027,6 @@ button:disabled { opacity: .45; }
   stroke-linecap: round; stroke-linejoin: round;
   transition: transform .18s ease;
 }
-.cards-toggle-all.is-collapsed .icon-chev,
 #right-panel.collapsed .panel-toggle .icon-chev { transform: rotate(180deg); }
 
 /* 右栏收起按钮：只剩箭头（窄条时整条可点，箭头也好点） */

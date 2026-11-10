@@ -21,7 +21,7 @@ test('侧栏每张卡都带 data-card（可折叠的钩子）', () => {
   CARD_NAMES.forEach((name) => {
     assert.match(HTML, new RegExp('data-card="' + name + '"'), '缺 data-card=' + name);
   });
-  assert.match(HTML, /id="cards-toggle-all"/, '缺「收起全部卡片」按钮');
+  assert.match(HTML, /id="sidebar-toggle"/, '缺左栏收起按钮');
 });
 
 test('筛选与结果在同一张卡里：chips / 评分 / 结果条 / 列表同属 filter 卡', () => {
@@ -52,11 +52,11 @@ test('左栏只放浏览（城市/搜索/筛选），个人的卡都在右栏', 
   ['base-box', 'base-name', 'note-card', 'note-detail'].forEach((id) => {
     assert.ok(right.includes('id="' + id + '"'), '右栏缺 ' + id);
   });
-  // 「收起全部卡片」只管左栏（否则会从左边把右栏的卡也收了）
-  assert.match(APP, /function\s+sidebarCards/, '缺左栏卡片集合');
-  const toggler = APP.match(/function\s+toggleAllCards[\s\S]*?\n  \}/);
-  assert.ok(toggler, '缺 toggleAllCards');
-  assert.match(toggler[0], /sidebarCards\(\)/, '收起全部应只作用于左栏');
+  // 左栏列头那个箭头是「收起左栏」（P12 起和右栏一样收成窄条，不再只管卡片）
+  const toggler = APP.match(/function\s+onToggleSidebar[\s\S]*?\n  \}/);
+  assert.ok(toggler, '缺 onToggleSidebar');
+  assert.match(toggler[0], /#?sidebar/, '收起应作用于左栏');
+  assert.match(CSS, /#sidebar\.collapsed\s*\{[^}]*width:\s*46px/, '左栏收起要真的收成窄条');
 });
 
 test('分类 chip 只占一行：不折成两行（窄了先缩、再截断标签）', () => {

@@ -162,12 +162,6 @@
     return Array.prototype.slice.call(document.querySelectorAll('section.card[data-card]'));
   }
 
-  // 左栏卡片（「收起全部卡片」只管左栏；右栏的锚点/笔记卡只能自己点标题条收起）
-  function sidebarCards() {
-    const side = $('sidebar');
-    return side ? Array.prototype.slice.call(side.querySelectorAll('section.card[data-card]')) : [];
-  }
-
   function applyCardState() {
     const cards = cardSections();
     cards.forEach((sec) => {
@@ -181,15 +175,6 @@
         bar.title = (open ? '收起' : '展开') + '这一块';
       }
     });
-    const all = $('cards-toggle-all');
-    if (all) {
-      const anyOpen = sidebarCards().some((sec) => !sec.classList.contains('collapsed'));
-      // P11：文字换成一个小箭头（收起态箭头由 CSS 翻向左），文案退到 title / aria-label
-      all.classList.toggle('is-collapsed', !anyOpen);
-      const label = anyOpen ? '收起全部卡片' : '展开全部卡片';
-      all.title = label;
-      all.setAttribute('aria-label', label);
-    }
   }
 
   function toggleCard(name) {
@@ -198,14 +183,50 @@
     applyCardState();
   }
 
-  function toggleAllCards() {
-    const cards = sidebarCards();
-    const anyOpen = cards.some((sec) => !sec.classList.contains('collapsed'));
-    cards.forEach((sec) => {
-      cardState[sec.dataset.card] = !anyOpen;
-    });
-    saveCardState();
-    applyCardState();
+  // ---------- P12：左栏整列收起 / 展开（与右栏 onTogglePanel 对称） ----------
+  // P11 那个小箭头原来只能折叠卡片，用户以为它是「收起左栏」、点了却没反应 ⇒ 改成整列收起；
+  // 单张卡片仍可点自己的标题条折叠。
+  const SIDEBAR_COLLAPSED_KEY = 'travel.sidebar-collapsed';
+
+  function saveSidebarCollapsed(collapsed) {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch (err) {
+      /* 存不下不影响使用 */
+    }
+  }
+
+  function loadSidebarCollapsed() {
+    try {
+      return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function applySidebarCollapsed(collapsed) {
+    const side = $('sidebar');
+    if (side) side.classList.toggle('collapsed', !!collapsed);
+    const btn = $('sidebar-toggle');
+    if (btn) {
+      const label = collapsed ? '展开左栏' : '收起左栏';
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    }
+  }
+
+  function onToggleSidebar() {
+    const side = $('sidebar');
+    if (!side) return;
+    const collapsed = !side.classList.contains('collapsed');
+    applySidebarCollapsed(collapsed);
+    saveSidebarCollapsed(collapsed);
+    // 收起后地图变宽，AMap 要 resize() 防灰块错位（与右栏同一处理）
+    if (MapCtl.resize) {
+      requestAnimationFrame(() => MapCtl.resize());
+      setTimeout(() => MapCtl.resize(), 240);
+    }
   }
 
   function bindCardBars() {
@@ -222,8 +243,8 @@
         };
       }
     );
-    const all = $('cards-toggle-all');
-    if (all) all.onclick = toggleAllCards;
+    const sidebarToggle = $('sidebar-toggle');
+    if (sidebarToggle) sidebarToggle.onclick = onToggleSidebar;
   }
 
   // 「i」说明点：悬停/聚焦由 CSS 出气泡；点在它身上别把卡片折叠了（冒泡会碰到标题条）
@@ -1681,6 +1702,16 @@
       };
     }
     $('panel-toggle').onclick = onTogglePanel;
+    // 左栏收成窄条后，点窄条任意处（除了箭头自己）也能开回来（抽屉惯例，与右栏一致）
+    const sideBrand = document.querySelector('#sidebar .brand');
+    if (sideBrand) {
+      sideBrand.onclick = (e) => {
+        const side = $('sidebar');
+        if (!side || !side.classList.contains('collapsed')) return;
+        if (e.target && e.target.closest && e.target.closest('#sidebar-toggle')) return;
+        onToggleSidebar();
+      };
+    }
     // 窄条时整条「我挑的」都能点开（抽屉惯例）；按钮自己已处理，别翻两次
     const rightHead = document.querySelector('#right-panel .right-head');
     if (rightHead) {
@@ -1726,6 +1757,7 @@
     renderBase();
     loadCardState(); // 侧栏卡片折叠状态（依赖 base 的默认展开策略）
     applyCardState();
+    applySidebarCollapsed(loadSidebarCollapsed()); // 上次把左栏收成窄条的话，刷新后保持
 
     // Esc 关信息卡；点地图空白也关（不用去够卡片右上角那个 ×）
     document.addEventListener('keydown', (e) => {
