@@ -96,6 +96,75 @@ function fmtCoord(v) {
   return Number(v).toFixed(5);
 }
 
+// ---------- 取景与投影（P16）----------
+// 静态地图只要给了 location+zoom，取景就完全由我们决定 ⇒ 能把每个点的像素位置算出来，
+// 页面就能在图上叠可点的序号（不靠猜）。
+// ⚠️ 高德静态地图的 zoom 用的是 **512 像素世界**（实测：z13 下 0.02° 经度 = 232px，
+//    是 256 瓦片公式的 2 倍）—— 用 256 会整体错位一半，这个是量出来的。
+const TILE = 512;
+
+function mercatorPixel(lng, lat, zoom) {
+  const scale = TILE * Math.pow(2, zoom);
+  const x = ((Number(lng) + 180) / 360) * scale;
+  const rad = (Math.max(-85.05112878, Math.min(85.05112878, Number(lat))) * Math.PI) / 180;
+  const y = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * scale;
+  return { x, y };
+}
+
+// 点（经纬度）在图里的百分比位置：左上角为 (0,0)
+function pointPercent(lng, lat, view) {
+  const v = view || {};
+  if (!v.center || !Number.isFinite(Number(v.zoom)) || !v.width || !v.height) return null;
+  const z = Number(v.zoom);
+  const c = mercatorPixel(v.center.lng, v.center.lat, z);
+  const p = mercatorPixel(lng, lat, z);
+  return {
+    left: ((p.x - c.x + v.width / 2) / v.width) * 100,
+    top: ((p.y - c.y + v.height / 2) / v.height) * 100,
+  };
+}
+
+// 取景：找出能把所有点都装下的最大 zoom（留 pad 像素边距），取 bbox 中心
+function fitView(points, opts = {}) {
+  const width = Number(opts.width) || 760;
+  const height = Number(opts.height) || 430;
+  const pad = opts.pad === undefined ? 44 : Number(opts.pad);
+  const pts = (points || []).filter((p) => Number.isFinite(Number(p.lng)) && Number.isFinite(Number(p.lat)));
+  if (!pts.length) return { center: { lng: 120, lat: 30 }, zoom: 12, width, height };
+  const lngs = pts.map((p) => Number(p.lng));
+  const lats = pts.map((p) => Number(p.lat));
+  const center = {
+    lng: (Math.min.apply(null, lngs) + Math.max.apply(null, lngs)) / 2,
+    lat: (Math.min.apply(null, lats) + Math.max.apply(null, lats)) / 2,
+  };
+  const maxZ = Number.isFinite(Number(opts.maxZoom)) ? Number(opts.maxZoom) : 17;
+  const minZ = Number.isFinite(Number(opts.minZoom)) ? Number(opts.minZoom) : 3;
+  const okAt = (z) =>
+    pts.every((p) => {
+      const pct = pointPercent(p.lng, p.lat, { center, zoom: z, width, height });
+      if (!pct) return false;
+      const x = (pct.left / 100) * width;
+      const y = (pct.top / 100) * height;
+      return x >= pad && x <= width - pad && y >= pad && y <= height - pad;
+    });
+  let zoom = minZ;
+  for (let z = maxZ; z >= minZ; z -= 1) {
+    if (okAt(z)) {
+      zoom = z;
+      break;
+    }
+  }
+  return { center, zoom, width, height };
+}
+
+// 路线上的点也参与取景（路线会绕出点位矩形）
+function fitViewForStopsAndPoints(stops, points, opts = {}) {
+  const all = [];
+  (points || []).forEach((p) => all.push({ lng: p[0], lat: p[1] }));
+  (stops || []).forEach((s) => all.push({ lng: s.lng, lat: s.lat }));
+  return fitView(all, opts);
+}
+
 // 静态地图 paths：线宽,线色,线透明度,填充色,填充透明度:lng,lat;lng,lat...
 function buildPathsParam(points, opts = {}) {
   const weight = opts.weight || 6;
@@ -166,11 +235,17 @@ function buildMarkersParam(stops) {
 
 // 静态地图尺寸：760×430（scale=1）在手机上就是 2 倍像素（390 CSS × DPR2）⇒ 够清且不臃肿
 // 实测：scale=2 的 700×400 每张 226KB，base64 后两张就要 600KB 页面；scale=1 每张 ~80KB
-function staticMapParams({ stops, points, groups, size = '760*430', scale = 1, zoom }) {
-  const params = { size, scale, markers: buildMarkersParam(stops) };
+function staticMapParams({ stops, points, groups, size = '760*430', scale = 1, view, zoom, location, withMarkers = true }) {
+  const params = { size, scale };
+  // 序号由分享页自己画（位置和可点区域用同一套投影，才能对得上）⇒ 默认不再让高德画 marker
+  if (withMarkers) params.markers = buildMarkersParam(stops);
   const paths = groups && groups.length ? buildPathsParamForGroups(groups) : buildPathsParam(points);
   if (paths) params.paths = paths;
-  if (zoom) params.zoom = String(zoom);
+  // 显式取景（有 view 就用自己的，否则退回高德自动取景）
+  const z = view ? view.zoom : zoom;
+  if (z) params.zoom = String(z);
+  if (view && view.center) params.location = `${fmtCoord(view.center.lng)},${fmtCoord(view.center.lat)}`;
+  else if (location) params.location = location;
   return params;
 }
 
@@ -239,15 +314,27 @@ async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city 
 }
 
 // 路线 → 静态地图 PNG（Buffer）。失败就往抛（由调用方决定降级）
-async function mapForRoute({ amap, stops, points, groups, size, scale, zoom, sleepMs = 0 }) {
-  const params = staticMapParams({ stops, points, groups, size, scale, zoom });
+async function mapForRoute({ amap, stops, points, groups, view, size, scale, zoom, withMarkers, sleepMs = 0 }) {
+  const params = staticMapParams({ stops, points, groups, view, size, scale, zoom, withMarkers });
   if (sleepMs > 0) await sleep(sleepMs); // 与上一张错开，避开静态地图 QPS
   const { buffer, contentType } = await amap.staticMap(params);
   return { buffer, contentType, params };
 }
 
 // 生成一整套：{ maps: {mode: {...}}, errors: {mode: msg} }
-async function buildShareMaps({ amap, cache, intervalMs, stops, modes, size, scale, mapGapMs = 1200 }) {
+async function buildShareMaps({
+  amap,
+  cache,
+  intervalMs,
+  stops,
+  modes,
+  size,
+  scale,
+  width = 760,
+  height = 430,
+  pad = 44,
+  mapGapMs = 1200,
+}) {
   const maps = {};
   const errors = {};
   const wanted = (modes && modes.length ? modes : SUPPORTED_MODES).filter((m) => SUPPORTED_MODES.includes(m));
@@ -255,13 +342,17 @@ async function buildShareMaps({ amap, cache, intervalMs, stops, modes, size, sca
   for (const mode of wanted) {
     try {
       const route = await routeForStops({ amap, cache, intervalMs, mode, stops });
+      // 取景自己算：这样页面上能把每个点的像素位置算准、叠可点热区
+      const view = fitViewForStopsAndPoints(stops, route.points, { width, height, pad });
       const map = await mapForRoute({
         amap,
         stops,
         points: route.points,
         groups: route.groups,
+        view,
         size,
         scale,
+        withMarkers: false,
         sleepMs: first ? 0 : mapGapMs,
       });
       maps[mode] = {
@@ -282,6 +373,18 @@ async function buildShareMaps({ amap, cache, intervalMs, stops, modes, size, sca
           reason: l.reason,
         })),
         groupCount: (route.groups || []).length,
+        view,
+        // 图上每个点的百分比坐标 ⇒ 分享页能把序号做成可点热区（点一下看名字 / 跳高德）
+        pins: stops.map((s, i) => {
+          const pct = pointPercent(s.lng, s.lat, view);
+          return {
+            seq: i + 1,
+            name: s.name || '地点' + (i + 1),
+            url: s.url || '',
+            left: pct ? Number(pct.left.toFixed(2)) : null,
+            top: pct ? Number(pct.top.toFixed(2)) : null,
+          };
+        }),
         failedLegs: route.failed,
         points: route.points.length,
         image: `data:${map.contentType};base64,${map.buffer.toString('base64')}`,
@@ -300,10 +403,15 @@ module.exports = {
   MODE_LABEL,
   MAX_PATH_POINTS,
   MAX_PATHS,
+  TILE,
   LEG_PALETTE,
   legColor,
   amapColor,
   modeLabel,
+  mercatorPixel,
+  pointPercent,
+  fitView,
+  fitViewForStopsAndPoints,
   thinPoints,
   simplifyPoints,
   buildPathsParam,

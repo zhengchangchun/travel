@@ -216,6 +216,24 @@ function fmtDuration(sec) {
   return `${m} min`;
 }
 
+// 图上的点位（P16）：序号团是分享页自己画的（位置由经纬度→像素算出来），既是标记也是可点区域
+function pinsHtml(route) {
+  const pins = (route.pins || []).filter(
+    (p) => Number.isFinite(p.left) && Number.isFinite(p.top) && p.left > -1 && p.left < 101 && p.top > -1 && p.top < 101
+  );
+  if (!pins.length) return '';
+  const last = pins.length - 1;
+  return pins
+    .map((p, i) => {
+      const cls = i === 0 ? ' start' : i === last ? ' end' : '';
+      return (
+        `<button type="button" class="pin${cls}" data-seq="${Number(p.seq)}" title="${escHtml(p.name)}" ` +
+        `aria-label="跳到地点卡：${escHtml(p.name)}" style="left:${p.left}%;top:${p.top}%">${Number(p.seq)}</button>`
+      );
+    })
+    .join('');
+}
+
 // 分段列表：色点与地图上那段同色；点一下高亮（一次只能选一段）
 // 段号的写法用「点序号」：2→3 就是地图上 ② 到 ③ 那一段
 function legRowsHtml(route) {
@@ -265,7 +283,10 @@ function routeBlockHtml(p) {
       const r = p.maps[m];
       return (
         `<div class="rpanel${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}">` +
+        `<div class="mapwrap">` +
         `<img class="routemap" src="${escHtml(r.image)}" alt="${escHtml((r.modeLabel || m) + ' 路线图')}" />` +
+        pinsHtml(r) +
+        `</div>` +
         legRowsHtml(r) +
         `</div>`
       );
@@ -305,7 +326,7 @@ function buildHtml(payload) {
         ? `<img class="thumb" src="${escHtml(s.photo)}" alt="" loading="lazy" onerror="this.remove()"/>`
         : '';
       return (
-        `<li class="stop">` +
+        `<li class="stop" data-seq="${s.seq}">` +
         `<div class="idx">${s.seq}</div>` +
         `<div class="body">` +
         `<div class="name">${escHtml(s.name)}</div>` +
@@ -355,7 +376,19 @@ function buildHtml(payload) {
   .tab .tab-meta { color:var(--ink3); font-weight:400; font-size:12px; margin-left:6px; }
   .rpanel { display:none; }
   .rpanel.on { display:block; }
+  .mapwrap { position:relative; }
   .routemap { display:block; width:100%; border-radius:12px; border:1px solid var(--line); }
+  /* 图上的点：位置按经纬度算出来，序号团既是标记也是可点区域 */
+  .pin { position:absolute; width:26px; height:26px; padding:0; transform:translate(-50%,-50%);
+         border-radius:50%; border:2px solid #fff; background:#1677ff; color:#fff;
+         font:600 12px/1 -apple-system,"PingFang SC",sans-serif; cursor:pointer;
+         display:flex; align-items:center; justify-content:center;
+         box-shadow:0 1px 4px rgba(0,0,0,.35); }
+  .pin.start { background:#22aa66; }
+  .pin.end { background:#e0503a; }
+  .pin:hover, .pin:focus { transform:translate(-50%,-50%) scale(1.18); outline:none;
+                           box-shadow:0 0 0 4px rgba(22,119,255,.35); }
+  .stop.hl { border-color:var(--accent); box-shadow:0 0 0 3px rgba(22,119,255,.18); }
   .legs { list-style:none; margin:10px 0 0; padding:0; }
   .leg { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--line);
          border-radius:10px; background:#fff; margin-bottom:6px; font-size:13px; cursor:pointer; }
@@ -401,7 +434,7 @@ function buildHtml(payload) {
   <ol>${items}</ol>
   <div class="foot">${nav}</div>
   <p class="tip">点「在高德打开 / 全程路线」会唤起手机上的高德地图（电脑上是网页版）。<br/>
-  图上绿点是出发点、红点是终点，其它按 1/2/3… 标序号；路线按分段上色（段数多时每 2 段同色），与下面的分段列表色点一一对应。这份文件是离线自包含的，直接转发就能看。</p>
+  图上绿点是出发点、红点是终点，其它按 1/2/3… 标序号；<b>点图上那个序号团会跳到下面那张地点卡</b>；路线按分段上色（段数多时每 2 段同色），与分段列表的色点一一对应。这份文件是离线自包含的，直接转发就能看。</p>
 </div>
 <script>
 (function () {
@@ -426,6 +459,18 @@ function buildHtml(payload) {
         legs.forEach(function (x) { x.classList.remove('on'); });
         if (on) li.classList.add('on');
       });
+    });
+  });
+  // 图上的点：跳到对应地点卡并高亮一下
+  Array.prototype.forEach.call(document.querySelectorAll('.pin'), function (pin) {
+    pin.addEventListener('click', function () {
+      var seq = pin.getAttribute('data-seq');
+      var card = document.querySelector('.stop[data-seq="' + seq + '"]');
+      if (!card) return;
+      Array.prototype.forEach.call(document.querySelectorAll('.stop.hl'), function (x) { x.classList.remove('hl'); });
+      card.classList.add('hl');
+      if (card.scrollIntoView) card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setTimeout(function () { card.classList.remove('hl'); }, 2600);
     });
   });
 })();
