@@ -756,7 +756,7 @@
     try {
       await Selection.move(index, delta);
     } catch (err) {
-      UI.setStatus('调整顺序失败：' + err.message);
+      UI.setStatus('调整顺序失败：' + human(err));
     }
   }
 
@@ -792,7 +792,7 @@
     try {
       await Selection.reorder(plan.order.map((p) => p.id));
     } catch (err) {
-      UI.setStatus('自动排序保存失败：' + err.message);
+      UI.setStatus('自动排序保存失败：' + human(err));
       return;
     }
     setView('itinerary');
@@ -860,7 +860,7 @@
     try {
       await Selection.toggle(poi);
     } catch (err) {
-      UI.setStatus('选中失败：' + err.message);
+      UI.setStatus('选中失败：' + human(err));
     }
   }
 
@@ -894,7 +894,7 @@
         Route.draw(state.city, Selection.list());
       }
     } catch (err) {
-      UI.setStatus('调序失败：' + err.message);
+      UI.setStatus('调序失败：' + human(err));
     }
   }
 
@@ -932,7 +932,7 @@
       const ok = await Itinerary.copyText(text);
       UI.setStatus(ok ? '行程单已复制到剪贴板' : '已弹出复制框');
     } catch (err) {
-      UI.setStatus('导出失败：' + err.message);
+      UI.setStatus('导出失败：' + human(err));
     }
   }
 
@@ -943,7 +943,7 @@
       Itinerary.download(state.city + '-行程.md', text);
       UI.setStatus('行程单已下载');
     } catch (err) {
-      UI.setStatus('下载失败：' + err.message);
+      UI.setStatus('下载失败：' + human(err));
     }
   }
 
@@ -1719,7 +1719,7 @@
       refresh();
       UI.setStatus('已删除「' + state.city + '」的全部行程与地点（' + n + ' 个）');
     } catch (err) {
-      UI.setStatus('删除行程失败：' + err.message);
+      UI.setStatus('删除行程失败：' + human(err));
     }
   }
 
@@ -1754,7 +1754,7 @@
       await reloadSelection(); // 选中集 / ★ 星标 / 「我的行程」卡一起对齐
       UI.setStatus('已加入行程：' + poi.name);
     } catch (err) {
-      UI.setStatus('加入行程失败：' + err.message);
+      UI.setStatus('加入行程失败：' + human(err));
     }
   }
 
@@ -1857,7 +1857,7 @@
         await ensureTrip();
         UI.setStatus('已新建行程');
       } catch (err) {
-        UI.setStatus('新建行程失败：' + err.message);
+        UI.setStatus('新建行程失败：' + human(err));
       }
     };
     $('trip-delete-btn').onclick = onDeleteTrip;
@@ -1868,8 +1868,8 @@
     try {
       state.config = await API.getConfig();
     } catch (err) {
-      UI.showMapError(err.message);
-      UI.setStatus('后端不可用：' + err.message);
+      UI.showMapError(human(err));
+      UI.setStatus('后端不可用：' + human(err));
       return;
     }
 
@@ -1911,7 +1911,7 @@
           if (!poi || !poi.id || typeof poi.lng !== 'number') return;
           Selection.select(poi)
             .then(() => UI.setStatus('已加入我的选择：' + (poi.name || '')))
-            .catch((err) => UI.setStatus('加入失败：' + err.message));
+            .catch((err) => UI.setStatus('加入失败：' + human(err)));
         },
       });
     }
@@ -1930,8 +1930,8 @@
       MapCtl.onMoveEnd(() => onViewChanged());
       UI.hideMapError();
     } catch (err) {
-      UI.showMapError(err.message);
-      UI.setStatus('地图加载失败：' + err.message);
+      UI.showMapError(human(err));
+      UI.setStatus('地图加载失败：' + human(err));
     }
 
     // 默认城市：用城市搜索拿到主城区 center（高德 city center 就是主城区）；

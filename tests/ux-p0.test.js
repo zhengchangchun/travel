@@ -79,11 +79,27 @@ test('errors.js：已知码给人话、认不出也不吞线索', () => {
   const unknown = E.humanize(new Error('SomethingWentWrong_42'));
   assert.match(unknown, /暂时没成功/, '认不出来也要说人话');
   assert.match(unknown, /SomethingWentWrong_42/, '原始串要留一截，方便排查');
+
+  // 后端已经写好中文说明时别再包一层（否则「行程不存在」→「暂时没成功（行程不存在）」）
+  assert.strictEqual(E.humanize(new Error('行程不存在')), '行程不存在');
+  assert.strictEqual(E.humanize({ code: 'HTTP_ERROR', message: '行程里没有这个地点' }), '行程里没有这个地点');
+  // 但裸码即使带 code 也要换成表里的话，不能被 looksHuman 放过
+  assert.match(E.humanize({ code: 'HTTP_ERROR', message: 'INVALID_USER_KEY' }), /Key 无效/);
+  assert.strictEqual(typeof E.looksHuman, 'function', 'looksHuman 要可测');
+  assert.strictEqual(E.looksHuman('行程不存在'), true);
+  assert.strictEqual(E.looksHuman('NETWORK_ERROR'), false);
 });
 
-test('app.js / notes.js：界面报错都走 human()，不再直吐 err.message', () => {
+test('app.js / notes.js / route.js：界面报错都走 human()，不再直吐 err.message', () => {
   assert.match(APP, /function\s+human\(err\)/, 'app.js 缺 human()');
   assert.match(NOTES, /function\s+human\(err\)/, 'notes.js 缺 human()');
+  assert.match(read('web/js/route.js'), /function\s+human\(err\)/, 'route.js 缺 human()');
+  // 全量扫描：任何面向用户的 err.message 拼接都不该再出现（只允许 human() 内部的兜底）
+  const offenders = ['app.js', 'notes.js', 'route.js'].filter((f) => {
+    const src = read('web/js/' + f);
+    return /(setStatus|setHint|setProgress|showMapError|textContent)\s*\([^)]*\+\s*err\.message/.test(src);
+  });
+  assert.deepStrictEqual(offenders, [], '这些文件还在直吐 err.message：' + offenders.join('、'));
   assert.ok(!/'搜索失败：'\s*\+\s*err\.message/.test(APP), '搜索失败不该直吐 err.message');
   assert.ok(!/'实时搜索失败：'\s*\+\s*err\.message/.test(APP), '实时搜索失败不该直吐 err.message');
   assert.ok(!/errors\[0\]\);?\s*$/m.test(APP.split('function reportLiveResult')[1] || ''), 'live.errors 也要过 human()');

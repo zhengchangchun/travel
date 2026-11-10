@@ -29,6 +29,13 @@
     }[c]));
   }
 
+  // 错误人话化：路线规划失败可能带高德的裸码（如 QPS_HAS_EXCEEDED_THE_LIMIT），别直接给用户看
+  function human(err) {
+    return window.TravelErrors
+      ? window.TravelErrors.humanize(err)
+      : String((err && err.message) || err || '');
+  }
+
   function modeMeta(key) {
     return MODES.find((m) => m.key === key) || MODES[2];
   }
@@ -250,7 +257,7 @@
       lastData = null;
       renderTotals();
       renderLegs();
-      setProgress('路线规划失败：' + err.message);
+      setProgress('路线规划失败：' + human(err));
       MapCtl.clearRoute();
     } finally {
       clearInterval(timer);

@@ -327,7 +327,7 @@
       st.parsed = p;
       renderPreview(p);
     } catch (err) {
-      setHint('识别失败：' + err.message, true);
+      setHint('识别失败：' + human(err), true);
     }
   }
 
@@ -399,7 +399,7 @@
       await refresh();
       await openDetail(note.id);
     } catch (err) {
-      setHint('保存失败：' + err.message, true);
+      setHint('保存失败：' + human(err), true);
     } finally {
       st.busy = false;
     }
@@ -645,7 +645,7 @@
       await refresh();
     } catch (err) {
       const after = $('note-place-hint');
-      if (after) after.textContent = '失败：' + err.message;
+      if (after) after.textContent = '失败：' + human(err);
     } finally {
       st.busy = false;
     }

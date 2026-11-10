@@ -16,8 +16,6 @@
     INSUFFICIENT_PRIVILEGES: '这把高德 Key 没开通该接口权限',
     // ---- 本机后端 / 网络 ----
     NETWORK_ERROR: '连不上本机后端 · 确认 node server/index.js 还在跑',
-    BAD_RESPONSE: '后端返回了看不懂的内容 · 稍后重试',
-    HTTP_ERROR: '后端报错',
     // ---- 笔记抓取 ----
     TIMEOUT: '抓取超时（站点慢或要登录）· 重试一次或换条链接',
     FETCH_FAIL: '抓取失败（站点拦截或网络问题）· 重试一次',
@@ -28,6 +26,13 @@
     NOT_IMPLEMENTED: '这个平台还没接抓取',
   };
   const KEYS = Object.keys(CODE_TEXT);
+
+  // 这两个是 api.js 拿不到具体 error.code / msg 时的兜底值，本身没有信息量：
+  // 后端若已经写了中文说明就听它的，真什么都没有才用这两句。
+  const GENERIC = {
+    HTTP_ERROR: '后端报错 · 稍后重试',
+    BAD_RESPONSE: '后端返回了看不懂的内容 · 稍后重试',
+  };
 
   function clip(text, n) {
     const s = String(text == null ? '' : text).trim();
@@ -55,6 +60,12 @@
     return '';
   }
 
+  // 已经是人话（后端 / 本地写好的中文说明）就别再包一层，否则「行程不存在」会变成
+  // 「暂时没成功（行程不存在）」——原文没多给信息，反而更难读
+  function looksHuman(raw) {
+    return /[\u4e00-\u9fa5]/.test(String(raw || ''));
+  }
+
   // 认不出来时的兜底：网络类关键词 → 网络话术；其余 → 「暂时没成功（原文）」
   function fallbackText(raw) {
     if (/fetch|network|econnrefused|socket hang up|etimedout|enotfound/i.test(raw)) {
@@ -69,8 +80,16 @@
     const opt = opts || {};
     const raw = rawOf(err);
     const code = codeOf(err);
-    const key = CODE_TEXT[code] ? code : findKey(code) || findKey(raw);
-    if (key) return CODE_TEXT[key];
+    const generic = Object.prototype.hasOwnProperty.call(GENERIC, code);
+    // 1) 具体码 → 表里的固定话术（兜底码不算，它没信息量）
+    if (!generic && code && CODE_TEXT[code]) return CODE_TEXT[code];
+    // 2) 从码 / 原文里认出已知码（高德常只给一句 errors[0]，没有 code）
+    const byKey = findKey(code) || findKey(raw);
+    if (byKey) return CODE_TEXT[byKey];
+    // 3) 已经是中文人话（后端 msg）→ 原样给，只截长
+    if (looksHuman(raw)) return clip(raw, 120);
+    // 4) 真什么都没有：兜底码用固定话术，其余进 fallback
+    if (generic) return GENERIC[code];
     return opt.fallback || fallbackText(raw);
   }
 
@@ -82,5 +101,5 @@
     return arr.length > 1 ? head + '（另有 ' + (arr.length - 1) + ' 条同类失败）' : head;
   }
 
-  window.TravelErrors = { humanize, humanizeList, CODE_TEXT, clip };
+  window.TravelErrors = { humanize, humanizeList, CODE_TEXT, clip, looksHuman };
 })();
