@@ -948,12 +948,31 @@
   }
 
   // ---------- P13 行程分享：生成「发给别人就能看」的分享包 ----------
-  // 三件套 = 自包含 HTML（自绘示意图 + 免 key 的高德链接）/ 纯文本 / JSON（留档）。
+  // 三件套 = 自包含 HTML（P14：地图生成的真实路线图 + 免 key 的高德链接）/ 纯文本 / JSON（留档）。
   // 住宿锚点只存在浏览器 localStorage ⇒ 生成时一起带上去，别人的分享页里也能看到「住」。
+  // 出行方式（驾车/步行）可以自己选，分享页里对方也能切换。
+  const SHARE_MODES = [
+    { value: 'both', label: '都带上', modes: ['driving', 'walking'] },
+    { value: 'driving', label: '驾车', modes: ['driving'] },
+    { value: 'walking', label: '步行', modes: ['walking'] },
+  ];
+  let lastShareModes = SHARE_MODES[0].modes.slice();
+
   function shareBase() {
     const b = state.base;
     if (!b || !Number.isFinite(Number(b.lng)) || !Number.isFinite(Number(b.lat))) return null;
     return { name: b.name || '住宿', lng: Number(b.lng), lat: Number(b.lat) };
+  }
+
+  function kmText(m) {
+    return (Number(m) / 1000).toFixed(1) + ' km';
+  }
+
+  function durationText(sec) {
+    const s = Number(sec) || 0;
+    const h = Math.floor(s / 3600);
+    const m = Math.round((s % 3600) / 60);
+    return h > 0 ? h + ' h ' + m + ' min' : m + ' min';
   }
 
   function renderShareResult(res) {
@@ -966,6 +985,42 @@
     head.className = 'share-head';
     head.textContent = '已生成 ' + res.count + ' 个点的分享包（' + res.files.length + ' 个文件）';
     box.appendChild(head);
+
+    // P14：真实路线的里程/耗时（地图规划出来的，不是直线估的）
+    if (res.maps && res.maps.length) {
+      const line = document.createElement('div');
+      line.className = 'share-routes';
+      line.textContent = res.maps
+        .map((m) => m.label + ' ' + kmText(m.distance) + ' · ' + durationText(m.duration))
+        .join('　');
+      box.appendChild(line);
+    }
+    if (res.mapErrors && Object.keys(res.mapErrors).length) {
+      const warn = document.createElement('div');
+      warn.className = 'share-warn';
+      warn.textContent = '部分路线图没生成：' + Object.keys(res.mapErrors).map((m) => res.mapErrors[m]).join('；');
+      box.appendChild(warn);
+    }
+
+    // 出行方式可以自己选：选了就地重新生成（同一行程重复生成不重复消耗配额，逐段结果有缓存）
+    const modesRow = document.createElement('div');
+    modesRow.className = 'share-modes';
+    const tip = document.createElement('span');
+    tip.className = 'share-modes-tip';
+    tip.textContent = '出行方式：';
+    modesRow.appendChild(tip);
+    SHARE_MODES.forEach((opt) => {
+      const same =
+        opt.modes.length === lastShareModes.length && opt.modes.every((m) => lastShareModes.indexOf(m) >= 0);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip toggle' + (same ? ' active' : '');
+      btn.textContent = opt.label;
+      btn.title = '按「' + opt.label + '」重新生成分享包';
+      btn.onclick = () => onShareTrip(opt.modes);
+      modesRow.appendChild(btn);
+    });
+    box.appendChild(modesRow);
 
     const open = document.createElement('a');
     open.className = 'share-open';
@@ -990,7 +1045,7 @@
     box.appendChild(dir);
   }
 
-  async function onShareTrip() {
+  async function onShareTrip(modes) {
     if (!state.city) {
       UI.setStatus('先选城市');
       return;
@@ -999,9 +1054,11 @@
       UI.setStatus('这条行程还没有地点：先在地图上挑几个点，再分享');
       return;
     }
+    lastShareModes = (modes && modes.length ? modes : lastShareModes).slice();
+    UI.setStatus('正在用地图生成真实路线（逐段规划 + 路线底图），稍等…');
     try {
       const trip = await ensureTrip();
-      const res = await API.exportTripShare(trip.id, { base: shareBase() });
+      const res = await API.exportTripShare(trip.id, { base: shareBase(), modes: lastShareModes });
       renderShareResult(res);
       const ok = await Itinerary.copyText(res.text);
       UI.setStatus(ok ? '分享包已生成，分享文案也复制好了' : '分享包已生成（可点「复制分享文案」）');
@@ -1786,9 +1843,9 @@
     $('itinerary-back').onclick = () => setView('list');
     $('itinerary-copy').onclick = onCopyItinerary;
     $('itinerary-download').onclick = onDownloadItinerary;
-    $('itinerary-share').onclick = onShareTrip;
+    $('itinerary-share').onclick = () => onShareTrip();
     const tripShareBtn = $('trip-share-btn');
-    if (tripShareBtn) tripShareBtn.onclick = onShareTrip;
+    if (tripShareBtn) tripShareBtn.onclick = () => onShareTrip();
     $('trip-new-btn').onclick = async () => {
       // 同一城市只保留一个行程：已有就复用，避免“两条行程的 pin 并集”导致删了还有星标
       if (state.trip) {

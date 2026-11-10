@@ -125,7 +125,7 @@ function categoryLabel(labels, key) {
 }
 
 // 载荷：路由从库里读出行程 + 有序点，再补上统计与链接；这里只做纯变换
-function buildPayload({ trip, city, stops, base, labels, when }) {
+function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors }) {
   const list = (stops || []).map((s, i) => ({
     seq: i + 1,
     name: s.name || '',
@@ -166,6 +166,9 @@ function buildPayload({ trip, city, stops, base, labels, when }) {
     base: base ? { name: base.name || '住宿', lng: Number(base.lng), lat: Number(base.lat) } : null,
     stats: { count: list.length, byCategory: byCat, hasBase: !!base },
     links,
+    // P14：地图生成的真实路线图（驾车/步行各一张，base64 内嵌）
+    maps: maps || {},
+    mapErrors: mapErrors || {},
     sketchPoints: withBase.map((p) => ({ seq: p.seq || 0, name: p.name, lng: p.lng, lat: p.lat, kind: p.kind || 'stop' })),
   };
 }
@@ -175,6 +178,14 @@ function buildText(payload) {
   const day = localDay(p.generatedAt);
   const lines = [`${p.title}（${p.stats.count} 个点${p.base ? ' + 住宿' : ''}）`];
   lines.push(`生成于 ${day} · 由旅迹导出 · 链接可直接跳高德`);
+  const modes = Object.keys(p.maps || {}).filter((m) => p.maps[m]);
+  if (modes.length) {
+    lines.push('');
+    modes.forEach((m) => {
+      const r = p.maps[m];
+      lines.push(`${r.modeLabel || m}全程：${(r.distance / 1000).toFixed(1)} km · ${fmtDuration(r.duration)}`);
+    });
+  }
   lines.push('');
   if (p.base) lines.push(`住宿：${p.base.name}（${fmt(p.base.lng, 5)}, ${fmt(p.base.lat, 5)}）\n`);
   p.stops.forEach((s) => {
@@ -197,10 +208,62 @@ function buildText(payload) {
   return lines.join('\n');
 }
 
+function fmtDuration(sec) {
+  const s = Number(sec) || 0;
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  if (h > 0) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+// 分享页里的路线块：有真实路线图就走 tab 切换，没有就退回自绘示意图
+function routeBlockHtml(p) {
+  const modes = Object.keys(p.maps || {}).filter((m) => p.maps[m] && p.maps[m].image);
+  if (!modes.length) {
+    return `<div class="sketch">${sketchSvg(p.sketchPoints)}</div>`;
+  }
+  const tabs = modes
+    .map((m, i) => {
+      const r = p.maps[m];
+      const meta = `${(r.distance / 1000).toFixed(1)} km · ${fmtDuration(r.duration)}`;
+      return (
+        `<button class="tab${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}">${escHtml(r.modeLabel || m)}` +
+        `<span class="tab-meta">${escHtml(meta)}</span></button>`
+      );
+    })
+    .join('');
+  const imgs = modes
+    .map((m, i) => {
+      const r = p.maps[m];
+      return `<img class="routemap${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}" src="${escHtml(r.image)}" alt="${escHtml(
+        (r.modeLabel || m) + ' 路线图'
+      )}" />`;
+    })
+    .join('');
+  const failed = Object.keys(p.mapErrors || {});
+  const note = failed.length
+    ? `<div class="rnote">${escHtml(failed.map((m) => modeLabelOf(m) + '路线图没生成：' + p.mapErrors[m]).join('；'))}</div>`
+    : '';
+  return (
+    `<div class="route">` +
+    `<div class="tabs">${tabs}</div>` +
+    `<div class="routemaps">${imgs}</div>` +
+    note +
+    `<div class="rnote">路线是高德按${escHtml(
+      modes.map((m) => (p.maps[m].modeLabel || m)).join(' / ')
+    )}规划的真实路线（沿线道路），图片已内嵌在本文件里，不联网也能看。</div>` +
+    `</div>`
+  );
+}
+
+function modeLabelOf(m) {
+  return m === 'driving' ? '驾车' : m === 'walking' ? '步行' : String(m);
+}
+
 function buildHtml(payload) {
   const p = payload;
   const day = localDay(p.generatedAt);
-  const svg = sketchSvg(p.sketchPoints);
+  const svg = routeBlockHtml(p);
   const items = p.stops
     .map((s) => {
       const meta = [];
@@ -251,6 +314,15 @@ function buildHtml(payload) {
   .chips { margin:10px 0 0; display:flex; flex-wrap:wrap; gap:6px; }
   .chip { background:#fff; border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--ink2); }
   .sketch { margin:14px 0 6px; }
+  .route { margin:14px 0 6px; }
+  .tabs { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+  .tab { background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 12px;
+         font-size:13px; color:var(--ink); cursor:pointer; }
+  .tab.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .tab .tab-meta { color:var(--ink3); font-weight:400; font-size:12px; margin-left:6px; }
+  .routemap { display:none; width:100%; border-radius:12px; border:1px solid var(--line); }
+  .routemap.on { display:block; }
+  .rnote { color:var(--ink3); font-size:12px; margin-top:6px; line-height:1.6; }
   .base { font-size:13px; color:#a86400; margin:6px 0 0; }
   ol { list-style:none; margin:14px 0 0; padding:0; }
   .stop { display:flex; gap:10px; align-items:flex-start; background:#fff; border:1px solid var(--line);
@@ -286,8 +358,21 @@ function buildHtml(payload) {
   <ol>${items}</ol>
   <div class="foot">${nav}</div>
   <p class="tip">点「在高德打开 / 全程路线」会唤起手机上的高德地图（电脑上是网页版）。<br/>
-  图中的数字就是行程顺序；「住」是住宿锚点。这份文件是离线自包含的，直接转发就能看。</p>
+  图中绿点是出发点、红点是终点，其它按 1/2/3… 标序号。这份文件是离线自包含的，直接转发就能看。</p>
 </div>
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var maps = Array.prototype.slice.call(document.querySelectorAll('.routemap'));
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      var mode = t.getAttribute('data-mode');
+      tabs.forEach(function (x) { x.classList.toggle('on', x === t); });
+      maps.forEach(function (m) { m.classList.toggle('on', m.getAttribute('data-mode') === mode); });
+    });
+  });
+})();
+</script>
 </body>
 </html>
 `;
@@ -311,13 +396,24 @@ function fileBase(payload) {
 }
 
 // 落盘：三个文件一起写；返回写出的绝对路径（目录不存在就建）
+// 注意：图片（base64）只进 HTML —— 否则 JSON 会被撑到几百 KB，而且 PNG 也不适合放在 JSON 里
+function payloadForJson(payload) {
+  const maps = {};
+  Object.keys(payload.maps || {}).forEach((m) => {
+    const r = payload.maps[m] || {};
+    maps[m] = Object.assign({}, r, { image: undefined });
+    delete maps[m].image;
+  });
+  return Object.assign({}, payload, { maps });
+}
+
 function writePackage(dir, payload) {
   fs.mkdirSync(dir, { recursive: true });
   const base = fileBase(payload);
   const files = [
     { kind: 'html', name: base + '.html', body: buildHtml(payload) },
     { kind: 'text', name: base + '.txt', body: buildText(payload) + '\n' },
-    { kind: 'json', name: base + '.json', body: JSON.stringify(payload, null, 2) + '\n' },
+    { kind: 'json', name: base + '.json', body: JSON.stringify(payloadForJson(payload), null, 2) + '\n' },
   ].map((f) => {
     const full = path.join(dir, f.name);
     fs.writeFileSync(full, f.body, 'utf8');
@@ -331,6 +427,7 @@ module.exports = {
   buildText,
   buildHtml,
   writePackage,
+  payloadForJson,
   sketchSvg,
   markerUrl,
   navUrl,

@@ -1,5 +1,6 @@
 const path = require('node:path');
 const share = require('../share');
+const routemap = require('../routemap');
 
 const SHARE_DIR = () => process.env.TRAVEL_SHARE_DIR || path.join(__dirname, '..', '..', 'share');
 
@@ -39,11 +40,29 @@ module.exports = [
   {
     method: 'POST',
     path: '/api/trips/:id/share/export',
-    handler(ctx) {
+    async handler(ctx) {
       const payload = sharePayload(ctx, ctx.params.id);
       if (!payload.stops.length) {
         throw new ctx.HttpError(400, 'EMPTY_TRIP', '这条行程还没有地点，先挑几个再分享');
       }
+      // P14：用地图生成的真实路线（逐段规划 + 静态地图底图，base64 内嵌，分享页里没有 key）
+      const modes = Array.isArray(ctx.body && ctx.body.modes) ? ctx.body.modes : undefined;
+      let built = { maps: {}, errors: {} };
+      if (payload.stops.length >= 2) {
+        try {
+          built = await routemap.buildShareMaps({
+            amap: ctx.amap,
+            cache: ctx.cache,
+            intervalMs: Number(ctx.routeIntervalMs) || 0,
+            stops: payload.stops,
+            modes,
+          });
+        } catch (err) {
+          built = { maps: {}, errors: { all: (err && err.message) || '路线图生成失败' } };
+        }
+      }
+      payload.maps = built.maps;
+      payload.mapErrors = built.errors;
       const out = share.writePackage(SHARE_DIR(), payload);
       return {
         dir: out.dir,
@@ -51,6 +70,14 @@ module.exports = [
         files: out.files,
         text: share.buildText(payload),
         count: payload.stops.length,
+        maps: Object.keys(built.maps).map((m) => ({
+          mode: m,
+          label: built.maps[m].modeLabel,
+          distance: built.maps[m].distance,
+          duration: built.maps[m].duration,
+          bytes: built.maps[m].imageBytes,
+        })),
+        mapErrors: built.errors,
         // 同一个服务里就能打开看（浏览器里的链接，不是本地路径）
         preview: '/share/' + encodeURIComponent(out.base + '.html'),
       };

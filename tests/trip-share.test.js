@@ -122,6 +122,7 @@ test('分享出的 HTML：自包含、可点链接、不泄露任何 key', () =>
 });
 
 test('分享页的转义：名字/备注里的尖括号不会破坏页面', () => {
+
   const p = share.buildPayload(
     Object.assign({}, SAMPLE, {
       stops: [{ name: '<img src=x onerror=alert(1)>', lng: 120.1, lat: 30.2, category: 'food', note: 'a & b' }],
@@ -274,13 +275,13 @@ test('右栏改名「行程规划」，并且分享有两个入口（行程视�
 
 test('app.js / api.js：分享走 POST /api/trips/:id/share/export，并把文本复制到剪贴板', () => {
   assert.match(API, /exportTripShare:\s*\(tripId, payload\)[\s\S]{0,80}\/share\/export/, 'api.js 缺 exportTripShare');
-  const js = APP.match(/async function onShareTrip\(\)[\s\S]*?\n  \}/);
+  const js = APP.match(/async function onShareTrip\(modes\)[\s\S]*?\n  \}/);
   assert.ok(js, '缺 onShareTrip');
   assert.match(js[0], /API\.exportTripShare\(/, '要调导出接口');
   assert.match(js[0], /copyText\(res\.text\)/, '生成后要顺手把文案复制好');
   assert.match(js[0], /shareBase\(\)/, '住宿锚点在浏览器里，要带上');
-  assert.match(APP, /\$\('itinerary-share'\)\.onclick = onShareTrip/);
-  assert.match(APP, /tripShareBtn\.onclick = onShareTrip/);
+  assert.match(APP, /\$\('itinerary-share'\)\.onclick = \(\) => onShareTrip\(\)/);
+  assert.match(APP, /tripShareBtn\.onclick = \(\) => onShareTrip\(\)/);
   // 预览链接要能在同一个服务里打开
   const render = APP.match(/function renderShareResult\(res\)[\s\S]*?\n  \}/);
   assert.ok(render, '缺 renderShareResult');

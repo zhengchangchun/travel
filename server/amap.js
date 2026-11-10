@@ -172,6 +172,39 @@ async function amapGet(pathname, params = {}) {
   return json;
 }
 
+// 二进制接口（静态地图）：拿到的是 PNG，不是 JSON。
+// 出错时高德也返回 JSON（status!=1），所以要按 content-type 分派，别把错误当图用。
+async function amapGetBinary(pathname, params = {}) {
+  const url = new URL(AMAP_BASE + pathname);
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    url.searchParams.set(k, v);
+  }
+  url.searchParams.set('key', config().amap.webServiceKey);
+
+  let res;
+  try {
+    res = await globalThis.fetch(url.toString());
+  } catch (err) {
+    throw new AmapError(`高德请求失败: ${err.message}`, { cause: String(err) });
+  }
+  const type = String(res.headers.get('content-type') || '');
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (!res.ok || !type.startsWith('image/')) {
+    let info = 'UNKNOWN';
+    let infocode = '';
+    try {
+      const json = JSON.parse(buf.toString('utf8'));
+      info = json.info || info;
+      infocode = json.infocode || '';
+    } catch (err) {
+      /* 既不是图也不是 JSON：保留原始 info */
+    }
+    throw new AmapError(String(info), { infocode, info, status: res.status });
+  }
+  return { buffer: buf, contentType: type };
+}
+
 async function searchCity(q) {
   const json = await amapGet('/v3/config/district', {
     keywords: q,
@@ -421,6 +454,11 @@ async function planDriving(origin, destination, strategy) {
   return normalizePathRoute(json, 'driving');
 }
 
+// 静态地图（P14 路线图）：参数由 server/routemap.js 拼，这里只管取二进制
+async function staticMap(params = {}) {
+  return amapGetBinary('/v3/staticmap', params);
+}
+
 async function planTransit(origin, destination, city) {
   const json = await amapGet('/v3/direction/transit/integrated', {
     origin,
@@ -435,6 +473,7 @@ async function planTransit(origin, destination, city) {
 
 module.exports = {
   amapGet,
+  amapGetBinary,
   searchCity,
   searchPoi,
   searchPoiInArea,
@@ -449,6 +488,7 @@ module.exports = {
   planWalking,
   planDriving,
   planTransit,
+  staticMap,
   setConfig,
   setCategories,
   AmapError,
