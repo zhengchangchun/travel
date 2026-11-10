@@ -7,7 +7,7 @@ body {
 }
 #app { display: flex; height: 100vh; overflow: hidden; }
 
-/* ---------- 三栏：左「全部」／中 地图／右「我挑的」 ---------- */
+/* ---------- 三栏：左「全部」／中 地图／右「行程规划」 ---------- */
 #sidebar.col-left {
   width: 340px;
   min-width: 300px;
@@ -21,7 +21,7 @@ body {
 .brand .brand-logo { width: 26px; height: 26px; border-radius: 7px; display: block; flex: none; }
 .brand .sub { color: #6b7280; font-size: 12px; margin: 4px 0 12px; }
 
-/* ---------- 右栏：我挑的（可折叠 + 独立滚动） ---------- */
+/* ---------- 右栏：行程规划（可折叠 + 独立滚动） ---------- */
 #right-panel.col-right {
   display: flex;
   flex-direction: column;
@@ -1170,6 +1170,19 @@ section.card.collapsed > .card-body { display: none; }
 .trip-card .row { flex-wrap: wrap; row-gap: 6px; }
 .trip-card .row button { flex: none; white-space: nowrap; }
 .trip-card .trip-name { flex: 1 1 100%; margin-left: 0; }
+
+/* P13 行程分享：生成结果（文件名 / 预览链接 / 复制文案） */
+.share-result {
+  margin-top: 8px; padding: 8px 10px;
+  border: 1px dashed var(--line-2, #3a4152); border-radius: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--ink-2, #b8c0cc);
+}
+.share-result .share-head { flex: 1 1 100%; }
+.share-result .share-open { color: var(--accent); text-decoration: none; }
+.share-result .share-dir {
+  flex: 1 1 100%; color: var(--ink-3, #8b93a1); font-size: 11.5px; word-break: break-all;
+}
 
 /* ⑦ 不可点的按钮：鼠标给个交代 */
 button:disabled { cursor: not-allowed; }

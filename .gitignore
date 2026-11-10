@@ -13,3 +13,6 @@ config/local.json
 
 # 工具产物
 .nanobot/
+
+# 行程分享包（生成的 html/txt/json，随时可重生）
+share/

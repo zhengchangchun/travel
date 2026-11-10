@@ -947,6 +947,69 @@
     }
   }
 
+  // ---------- P13 行程分享：生成「发给别人就能看」的分享包 ----------
+  // 三件套 = 自包含 HTML（自绘示意图 + 免 key 的高德链接）/ 纯文本 / JSON（留档）。
+  // 住宿锚点只存在浏览器 localStorage ⇒ 生成时一起带上去，别人的分享页里也能看到「住」。
+  function shareBase() {
+    const b = state.base;
+    if (!b || !Number.isFinite(Number(b.lng)) || !Number.isFinite(Number(b.lat))) return null;
+    return { name: b.name || '住宿', lng: Number(b.lng), lat: Number(b.lat) };
+  }
+
+  function renderShareResult(res) {
+    const box = $('share-result');
+    if (!box) return;
+    box.classList.remove('hidden');
+    box.textContent = '';
+
+    const head = document.createElement('div');
+    head.className = 'share-head';
+    head.textContent = '已生成 ' + res.count + ' 个点的分享包（' + res.files.length + ' 个文件）';
+    box.appendChild(head);
+
+    const open = document.createElement('a');
+    open.className = 'share-open';
+    open.href = res.preview;
+    open.target = '_blank';
+    open.rel = 'noreferrer';
+    open.textContent = '先看看长什么样 ↗';
+    box.appendChild(open);
+
+    const copy = document.createElement('button');
+    copy.className = 'ghost mini-btn';
+    copy.textContent = '复制分享文案';
+    copy.onclick = async () => {
+      const ok = await Itinerary.copyText(res.text);
+      UI.setStatus(ok ? '分享文案已复制，粘到微信就能发' : '已弹出复制框');
+    };
+    box.appendChild(copy);
+
+    const dir = document.createElement('div');
+    dir.className = 'share-dir';
+    dir.textContent = '文件：' + res.dir + '（' + res.files.map((f) => f.name).join('、') + '）';
+    box.appendChild(dir);
+  }
+
+  async function onShareTrip() {
+    if (!state.city) {
+      UI.setStatus('先选城市');
+      return;
+    }
+    if (!Selection.list().length) {
+      UI.setStatus('这条行程还没有地点：先在地图上挑几个点，再分享');
+      return;
+    }
+    try {
+      const trip = await ensureTrip();
+      const res = await API.exportTripShare(trip.id, { base: shareBase() });
+      renderShareResult(res);
+      const ok = await Itinerary.copyText(res.text);
+      UI.setStatus(ok ? '分享包已生成，分享文案也复制好了' : '分享包已生成（可点「复制分享文案」）');
+    } catch (err) {
+      UI.setStatus('生成分享包失败：' + human(err));
+    }
+  }
+
   function onToggleChip(key) {
     if (state.activeCats.has(key)) state.activeCats.delete(key);
     else state.activeCats.add(key);
@@ -1712,7 +1775,7 @@
         onToggleSidebar();
       };
     }
-    // 窄条时整条「我挑的」都能点开（抽屉惯例）；按钮自己已处理，别翻两次
+    // 窄条时整条「行程规划」都能点开（抽屉惯例）；按钮自己已处理，别翻两次
     const rightHead = document.querySelector('#right-panel .right-head');
     if (rightHead) {
       rightHead.onclick = (e) => {
@@ -1723,6 +1786,9 @@
     $('itinerary-back').onclick = () => setView('list');
     $('itinerary-copy').onclick = onCopyItinerary;
     $('itinerary-download').onclick = onDownloadItinerary;
+    $('itinerary-share').onclick = onShareTrip;
+    const tripShareBtn = $('trip-share-btn');
+    if (tripShareBtn) tripShareBtn.onclick = onShareTrip;
     $('trip-new-btn').onclick = async () => {
       // 同一城市只保留一个行程：已有就复用，避免“两条行程的 pin 并集”导致删了还有星标
       if (state.trip) {

@@ -78,10 +78,10 @@
       <aside id="infocard" class="infocard hidden"></aside>
     </main>
 
-    <!-- 右栏：我挑的 -->
+    <!-- 右栏：行程规划 -->
     <aside id="right-panel" class="col-right">
       <div class="right-head">
-        <h2>我挑的</h2>
+        <h2>行程规划</h2>
         <button id="panel-toggle" class="panel-toggle" type="button" title="收起右栏"
                 aria-controls="right-body" aria-expanded="true" aria-label="收起右栏"><svg class="icon-chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" /></svg></button>
       </div>
@@ -106,6 +106,7 @@
           <div id="itinerary-panel" class="hidden">
             <div class="row itin-toolbar">
               <button id="itinerary-back" class="ghost">返回</button>
+              <button id="itinerary-share" class="primary" title="生成可发给别人的分享包（网页＋文本）">分享</button>
               <button id="itinerary-copy" class="ghost">一键复制</button>
               <button id="itinerary-download" class="ghost">下载 .md</button>
             </div>
@@ -146,9 +147,11 @@
           <div class="row">
             <button id="trip-new-btn" class="ghost">新建行程</button>
             <button id="trip-delete-btn" class="ghost" title="删除当前行程">删除行程</button>
+            <button id="trip-share-btn" class="ghost" title="生成可发给别人的分享包（网页＋文本）">分享</button>
             <span id="trip-name" class="trip-name">未创建</span>
           </div>
           <ul id="trip-list" class="poi-list"></ul>
+          <div id="share-result" class="share-result hidden"></div>
         </section>
 
         <section class="card" id="note-card" data-card="note">

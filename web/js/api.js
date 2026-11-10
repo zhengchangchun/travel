@@ -61,6 +61,10 @@
     listTrips: (city) => request('/api/trips' + (city ? '?' + qs({ city }) : '')),
     createTrip: (payload) => request('/api/trips', post(payload)),
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
+    // P13 行程分享：拿分享载荷（文本） / 生成分享包（html+txt+json）
+    shareTrip: (tripId, payload) => request('/api/trips/' + tripId + '/share', post(payload || {})),
+    exportTripShare: (tripId, payload) =>
+      request('/api/trips/' + tripId + '/share/export', post(payload || {})),
     addPin: (payload) => request('/api/pins', post(payload)),
     deletePin: (id) => request('/api/pins/' + id, { method: 'DELETE' }),
     deleteTrip: (id) => request('/api/trips/' + id, { method: 'DELETE' }),

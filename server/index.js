@@ -260,6 +260,14 @@ function createApp(opts = {}) {
       const query = Object.fromEntries(u.searchParams.entries());
       if (pathname.startsWith('/api/')) {
         await handleApi(req, res, baseCtx, req.method, pathname, query);
+      } else if (pathname.startsWith('/share/')) {
+        // 行程分享包（P13）：生成出来的自包含 HTML，同一个服务里就能打开预览
+        serveStatic(
+          req,
+          res,
+          pathname.slice('/share'.length),
+          process.env.TRAVEL_SHARE_DIR || path.join(ROOT, 'share')
+        );
       } else if (pathname.startsWith('/notes-img/')) {
         // 笔记图片：本地缓存目录（data/notes-img），不放 web/ 代码目录
         serveStatic(

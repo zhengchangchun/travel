@@ -1,4 +1,61 @@
+const path = require('node:path');
+const share = require('../share');
+
+const SHARE_DIR = () => process.env.TRAVEL_SHARE_DIR || path.join(__dirname, '..', '..', 'share');
+
+// 行程分享载荷：库里读行程 + 有序点，住宿锚点在前端（localStorage）⇒ 由请求体带过来
+function sharePayload(ctx, tripId) {
+  const id = Number(tripId);
+  const trip = ctx.db.getTrip(id);
+  if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
+  const b = (ctx.body && ctx.body.base) || null;
+  const base =
+    b && Number.isFinite(Number(b.lng)) && Number.isFinite(Number(b.lat))
+      ? { name: b.name || '住宿', lng: Number(b.lng), lat: Number(b.lat) }
+      : null;
+  const labels = {};
+  (ctx.categories || []).forEach((c) => {
+    labels[c.key] = { label: c.label };
+  });
+  return share.buildPayload({
+    trip,
+    city: trip.city,
+    stops: ctx.db.getPinsByTrip(id),
+    base,
+    labels,
+    when: new Date().toISOString(),
+  });
+}
+
 module.exports = [
+  {
+    method: 'POST',
+    path: '/api/trips/:id/share',
+    handler(ctx) {
+      const payload = sharePayload(ctx, ctx.params.id);
+      return { payload, text: share.buildText(payload) };
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/trips/:id/share/export',
+    handler(ctx) {
+      const payload = sharePayload(ctx, ctx.params.id);
+      if (!payload.stops.length) {
+        throw new ctx.HttpError(400, 'EMPTY_TRIP', '这条行程还没有地点，先挑几个再分享');
+      }
+      const out = share.writePackage(SHARE_DIR(), payload);
+      return {
+        dir: out.dir,
+        base: out.base,
+        files: out.files,
+        text: share.buildText(payload),
+        count: payload.stops.length,
+        // 同一个服务里就能打开看（浏览器里的链接，不是本地路径）
+        preview: '/share/' + encodeURIComponent(out.base + '.html'),
+      };
+    },
+  },
   {
     method: 'GET',
     path: '/api/trips',
