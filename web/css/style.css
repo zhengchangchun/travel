@@ -419,6 +419,10 @@ button.danger:hover { background: #ad2102; }
 .route-leg-meta { color: #6b7280; flex: none; }
 .route-leg-detail { display: none; padding: 6px 8px 8px 30px; background: #fbfbfc; }
 .route-leg.open .route-leg-detail { display: block; }
+/* P15 选中的那一段：列表行高亮（与地图上的金色描边对应） */
+.route-leg.sel { border-color: var(--accent, #1677ff); background: rgba(22, 119, 255, .10); }
+.route-leg.sel .route-leg-no { box-shadow: 0 0 0 3px rgba(22, 119, 255, .35); }
+.route-leg-head:hover { background: #f7f8fa; }
 .route-leg.failed .route-leg-no { background: #9aa0aa; }
 .route-leg.failed .route-leg-meta { color: #cf1322; }
 .route-leg-reason { margin: 0; font-size: 12px; color: #cf1322; }

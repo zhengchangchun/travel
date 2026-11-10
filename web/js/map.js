@@ -466,6 +466,9 @@
   // ---------- 路线连线（T3） ----------
   let routeLines = [];
   let routeLabels = [];
+  let routeLegBaseStyles = [];
+  let routeLegFailed = [];
+  let routeSelected = null;
 
   function routeStyle(mode) {
     if (mode === 'walking') {
@@ -484,6 +487,50 @@
     strokeDasharray: [6, 6],
   };
 
+  // P15 选中高亮：选中的那一段加粗 + 金色描边，其余段变淡 —— 一眼能看出选的是哪段
+  const LEG_SELECTED_EXTRA = {
+    strokeWeight: 4,
+    isOutline: true,
+    outlineColor: '#ffd666',
+    borderWeight: 2,
+    zIndex: 95,
+  };
+  const LEG_DIM = { strokeOpacity: 0.4, zIndex: 45 };
+
+  function applyRouteSelection() {
+    routeLines.forEach((line, i) => {
+      const base = routeLegBaseStyles[i] || {};
+      if (routeSelected === null || routeSelected === undefined) {
+        // 收回选中态时要把描边一并关掉（AMap 的 setOptions 是合并，不清就残留金色边）
+        line.setOptions(
+          Object.assign({}, base, {
+            strokeOpacity: 1,
+            isOutline: false,
+            borderWeight: 0,
+            outlineColor: 'transparent',
+            zIndex: routeLegFailed[i] ? 40 : 60,
+          })
+        );
+        return;
+      }
+      if (i === routeSelected) {
+        const weight = (Number(base.strokeWeight) || 6) + LEG_SELECTED_EXTRA.strokeWeight;
+        line.setOptions(Object.assign({}, base, LEG_SELECTED_EXTRA, { strokeWeight: weight, strokeOpacity: 1 }));
+      } else {
+        const weight = Math.max(4, (Number(base.strokeWeight) || 6) - 1);
+        line.setOptions(Object.assign({}, base, LEG_DIM, { strokeWeight: weight }));
+      }
+    });
+  }
+
+  // 选中某段（index=null 收回选中态）；地图连线与分段列表两边都靠它对齐
+  function setRouteSelection(index) {
+    routeSelected = index === null || index === undefined ? null : Number(index);
+    if (!Number.isFinite(routeSelected)) routeSelected = null;
+    applyRouteSelection();
+    return routeSelected;
+  }
+
   function clearRoute() {
     if (map) {
       routeLines.forEach((l) => map.remove(l));
@@ -491,6 +538,9 @@
     }
     routeLines = [];
     routeLabels = [];
+    routeLegBaseStyles = [];
+    routeLegFailed = [];
+    routeSelected = null;
   }
 
   function drawRoute(legs, mode, handlers) {
@@ -521,6 +571,8 @@
         if (handlers && handlers.onLegClick) handlers.onLegClick(leg);
       });
       routeLines.push(line);
+      routeLegBaseStyles.push(Object.assign({}, style));
+      routeLegFailed.push(!!failed);
       path.forEach((p) => all.push(p));
 
       if (failed) {
@@ -543,7 +595,11 @@
         routeLabels.push(text);
       }
     });
-    if (routeLines.length) map.setFitView(routeLines.concat(Array.from(markers.values())));
+    // fit=false：只是重画（例如地图动一下触发的 refresh）⇒ 别把镜头再拉回去
+    if (routeLines.length && (!handlers || handlers.fit !== false)) {
+      map.setFitView(routeLines.concat(Array.from(markers.values())));
+    }
+    applyRouteSelection();
   }
 
   window.TravelMap = {
@@ -574,6 +630,7 @@
     routeStyle,
     drawRoute,
     clearRoute,
+    setRouteSelection,
     MOVE_DEBOUNCE_MS,
   };
 })();

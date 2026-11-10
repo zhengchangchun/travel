@@ -14,6 +14,9 @@
   let lastCity = null;
   let lastPins = [];
   let lastData = null;
+  let selectedLeg = null; // P15：当前选中的段（地图高亮 + 列表高亮），null=没选
+  let lastRouteKey = null; // 路线身份（城市|方式|点序）：变了才清选中态（地图一动就会 refresh 重画）
+  let lastFitKey = null; // 上次让地图自动取景的路线身份
   let reqId = 0;
 
   function $(id) {
@@ -134,9 +137,39 @@
         '<span class="route-leg-meta">' + esc(meta) + '</span>' +
         '</button>' +
         '<div class="route-leg-detail">' + detailHtml(leg) + '</div>';
-      li.querySelector('.route-leg-head').onclick = () => li.classList.toggle('open');
+      li.querySelector('.route-leg-head').onclick = () => selectLeg(leg.index);
       ul.appendChild(li);
     });
+    paintSelection();
+  }
+
+  // 分段选中：同一段再点一下取消（传 null/undefined = 直接取消）
+  function selectLeg(index) {
+    if (index === null || index === undefined) {
+      selectedLeg = null;
+    } else {
+      const n = Number(index);
+      selectedLeg = selectedLeg === n ? null : n;
+    }
+    paintSelection();
+    if (MapCtl.setRouteSelection) MapCtl.setRouteSelection(selectedLeg);
+    if (selectedLeg !== null) focusLeg(selectedLeg);
+    else closeAllLegs();
+  }
+
+  function paintSelection() {
+    const ul = $('route-legs');
+    if (!ul) return;
+    Array.prototype.forEach.call(ul.querySelectorAll('.route-leg'), (li) => {
+      const on = selectedLeg !== null && Number(li.dataset.index) === selectedLeg;
+      li.classList.toggle('sel', on);
+    });
+  }
+
+  function closeAllLegs() {
+    const ul = $('route-legs');
+    if (!ul) return;
+    Array.prototype.forEach.call(ul.querySelectorAll('.route-leg.open'), (x) => x.classList.remove('open'));
   }
 
   function focusLeg(index) {
@@ -151,13 +184,24 @@
     if (li.scrollIntoView) li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
+  function routeKey(city, pins) {
+    // 同一条路线（城市/出行方式/点序都没变）重画时，保留用户选中的那一段
+    return [city || '', mode, (pins || []).map((p) => p.id || p.poi_id || p.name).join(',')].join('|');
+  }
+
   async function draw(city, pins) {
     if (city) lastCity = city;
     if (pins) lastPins = pins || [];
-    MapCtl.clearRoute();
+    const key = routeKey(lastCity, lastPins);
+    const sameRoute = key === lastRouteKey;
+    if (!sameRoute) {
+      selectedLeg = null; // 换城市/换方式/点序变了 ⇒ 选中态收回
+      lastRouteKey = key;
+    }
     renderChips();
 
     if (!lastCity || lastPins.length < 2) {
+      MapCtl.clearRoute();
       lastData = null;
       renderTotals();
       renderLegs();
@@ -165,6 +209,13 @@
       return;
     }
 
+    // 同一条路线：不重请求、不重画（地图一动就会 refresh ⇒ 否则路线会闪一下、还白花配额）
+    if (sameRoute && lastData) {
+      if (MapCtl.setRouteSelection) MapCtl.setRouteSelection(selectedLeg);
+      return;
+    }
+
+    MapCtl.clearRoute();
     const n = lastPins.length - 1;
     const my = (reqId += 1);
     setProgress('正在规划 0/' + n + ' 段…');
@@ -184,11 +235,16 @@
       renderTotals();
       renderLegs();
       MapCtl.drawRoute(data.legs, mode, {
-        onLegClick: (leg) => focusLeg(leg.index),
+        onLegClick: (leg) => selectLeg(leg.index),
+        // 同一条路线只是重画（地图动一下就会 refresh 重画）⇒ 别再 setFitView 抢镜头
+        fit: key !== lastFitKey,
       });
+      lastFitKey = key;
+      // 重画后把选中态补回去（clearRoute 会把地图那边清掉）
+      if (MapCtl.setRouteSelection) MapCtl.setRouteSelection(selectedLeg);
       const okCount = data.legs.filter((l) => l.ok).length;
       const degraded = (data.failed || []).length;
-      setProgress('已规划 ' + okCount + '/' + n + ' 段' + (degraded ? '（' + degraded + ' 段降级）' : ''));
+      setProgress('已规划 ' + okCount + '/' + n + ' 段' + (degraded ? '（' + degraded + ' 段降级）' : '') + ' · 点某段在地图上高亮');
     } catch (err) {
       if (my !== reqId) return;
       lastData = null;
@@ -212,6 +268,8 @@
     clear,
     renderChips,
     focusLeg,
+    selectLeg,
+    getSelectedLeg: () => selectedLeg,
     getMode: () => mode,
     MODES,
     DEFAULT_MODE,

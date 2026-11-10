@@ -216,7 +216,34 @@ function fmtDuration(sec) {
   return `${m} min`;
 }
 
-// 分享页里的路线块：有真实路线图就走 tab 切换，没有就退回自绘示意图
+// 分段列表：色点与地图上那段同色；点一下高亮（一次只能选一段）
+// 段号的写法用「点序号」：2→3 就是地图上 ② 到 ③ 那一段
+function legRowsHtml(route) {
+  const legs = (route.legs || []).filter((l) => l.ok !== false);
+  if (!legs.length) return '';
+  const rows = legs
+    .map((l) => {
+      const meta = `${(Number(l.distance) / 1000).toFixed(1)} km · ${fmtDuration(l.duration)}`;
+      const seq = (l.fromSeq || Number(l.index) + 1) + '→' + (l.toSeq || Number(l.index) + 2);
+      return (
+        `<li class="leg" data-leg="${Number(l.index) + 1}">` +
+        `<span class="leg-dot" style="background:${escHtml(l.color || '#1677ff')}"></span>` +
+        `<span class="leg-no">${escHtml(seq)}</span>` +
+        `<span class="leg-path">${escHtml((l.from && l.from.name) || '起点')} → ${escHtml((l.to && l.to.name) || '终点')}</span>` +
+        `<span class="leg-meta">${escHtml(meta)}</span>` +
+        `</li>`
+      );
+    })
+    .join('');
+  const groups = Number(route.groupCount) || 0;
+  const dup =
+    groups && groups < legs.length
+      ? `<div class="rnote">共 ${legs.length} 段、地图上分了 ${groups} 组颜色（每 2 段同色），对上点序号即可。</div>`
+      : '';
+  return `<ol class="legs">${rows}</ol>${dup}`;
+}
+
+// 分享页路线块：有真实路线图就 tab 切换（每个方式一屏：图 + 分段），没图退回自绘示意图
 function routeBlockHtml(p) {
   const modes = Object.keys(p.maps || {}).filter((m) => p.maps[m] && p.maps[m].image);
   if (!modes.length) {
@@ -227,17 +254,21 @@ function routeBlockHtml(p) {
       const r = p.maps[m];
       const meta = `${(r.distance / 1000).toFixed(1)} km · ${fmtDuration(r.duration)}`;
       return (
-        `<button class="tab${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}">${escHtml(r.modeLabel || m)}` +
+        `<button class="tab${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}" aria-pressed="${i === 0}">` +
+        `<span class="tab-label">${escHtml(r.modeLabel || m)}</span>` +
         `<span class="tab-meta">${escHtml(meta)}</span></button>`
       );
     })
     .join('');
-  const imgs = modes
+  const panels = modes
     .map((m, i) => {
       const r = p.maps[m];
-      return `<img class="routemap${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}" src="${escHtml(r.image)}" alt="${escHtml(
-        (r.modeLabel || m) + ' 路线图'
-      )}" />`;
+      return (
+        `<div class="rpanel${i === 0 ? ' on' : ''}" data-mode="${escHtml(m)}">` +
+        `<img class="routemap" src="${escHtml(r.image)}" alt="${escHtml((r.modeLabel || m) + ' 路线图')}" />` +
+        legRowsHtml(r) +
+        `</div>`
+      );
     })
     .join('');
   const failed = Object.keys(p.mapErrors || {});
@@ -247,11 +278,11 @@ function routeBlockHtml(p) {
   return (
     `<div class="route">` +
     `<div class="tabs">${tabs}</div>` +
-    `<div class="routemaps">${imgs}</div>` +
+    `<div class="panels">${panels}</div>` +
     note +
     `<div class="rnote">路线是高德按${escHtml(
       modes.map((m) => (p.maps[m].modeLabel || m)).join(' / ')
-    )}规划的真实路线（沿线道路），图片已内嵌在本文件里，不联网也能看。</div>` +
+    )}规划的真实路线（沿线道路）；图上数字是点位序号，分段列表的「2→3」就是图上 ② 到 ③ 那一段。图片已内嵌，不联网也能看。</div>` +
     `</div>`
   );
 }
@@ -317,11 +348,23 @@ function buildHtml(payload) {
   .route { margin:14px 0 6px; }
   .tabs { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
   .tab { background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 12px;
-         font-size:13px; color:var(--ink); cursor:pointer; }
-  .tab.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
+         font-size:13px; color:var(--ink2); cursor:pointer; }
+  .tab.on { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 2px 8px rgba(22,119,255,.35); }
+  .tab.on .tab-meta { color:rgba(255,255,255,.85); }
+  .tab .tab-label { font-weight:600; }
   .tab .tab-meta { color:var(--ink3); font-weight:400; font-size:12px; margin-left:6px; }
-  .routemap { display:none; width:100%; border-radius:12px; border:1px solid var(--line); }
-  .routemap.on { display:block; }
+  .rpanel { display:none; }
+  .rpanel.on { display:block; }
+  .routemap { display:block; width:100%; border-radius:12px; border:1px solid var(--line); }
+  .legs { list-style:none; margin:10px 0 0; padding:0; }
+  .leg { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--line);
+         border-radius:10px; background:#fff; margin-bottom:6px; font-size:13px; cursor:pointer; }
+  .leg.on { border-color:var(--accent); background:rgba(22,119,255,.08); }
+  .leg-dot { width:10px; height:10px; border-radius:50%; flex:none; }
+  .leg-no { flex:none; min-width:14px; color:var(--ink3); font-variant-numeric:tabular-nums; }
+  .leg-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .leg-meta { flex:none; color:var(--ink2); font-variant-numeric:tabular-nums; }
+  .leg.on .leg-meta { color:var(--accent); font-weight:600; }
   .rnote { color:var(--ink3); font-size:12px; margin-top:6px; line-height:1.6; }
   .base { font-size:13px; color:#a86400; margin:6px 0 0; }
   ol { list-style:none; margin:14px 0 0; padding:0; }
@@ -358,17 +401,31 @@ function buildHtml(payload) {
   <ol>${items}</ol>
   <div class="foot">${nav}</div>
   <p class="tip">点「在高德打开 / 全程路线」会唤起手机上的高德地图（电脑上是网页版）。<br/>
-  图中绿点是出发点、红点是终点，其它按 1/2/3… 标序号。这份文件是离线自包含的，直接转发就能看。</p>
+  图上绿点是出发点、红点是终点，其它按 1/2/3… 标序号；路线按分段上色（段数多时每 2 段同色），与下面的分段列表色点一一对应。这份文件是离线自包含的，直接转发就能看。</p>
 </div>
 <script>
 (function () {
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
-  var maps = Array.prototype.slice.call(document.querySelectorAll('.routemap'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.rpanel'));
   tabs.forEach(function (t) {
     t.addEventListener('click', function () {
       var mode = t.getAttribute('data-mode');
-      tabs.forEach(function (x) { x.classList.toggle('on', x === t); });
-      maps.forEach(function (m) { m.classList.toggle('on', m.getAttribute('data-mode') === mode); });
+      tabs.forEach(function (x) {
+        x.classList.toggle('on', x === t);
+        x.setAttribute('aria-pressed', String(x === t));
+      });
+      panels.forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-mode') === mode); });
+    });
+  });
+  // 分段高亮：一次只亮一段
+  Array.prototype.forEach.call(document.querySelectorAll('.rpanel'), function (panel) {
+    var legs = Array.prototype.slice.call(panel.querySelectorAll('.leg'));
+    legs.forEach(function (li) {
+      li.addEventListener('click', function () {
+        var on = !li.classList.contains('on');
+        legs.forEach(function (x) { x.classList.remove('on'); });
+        if (on) li.classList.add('on');
+      });
     });
   });
 })();
