@@ -102,7 +102,10 @@ test('app.js / notes.js / route.js：界面报错都走 human()，不再直吐 e
   assert.deepStrictEqual(offenders, [], '这些文件还在直吐 err.message：' + offenders.join('、'));
   assert.ok(!/'搜索失败：'\s*\+\s*err\.message/.test(APP), '搜索失败不该直吐 err.message');
   assert.ok(!/'实时搜索失败：'\s*\+\s*err\.message/.test(APP), '实时搜索失败不该直吐 err.message');
-  assert.ok(!/errors\[0\]\);?\s*$/m.test(APP.split('function reportLiveResult')[1] || ''), 'live.errors 也要过 human()');
+  const liveFn = APP.split('function reportLiveResult')[1] || '';
+  const bareErrs = (liveFn.match(/errors\[0\]/g) || []).length;
+  const humanErrs = (liveFn.match(/human\(errors\[0\]\)/g) || []).length;
+  assert.strictEqual(bareErrs, humanErrs, 'live.errors 第一条必须全过 human()');
   assert.ok(!/setHint\('搜索失败：'\s*\+\s*err\.message/.test(NOTES), 'notes 搜索失败不该直吐 err.message');
   assert.ok(!/err\.message\s*\+\s*'（'\s*\+\s*\(?err\.code/.test(NOTES), 'notes 不该把 code 拼给用户看');
 });

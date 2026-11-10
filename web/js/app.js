@@ -1068,8 +1068,10 @@
   }
 
   function onToggleChip(key) {
-    if (state.activeCats.has(key)) state.activeCats.delete(key);
-    else state.activeCats.add(key);
+    // 全选（搜索结果）下点某一个 = 只看它；其余情况才是 toggle（见 Cats.nextSelection）
+    state.activeCats = new Set(
+      Cats.nextSelection(state.activeCats, key, Cats.all().map((c) => c.key))
+    );
     state.resultLimit = RESULT_PAGE; // 换筛选 ⇒ 分页从头开始
     renderCatChips();
     refresh();
@@ -1259,7 +1261,12 @@
     } catch (err) {
       if (seq !== state.viewSeq) return;
       UI.setViewHint('');
-      UI.setStatus('实时搜索失败：' + human(err));
+      UI.setStatus(
+        '实时搜索没成功' +
+          (state.pois.length ? '，先用本地已收录的 ' + state.pois.length + ' 条' : '') +
+          '：' +
+          human(err)
+      );
       return;
     }
     if (seq !== state.viewSeq) return; // 丢弃过期响应
@@ -1292,7 +1299,13 @@
       return;
     }
     if (errors.length && errors.length >= calls) {
-      UI.setStatus('实时搜索失败（高德调用 ' + calls + ' 次全失败）：' + human(errors[0]));
+      // 列表里已经有东西时别说「失败」——用户明明看得见结果，报失败只会让人以为白搜了
+      UI.setStatus(
+        '实时搜索没成功' +
+          (state.pois.length ? '，先用本地已收录的 ' + state.pois.length + ' 条' : '') +
+          '：' +
+          human(errors[0])
+      );
       return;
     }
     const parts = [

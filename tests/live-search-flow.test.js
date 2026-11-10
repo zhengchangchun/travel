@@ -115,3 +115,32 @@ test('map.js 落旗资产仍在（addMarkers / markerCount）', () => {
   assert.match(APP, /MapCtl\.setMarkers/, 'app.js 未整体落旗');
   assert.match(MAP, /onViewSettled,\n/, 'map.js 未导出 onViewSettled');
 });
+
+// 关键词搜索后四个分类 chip 全选中；此时点某一个应该是「只看它」，
+// 不能把点的那类反而去掉（用户 2026-11-10 走查时发现的点反效果）。
+test('分类 chip：全选时点某一个 = 只看它；其余情况才是 toggle', () => {
+  const win = {};
+  new Function('window', read('web/js/categories.js'))(win);
+  const Cats = win.TravelCategories;
+  assert.strictEqual(typeof Cats.nextSelection, 'function', 'categories.js 缺 nextSelection');
+  const ALL = ['food', 'stay', 'sight', 'play'];
+
+  // 全选 → 点「美食」= 只剩美食（不是把美食去掉）
+  assert.deepStrictEqual(Cats.nextSelection(ALL, 'food', ALL), ['food']);
+  // 只看美食 → 再点「住宿」= 美食+住宿（加选，按配置顺序）
+  assert.deepStrictEqual(Cats.nextSelection(['food'], 'stay', ALL), ['food', 'stay']);
+  // 非全选时点已选的 = 取消
+  assert.deepStrictEqual(Cats.nextSelection(['food', 'stay'], 'food', ALL), ['stay']);
+  // 取消到空 = 未选分类（列表空、等用户自己挑）
+  assert.deepStrictEqual(Cats.nextSelection(['food'], 'food', ALL), []);
+  // 未选分类时点一个 = 只选它
+  assert.deepStrictEqual(Cats.nextSelection([], 'sight', ALL), ['sight']);
+  // 全选状态下「一个都没点」的场景不存在；不是全选就不能触发 solo
+  assert.deepStrictEqual(Cats.nextSelection(['food', 'stay', 'sight'], 'play', ALL), ALL);
+
+  // app.js 要真的走这个纯函数（别再手写 toggle）
+  const fn = APP.match(/function\s+onToggleChip[\s\S]*?\n  \}/);
+  assert.ok(fn, '未找到 onToggleChip');
+  assert.match(fn[0], /Cats\.nextSelection\(/, 'onToggleChip 未走 Cats.nextSelection');
+  assert.ok(!/state\.activeCats\.delete\(/.test(fn[0]), 'onToggleChip 不该再手写 toggle');
+});
