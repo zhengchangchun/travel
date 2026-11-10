@@ -124,11 +124,11 @@ test('分享页：图上的序号团是可点按钮（起点绿 / 终点红）�
   const html = share.buildHtml(
     share.buildPayload({ trip: { id: 1, title: '杭州行程' }, city: '杭州', stops: STOPS, labels: {}, maps })
   );
-  assert.match(html, /class="pin start" data-seq="1"[^>]*style="left:20\.5%;top:30\.25%">1</, '起点要绿、要带序号');
-  assert.match(html, /class="pin" data-seq="2"[^>]*>2</);
-  assert.match(html, /class="pin end" data-seq="3"[^>]*>3</, '终点要红');
+  assert.match(html, /class="pin start" data-seq="1"[^>]*style="left:20\.5%;top:30\.25%"><i>1<\/i>/, '起点要绿、要带序号');
+  assert.match(html, /class="pin" data-seq="2"[^>]*><i>2<\/i>/);
+  assert.match(html, /class="pin end" data-seq="3"[^>]*><i>3<\/i>/, '终点要红');
   assert.match(html, /title="A"/, '要有名字提示');
-  assert.match(html, /\.pin \{ position:absolute/, '要有样式');
+  assert.match(html, /\.pin \{ position:absolute; width:44px; height:44px/, '按钮 44px 方便手指');
   assert.match(html, /document\.querySelector\('\.stop\[data-seq="' \+ seq \+ '"\]'\)/, '点序号要能定位到地点卡');
   assert.match(html, /data-seq="1">/, '地点卡要带 data-seq 才能对上');
   assert.ok(!/key=/.test(html), '分享页不许出现 key');

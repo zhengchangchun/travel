@@ -228,7 +228,8 @@ function pinsHtml(route) {
       const cls = i === 0 ? ' start' : i === last ? ' end' : '';
       return (
         `<button type="button" class="pin${cls}" data-seq="${Number(p.seq)}" title="${escHtml(p.name)}" ` +
-        `aria-label="跳到地点卡：${escHtml(p.name)}" style="left:${p.left}%;top:${p.top}%">${Number(p.seq)}</button>`
+        `aria-label="跳到地点卡：${escHtml(p.name)}" style="left:${p.left}%;top:${p.top}%">` +
+        `<i>${Number(p.seq)}</i></button>`
       );
     })
     .join('');
@@ -378,16 +379,18 @@ function buildHtml(payload) {
   .rpanel.on { display:block; }
   .mapwrap { position:relative; }
   .routemap { display:block; width:100%; border-radius:12px; border:1px solid var(--line); }
-  /* 图上的点：位置按经纬度算出来，序号团既是标记也是可点区域 */
-  .pin { position:absolute; width:26px; height:26px; padding:0; transform:translate(-50%,-50%);
-         border-radius:50%; border:2px solid #fff; background:#1677ff; color:#fff;
-         font:600 12px/1 -apple-system,"PingFang SC",sans-serif; cursor:pointer;
-         display:flex; align-items:center; justify-content:center;
-         box-shadow:0 1px 4px rgba(0,0,0,.35); }
-  .pin.start { background:#22aa66; }
-  .pin.end { background:#e0503a; }
-  .pin:hover, .pin:focus { transform:translate(-50%,-50%) scale(1.18); outline:none;
-                           box-shadow:0 0 0 4px rgba(22,119,255,.35); }
+  /* 图上的点：位置按经纬度算出来；序号团既是标记也是可点区域（按钮 44px 方便手指） */
+  .pin { position:absolute; width:44px; height:44px; padding:0; transform:translate(-50%,-50%);
+         border:0; background:transparent; cursor:pointer;
+         display:flex; align-items:center; justify-content:center; }
+  .pin i { width:26px; height:26px; border-radius:50%; border:2px solid #fff; background:#1677ff; color:#fff;
+           font:600 12px/1 -apple-system,"PingFang SC",sans-serif; font-style:normal;
+           display:flex; align-items:center; justify-content:center;
+           box-shadow:0 1px 4px rgba(0,0,0,.35); }
+  .pin.start i { background:#22aa66; }
+  .pin.end i { background:#e0503a; }
+  .pin:hover i, .pin:focus i { transform:scale(1.18); box-shadow:0 0 0 4px rgba(22,119,255,.35); }
+  .pin:focus { outline:none; }
   .stop.hl { border-color:var(--accent); box-shadow:0 0 0 3px rgba(22,119,255,.18); }
   .legs { list-style:none; margin:10px 0 0; padding:0; }
   .leg { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--line);
