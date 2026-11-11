@@ -61,6 +61,7 @@ test('点地图任意处：就近接管到库里真有的点（底图标注点�
     'nearestPoi 用了 AMap 2.0 不存在的 bounds.getEast/West()'
   );
   assert.match(nearFn, /getBounds\(\)/, 'nearestPoi 应复用模块自己的 getBounds()');
+  assert.match(nearFn, /getWidth/, 'getSize() 在 AMap 2.0 里是 getWidth()，不能只读 .width');
   // 回调要把点击处经纬度带出来
   const onMapClick = MAP.match(/function onMapClick[\s\S]*?\n  \}/)[0];
   assert.match(onMapClick, /e\.lnglat/, 'onMapClick 未把 lnglat 传给回调');
