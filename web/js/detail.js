@@ -201,6 +201,19 @@
         '</div>'
       : '';
 
+    // 位置卡（点地图问「这里是哪」）的说明：名字/地址来自逆地理编码；
+    // 如果最近的地标也不在脚下，就明说它在多远外 —— 别让人以为我们认错了地方
+    const atNote = data.atPoint
+      ? '地址来自高德逆地理编码' +
+        (nearby.length && Number(nearby[0].distance) > 30
+          ? '；这一带没有更近的地点（最近 ' +
+            Math.round(Number(nearby[0].distance)) +
+            'm：' +
+            esc(nearby[0].name) +
+            '）'
+          : '；这个位置没有更多详情')
+      : '';
+
     card.innerHTML =
       (data.atPoint ? '' : galleryHtml(photos)) +
       '<div class="card-head">' +
@@ -235,7 +248,7 @@
       '<button class="btn primary add-pin">加入行程</button>' +
       '</div>' +
       (data.atPoint
-        ? '<p class="detail-note">地址来自高德逆地理编码；这个位置暂时没有更多详情</p>'
+        ? '<p class="detail-note">' + atNote + '</p>'
         : '<p class="detail-note">图片来源：高德（官方图 / 用户实拍，已在图上标明）；高德接口不提供评价正文，点「去高德看评价」看真实评价</p>') +
       '<p class="card-dismiss-hint">× / Esc / 点地图空白 都能关掉这个卡片</p>';
 
