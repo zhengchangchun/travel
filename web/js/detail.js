@@ -178,19 +178,25 @@
         : '';
 
     // 点地图查到的位置：把这一带其他点列出来（有就显示；与标题同名的不重复列）
+    // 我们库里真有的那条可以点开（data-nearby = poi_id），高德只给名字的就只是文字
     const nearby = (Array.isArray(data.nearby) ? data.nearby : []).filter(
       (p) => p && p.name && p.name !== data.name
     );
     const nearbyHtml = nearby.length
       ? '<div class="at-nearby"><span class="at-nearby-title">这一带还有</span>' +
         nearby
-          .map(
-            (p) =>
-              '<span class="at-nearby-item">' +
+          .map((p) => {
+            const body =
               esc(p.name) +
-              (Number(p.distance) > 0 ? '<i>' + Math.round(Number(p.distance)) + 'm</i>' : '') +
-              '</span>'
-          )
+              (Number(p.distance) > 0 ? '<i>' + Math.round(Number(p.distance)) + 'm</i>' : '');
+            return p.poi_id
+              ? '<button type="button" class="at-nearby-item" data-nearby="' +
+                  esc(p.poi_id) +
+                  '" title="看看这个地点">' +
+                  body +
+                  '</button>'
+              : '<span class="at-nearby-item">' + body + '</span>';
+          })
           .join('') +
         '</div>'
       : '';
@@ -234,6 +240,14 @@
       '<p class="card-dismiss-hint">× / Esc / 点地图空白 都能关掉这个卡片</p>';
 
     card.classList.remove('hidden');
+
+    // 「这一带还有」里我们库里真有的那几条：点一下弹那个地点的详情
+    card.querySelectorAll('.at-nearby-item[data-nearby]').forEach((btn) => {
+      btn.onclick = () => {
+        const hit = nearby.find((p) => String(p.poi_id) === btn.dataset.nearby);
+        if (hit && handlers && typeof handlers.onNearby === 'function') handlers.onNearby(hit);
+      };
+    });
 
     // 图集左右翻
     let idx = 0;

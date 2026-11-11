@@ -1,3 +1,14 @@
+// 两点间近似距离（米）：给「附近」排序用，精度足够
+function metresBetween(lng1, lat1, lng2, lat2) {
+  const R = 6371000;
+  const rad = Math.PI / 180;
+  const dLat = (Number(lat2) - Number(lat1)) * rad;
+  const dLng = (Number(lng2) - Number(lng1)) * rad;
+  const mid = ((Number(lat1) + Number(lat2)) / 2) * rad;
+  const x = dLng * Math.cos(mid);
+  return Math.sqrt(x * x + dLat * dLat) * R;
+}
+
 async function cached(ctx, producer) {
   const key = ctx.cacheKey;
   const hit = ctx.cache.get(key);
@@ -66,8 +77,10 @@ module.exports = [
   },
   {
     // 点地图任意处问「这里是哪」（P19）。
-    // ① 我们库里已经有这一带的点 ⇒ 零调用直接给（用户最想要的也是那个点）
-    // ② 没有 ⇒ 逆地理编码（搜索类配额用尽时它通常还有额度），拿地址 + 附近 POI
+    // 口径：**主信息一定对得上点击处** ——
+    //   ① 库里有点就在 25m 内（基本就是点在它上面）⇒ 用它当主名，零调用
+    //   ② 否则用逆地理编码（搜索类配额用尽时它通常还有额度）拿这个坐标的地址
+    //   ③ 附近的点（我们的 + 高德的）一律只进 nearby 列表、标距离，不冒充点击处
     method: 'GET',
     path: '/api/poi/at',
     async handler(ctx) {
@@ -80,15 +93,64 @@ module.exports = [
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', 'lng/lat 必须是数字');
       }
-      if (typeof ctx.db.poisNearPoint === 'function') {
-        const local = ctx.db.poisNearPoint({ lng: x, lat: y, deg: 0.0015, limit: 5 });
-        if (local.length) {
-          return { source: 'local', lng: x, lat: y, poi: local[0], nearby: local.slice(1) };
-        }
+      const local =
+        typeof ctx.db.poisNearPoint === 'function'
+          ? ctx.db
+              .poisNearPoint({ lng: x, lat: y, deg: 0.0015, limit: 8 })
+              .map((p) => Object.assign({}, p, { distance: metresBetween(x, y, p.lng, p.lat) }))
+          : [];
+      const onIt = local.find((p) => p.distance <= 25) || null; // 就压在点击处那条
+
+      let at = null;
+      let atError = null;
+      try {
+        at = await cached(ctx, () => ctx.amap.reverseGeocode({ lng: x, lat: y }));
+      } catch (err) {
+        atError = err;
       }
-      const at = await cached(ctx, () => ctx.amap.reverseGeocode({ lng: x, lat: y }));
-      if (!at) throw new ctx.HttpError(502, 'AMAP_ERROR', '这个位置查不到地址');
-      return Object.assign({ source: 'amap', lng: x, lat: y }, at);
+      if (!at && !onIt) {
+        if (atError) throw atError;
+        throw new ctx.HttpError(502, 'AMAP_ERROR', '这个位置查不到地址');
+      }
+
+      const nearby = local
+        .filter((p) => !onIt || String(p.poi_id) !== String(onIt.poi_id))
+        .map((p) => ({
+          name: p.name,
+          address: p.address,
+          category: p.category,
+          poi_id: p.poi_id,
+          distance: Math.round(p.distance),
+          source: 'local',
+        }))
+        .concat(
+          at && Array.isArray(at.places)
+            ? at.places.map((p) => ({
+                name: p.name,
+                address: p.address,
+                category: null,
+                poi_id: null,
+                distance: Math.round(Number(p.distance) || 0),
+                source: 'amap',
+              }))
+            : []
+        )
+        .filter((p) => p.name && (!onIt || p.name !== onIt.name))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 8);
+
+      return {
+        source: onIt ? 'local' : 'amap',
+        lng: x,
+        lat: y,
+        name: (onIt && onIt.name) || (at && at.name) || '',
+        address: (at && at.address) || (onIt && onIt.address) || '',
+        category: (onIt && onIt.category) || (at && at.category) || null,
+        street: (at && at.street) || '',
+        area: (at && at.area) || '',
+        poi: onIt,
+        nearby,
+      };
     },
   },
 ];

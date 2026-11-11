@@ -71,16 +71,38 @@ async function getJson(base, p) {
   return { status: res.status, body: await res.json() };
 }
 
-test('点地图：这一带库里有点 ⇒ 零调用直接给，逆地理编码不参与', async () => {
+test('点地图：点击处正好压着我们的点 ⇒ 主名就是那一条（地址仍取这个坐标的）', async () => {
   const { db, base, calls, close } = await start();
   try {
-    db.upsertPoi(HUBIN);
+    db.upsertPoi(HUBIN); // 坐标与点击处完全一致
     const { status, body } = await getJson(base, '/api/poi/at?lng=120.165652&lat=30.254265');
     assert.strictEqual(status, 200);
     assert.strictEqual(body.data.source, 'local');
     assert.strictEqual(body.data.poi.name, HUBIN.name);
     assert.strictEqual(body.data.poi.poi_id, HUBIN.poi_id);
-    assert.strictEqual(calls.reverse, 0, '库里有点就不该打高德');
+    assert.strictEqual(body.data.name, HUBIN.name, '主名用点击处那一条');
+    assert.ok(body.data.address, '地址要有（这个坐标的地址）');
+    assert.strictEqual(calls.reverse, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('点地图：我们的点在一百米外 ⇒ 不冒充点击处，只进「这一带还有」', async () => {
+  const { db, base, calls, close } = await start();
+  try {
+    // +0.001° 经度 ≈ 96m
+    db.upsertPoi(Object.assign({}, HUBIN, { poi_id: 'FAR1', name: '一百米外的点', lng: 120.166652 }));
+    const { status, body } = await getJson(base, '/api/poi/at?lng=120.165652&lat=30.254265');
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.data.poi, null, '一百米外的点不能当成点击处那一条');
+    assert.strictEqual(body.data.source, 'amap');
+    assert.strictEqual(body.data.address, REGEO.address, '主信息要是「这个坐标」的地址');
+    assert.strictEqual(calls.reverse, 1);
+    const hit = (body.data.nearby || []).find((p) => p.name === '一百米外的点');
+    assert.ok(hit, '它应该出现在附近列表里');
+    assert.strictEqual(hit.poi_id, 'FAR1');
+    assert.ok(hit.distance > 50 && hit.distance < 150, '距离要如实标，实际 ' + hit.distance);
   } finally {
     await close();
   }
@@ -97,7 +119,7 @@ test('点地图：这一带库里没点 ⇒ 逆地理编码拿地址（搜索类
     assert.strictEqual(body.data.lng, 120.3);
     assert.strictEqual(body.data.lat, 30.1);
     assert.strictEqual(calls.reverse, 1);
-    assert.ok(body.data.places.length >= 1, '这一带还有什么要一起给出来');
+    assert.ok(body.data.nearby.length >= 1, '这一带还有什么要一起给出来');
   } finally {
     await close();
   }

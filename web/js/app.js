@@ -321,22 +321,12 @@
     if (el) el.classList.add('hidden');
   }
 
-  // 点地图：底图自带的 POI 标注（如「湖滨步行街」）点不动，靠就近接管 —— 附近有我们库里真有的点就弹它的卡片；
-  // 附近什么都没有就去问「这里是哪」（逆地理编码）。真的点在一片查不到的荒地上才关卡片。
+  // 点地图：底图自带的 POI 标注（如「湖滨步行街」）点不动 ⇒ 一律问「这里是哪」。
+  // 口径：**显示的东西必须对得上你点的那个位置** —— 不再拿附近最近的点冒充点击处。
   // 刚点过旗子时不处理，避免「弹了又立刻被关掉」。
   let lastPickAt = 0;
   function onMapBlankClick(lnglat) {
     if (Date.now() - lastPickAt < 400) return;
-    const near = MapCtl.nearestPoi ? MapCtl.nearestPoi(lnglat, state.pois, 24) : null;
-    if (near) {
-      if (state.cardPoi && state.cardPoi === near) {
-        state.cardPoi = null;
-        hideInfoCard(); // 再点同一个：收起来
-        return;
-      }
-      onPickPoi(near);
-      return;
-    }
     const lng = lnglat ? Number(lnglat.lng) : NaN;
     const lat = lnglat ? Number(lnglat.lat) : NaN;
     if (Number.isFinite(lng) && Number.isFinite(lat)) {
@@ -346,22 +336,15 @@
     hideInfoCard();
   }
 
-  // 点地图问「这里是哪」（P19）：库里这一带有收录就零调用直接给，没有就走逆地理编码。
-  // 两种结果都组装成一张普通信息卡（与点旗子同一张），用户不用学第二套界面。
+  // 点地图问「这里是哪」（P19）：主信息一律以点击处为准（库里刚好压着就用它，否则逆地理编码地址），
+  // 附近的点只当「这一带还有」列出来，点一下才弹那个点的详情。
   let atSeq = 0;
   function atToPoi(data) {
     if (!data) return null;
-    if (data.source === 'local' && data.poi) {
-      return Object.assign({}, data.poi, { nearby: data.nearby || [] });
-    }
-    const fallbackName = String(data.address || '')
-      .split(/[\s·]+/)
-      .filter(Boolean)
-      .pop();
     return {
       id: '',
       poi_id: '',
-      name: data.name || fallbackName || '这个位置',
+      name: data.name || '这个位置',
       address: data.address || data.street || '',
       lng: data.lng,
       lat: data.lat,
@@ -369,7 +352,7 @@
       rating: '',
       cost: '',
       photos: [],
-      nearby: (data.places || []).filter((p) => p && p.name),
+      nearby: (data.nearby || []).filter((p) => p && p.name),
       atPoint: true,
     };
   }
@@ -388,6 +371,12 @@
       return;
     }
     if (seq !== atSeq) return; // 连点好几下：只认最后一次
+    // ① 点击处本来就压着我们的点（≤25m）⇒ 直接弹它（与点旗子同一张卡）
+    if (data && data.poi) {
+      onPickPoi(data.poi, { noFly: true });
+      UI.setStatus('这里是 ' + data.poi.name);
+      return;
+    }
     const poi = atToPoi(data);
     if (!poi) {
       UI.setStatus('这个位置附近没有可显示的地点');
@@ -395,17 +384,39 @@
     }
     state.cardPoi = poi;
     lastPickAt = Date.now(); // 卡片刚弹起：别被随后的一次点击当成「点空白」关掉
-    UI.setStatus(
-      data.source === 'local'
-        ? '这一带已收录 ' + (1 + (data.nearby || []).length) + ' 个地点（来自本地）'
-        : '这个位置：' + (data.address || poi.name)
-    );
+    UI.setStatus('这个位置：' + (data.address || poi.name));
     window.TravelDetail.show($('infocard'), poi, state.city, {
       onAddPin,
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
       onSetBase: setBase,
+      onNearby: pickNearby,
     });
+  }
+
+  // 点「这一带还有」里的某一项：拉它的详情，弹那张点卡（不飞相机：它就在眼前）
+  async function pickNearby(item) {
+    if (!item || !item.poi_id) return;
+    UI.setStatus('正在打开「' + item.name + '」…');
+    let poi = null;
+    try {
+      poi = await API.getPoiDetail(item.poi_id);
+    } catch (err) {
+      poi = null;
+    }
+    if (!poi) {
+      poi = {
+        id: item.poi_id,
+        poi_id: item.poi_id,
+        name: item.name,
+        address: item.address,
+        category: item.category,
+        lng: item.lng,
+        lat: item.lat,
+      };
+    }
+    onPickPoi(poi, { noFly: true });
+    UI.setStatus('已打开「' + poi.name + '」');
   }
 
   function passesRating(p) {
@@ -1178,15 +1189,17 @@
     UI.setStatus('已清空筛选，回到默认（未选分类 · ≥4.0）—— 点上面的分类开始看');
   }
 
-  function onPickPoi(poi) {
+  function onPickPoi(poi, opts) {
     state.cardPoi = poi;
     lastPickAt = Date.now();
-    flyTo(poi.lng, poi.lat, 15);
+    // 从列表点进来要把相机带到那个点；从地图上点则不飞（它就在眼前，飞一下会把视野扯走）
+    if (!(opts && opts.noFly)) flyTo(poi.lng, poi.lat, 15);
     window.TravelDetail.show($('infocard'), poi, state.city, {
       onAddPin,
       isSelected: (p) => Selection.has(p),
       onToggleSelect,
       onSetBase: setBase,
+      onNearby: pickNearby,
     });
   }
 

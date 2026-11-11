@@ -66,7 +66,7 @@ test('定锚点：setBase/clearBase + 列表与详情卡两个入口', () => {
   assert.match(APP, /function\s+setBase\(poi\)/, '缺 setBase');
   assert.match(APP, /function\s+clearBase\(\)/, '缺 clearBase');
   assert.match(APP, /onSetBase:\s*setBase/, 'refresh 未把 onSetBase 传给列表');
-  assert.match(APP, /onSetBase:\s*setBase,?\s*\n\s*\}\);/, '详情卡未接 onSetBase');
+  assert.match(APP, /TravelDetail\.show\([\s\S]{0,260}?onSetBase:\s*setBase/, '详情卡未接 onSetBase');
   assert.match(UI, /function\s+baseButton/, 'ui 缺 baseButton');
   assert.match(UI, /poi\.category === 'stay' \? baseButton/, '列表未只给住宿项加「住这」');
   assert.match(DETAIL, /data\.category === 'stay' \? .*base-pick/, '详情卡未只给住宿项加「定为住宿」');

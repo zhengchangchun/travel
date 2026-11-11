@@ -50,27 +50,27 @@ test('搜索后地图自己飞过去的那一下，不拿视野点冲掉搜索�
   assert.match(APP.match(/function onResetFilters[\s\S]*?\n  \}/)[0], /state\.searchKey = ''/, 'onResetFilters 未清 searchKey');
 });
 
-test('点地图任意处：就近接管到库里真有的点（底图标注点不动）', () => {
-  assert.match(MAP, /function nearestPoi/, 'map.js 缺 nearestPoi');
-  assert.match(MAP, /nearestPoi,/, 'nearestPoi 未导出');
-  // AMap 2.0 的 Bounds 只有 getSouthWest/getNorthEast —— 写 getEast() 直接抛
-  const nearFn = MAP.match(/function nearestPoi[\s\S]*?\n  \}/)[0];
-  const nearCode = nearFn.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-  assert.ok(
-    !/getEast\(\)|getWest\(\)/.test(nearCode),
-    'nearestPoi 用了 AMap 2.0 不存在的 bounds.getEast/West()'
-  );
-  assert.match(nearFn, /getBounds\(\)/, 'nearestPoi 应复用模块自己的 getBounds()');
-  assert.match(nearFn, /getWidth/, 'getSize() 在 AMap 2.0 里是 getWidth()，不能只读 .width');
+test('点地图任意处：一律问「这里是哪」，不用附近的点冒充点击处', () => {
   // 回调要把点击处经纬度带出来
   const onMapClick = MAP.match(/function onMapClick[\s\S]*?\n  \}/)[0];
   assert.match(onMapClick, /e\.lnglat/, 'onMapClick 未把 lnglat 传给回调');
   assert.match(APP, /onMapClick\(\(lnglat\) => onMapBlankClick\(lnglat\)\)/, 'app.js 未把 lnglat 传下去');
+
   const blank = APP.match(/function onMapBlankClick[\s\S]*?\n  \}/)[0];
-  assert.match(blank, /MapCtl\.nearestPoi\(/, 'onMapBlankClick 未就近接管');
-  assert.match(blank, /onPickPoi\(near\)/, '命中附近的点时应弹它的卡片');
-  // 再点同一个：收起来（不是反复弹）
-  assert.match(blank, /state\.cardPoi === near/, '未处理「再点同一个收起」');
+  assert.match(blank, /lookupAddress\(/, 'onMapBlankClick 应直接去查这个位置');
+  assert.ok(!/nearestPoi/.test(blank), 'onMapBlankClick 不该再拿附近最近的点冒充点击处');
+  assert.ok(!/nearestPoi/.test(MAP), 'map.js 不该再留 nearestPoi 那套就近接管');
+
+  // 后端口径：25m 内才算「点击处那一条」，其余一律只进附近列表
+  const route = read('server/routes/poi.js');
+  assert.match(route, /distance <= 25/, '后端缺「25m 内才算点击处那条」的判定');
+  assert.match(route, /nearby,/, '后端要把附近的一起给出来');
+
+  // 「这一带还有」里我们库里真有的那条可点开；点开的那个不飞相机（它就在眼前）
+  assert.match(read('web/js/detail.js'), /data-nearby/, '附近列表里我们库里的点应可点开');
+  assert.match(APP, /function pickNearby/, 'app.js 缺 pickNearby');
+  assert.match(APP, /noFly/, '从地图上点开的点不该再飞相机');
+
   // 关卡片时把 cardPoi 一并清掉
   const hide = APP.match(/function hideInfoCard[\s\S]*?\n  \}/)[0];
   assert.match(hide, /state\.cardPoi = null/, 'hideInfoCard 未清 cardPoi');

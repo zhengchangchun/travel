@@ -899,9 +899,12 @@ button:disabled { opacity: .45; }
 .at-nearby { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
 .at-nearby-title { font-size: 12px; color: var(--ink-3); }
 .at-nearby-item {
-  font-size: 12px; color: var(--ink-2); background: var(--surface-2);
+  font: inherit; font-size: 12px; color: var(--ink-2); background: var(--surface-2);
   border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px;
 }
+/* 这一带里我们库里真有的那条可点开 */
+.at-nearby-item[data-nearby] { cursor: pointer; }
+.at-nearby-item[data-nearby]:hover { border-color: #1677ff; color: var(--ink); }
 .at-nearby-item i { font-style: normal; color: var(--ink-3); margin-left: 6px; }
 .copy-addr { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-2); }
 .card-rows dt { color: var(--ink-3); }

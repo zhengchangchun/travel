@@ -466,39 +466,6 @@
 
   // 点地图任意处 → 找附近（屏幕 maxPx 像素内）我们库里真有的那条点：
   // 「湖滨步行街」这种底图地名不归我们管，但站在它上面的那条酒店是我们的 ⇒ 接管它
-  function nearestPoi(lnglat, list, maxPx) {
-    if (!map || !lnglat || !Array.isArray(list) || !list.length) return null;
-    const lim = Number(maxPx) || 24;
-    // 用模块自己的 getBounds()：AMap 2.0 的 Bounds 只有 getSouthWest/getNorthEast，
-    // 写 b.getEast() 会直接抛 TypeError（真踩过）
-    const b = getBounds();
-    // AMap 2.0 的 getSize() 是 Size（getWidth()/getHeight()），不是 {width,height} —— 两种都接住
-    const size = map.getSize && map.getSize();
-    const wPx = size ? (typeof size.getWidth === 'function' ? size.getWidth() : size.width) : 0;
-    if (!b || !wPx) return null;
-    const span = (lim * (b.maxLng - b.minLng)) / wPx; // 先用经纬度粗筛，省掉整屏投影
-    if (!(span > 0)) return null;
-    const lng = lnglat.lng != null ? lnglat.lng : lnglat.getLng();
-    const lat = lnglat.lat != null ? lnglat.lat : lnglat.getLat();
-    const base = map.lngLatToContainer(new AMap.LngLat(lng, lat));
-    let best = null;
-    let bestD = lim;
-    for (let i = 0; i < list.length; i += 1) {
-      const p = list[i];
-      const plng = Number(p.lng);
-      const plat = Number(p.lat);
-      if (!Number.isFinite(plng) || !Number.isFinite(plat)) continue;
-      if (Math.abs(plng - lng) > span || Math.abs(plat - lat) > span) continue;
-      const q = map.lngLatToContainer(new AMap.LngLat(plng, plat));
-      const d = Math.sqrt((q.x - base.x) * (q.x - base.x) + (q.y - base.y) * (q.y - base.y));
-      if (d <= bestD) {
-        bestD = d;
-        best = p;
-      }
-    }
-    return best;
-  }
-
   // ---------- 路线连线（T3） ----------
   let routeLines = [];
   let routeLabels = [];
@@ -662,7 +629,6 @@
     onViewSettled,
     onMarkerClick,
     onMapClick,
-    nearestPoi,
     flagHtml,
     routeStyle,
     drawRoute,
