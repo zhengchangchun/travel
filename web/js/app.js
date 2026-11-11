@@ -1177,7 +1177,7 @@
 
   // 回到默认筛选：清掉分类/评分，回到「未选分类 · ≥4.0」的初始态
   function onResetFilters() {
-    state.activeCats.clear();
+    state.activeCats = new Set(Cats.all().map((c) => c.key));
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.resultLimit = RESULT_PAGE;
@@ -1186,7 +1186,7 @@
     renderCatChips();
     renderRatingSlider();
     refresh();
-    UI.setStatus('已清空筛选，回到默认（未选分类 · ≥4.0）—— 点上面的分类开始看');
+    UI.setStatus('已回到默认（全部类别 · ≥4.0）');
   }
 
   function onPickPoi(poi, opts) {
@@ -1535,7 +1535,7 @@
   async function setCity(city) {
     state.city = city.name || city;
     $('current-city').textContent = state.city;
-    state.activeCats.clear();
+    state.activeCats = new Set(Cats.all().map((c) => c.key));
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.searchKey = '';
@@ -2019,6 +2019,8 @@
     }
 
     Cats.init(state.config.categories);
+    // 首先是一个地图：打开就把四类都显示出来，而不是空着等用户去选（用户 2026-11-11）
+    state.activeCats = new Set(Cats.all().map((c) => c.key));
     renderCatChips();
     renderRatingSlider();
     loadBaseFromStore();

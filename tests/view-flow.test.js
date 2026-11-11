@@ -76,10 +76,11 @@ test('默认不选分类：未选分类不显示地点，选了就只看选中�
   );
 });
 
-test('切城市重置回「先不选中」；关键词搜索不过滤分类', () => {
+test('切城市回到「全部类别」；关键词搜索不过滤分类', () => {
   const m = APP.match(/function\s+setCity[\s\S]*?\n  \}/);
   assert.ok(m, '未找到 setCity');
-  assert.match(m[0], /state\.activeCats\.clear\(\)/, 'setCity 未清分类');
+  // 首先是一个地图：新城市打开就把四类都显示出来（用户 2026-11-11）
+  assert.match(m[0], /state\.activeCats = new Set\(Cats\.all\(\)/, 'setCity 应回到全部类别');
   const s = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/);
   assert.ok(s, '未找到 doPoiSearch');
   assert.match(
