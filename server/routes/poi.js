@@ -139,9 +139,27 @@ module.exports = [
         looksSamePlace(at.landmark || at.name, onIt.name)
       );
       const useOurs = sameAsOurs || (!at && !!onIt);
+
+      // ③ 前两级都给不出「脚底下的东西」时，问搜索服务这一带真有什么。
+      // 搜索类配额用尽会报错 ⇒ 静默跳过，不影响上面已拿到的地址。
+      let around = [];
+      if (!useOurs) {
+        try {
+          const hits = await ctx.amap.nearbyPoi({ lng: x, lat: y, radius: 200 });
+          around = (Array.isArray(hits) ? hits : [])
+            .map((p) => Object.assign({}, p, { distance: metresBetween(x, y, p.lng, p.lat) }))
+            .filter((p) => p.name)
+            .sort((a, b) => a.distance - b.distance);
+        } catch (err) {
+          around = [];
+        }
+      }
+      // 搜索服务报的第一条如果就在脚下（≤50m），它就是「你点的那个东西」
+      const atFeet = !useOurs && around.length && around[0].distance <= 50 ? around[0] : null;
+
       const mainName = useOurs
         ? onIt.name
-        : (at && (at.landmark || at.name)) || (onIt && onIt.name) || '';
+        : (atFeet && atFeet.name) || (at && (at.landmark || at.name)) || (onIt && onIt.name) || '';
 
       const nearby = local
         .filter((p) => !useOurs || !onIt || String(p.poi_id) !== String(onIt.poi_id))
@@ -153,6 +171,16 @@ module.exports = [
           distance: Math.round(p.distance),
           source: 'local',
         }))
+        .concat(
+          around.map((p) => ({
+            name: p.name,
+            address: p.address,
+            category: p.category,
+            poi_id: null,
+            distance: Math.round(p.distance),
+            source: 'amap',
+          }))
+        )
         .concat(
           at && Array.isArray(at.places)
             ? at.places.map((p) => ({

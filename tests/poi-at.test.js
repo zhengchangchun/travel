@@ -44,7 +44,7 @@ const REGEO = {
 
 async function start(opts = {}) {
   const db = createDb(':memory:');
-  const calls = { reverse: 0 };
+  const calls = { reverse: 0, around: 0 };
   const amap = {
     async reverseGeocode({ lng, lat }) {
       calls.reverse += 1;
@@ -52,6 +52,13 @@ async function start(opts = {}) {
         return opts.amap.reverseGeocode({ lng, lat });
       }
       return REGEO;
+    },
+    async nearbyPoi(params) {
+      calls.around += 1;
+      if (opts.amap && typeof opts.amap.nearbyPoi === 'function') {
+        return opts.amap.nearbyPoi(params);
+      }
+      return [];
     },
   };
   const app = createApp({ config: TEST_CONFIG, db, amap });
@@ -175,7 +182,66 @@ test('点地图：这一带库里没点 ⇒ 逆地理编码拿地址（搜索类
   }
 });
 
-test('点地图：高德报错（额度用尽等）如实上抛，不吞成假成功', async () => {
+test('点地图：前两级都给不出脚下的东西时，用搜索服务报的那一条（额度恢复后生效）', async () => {
+  const { base, close } = await start({
+    amap: {
+      async reverseGeocode() {
+        return Object.assign({}, REGEO, {
+          name: '新城音乐喷泉',
+          landmark: '福缘巷歌德商务楼',
+          address: '浙江省杭州市上城区小营街道福缘巷歌德商务楼',
+        });
+      },
+      async nearbyPoi() {
+        return [
+          {
+            poi_id: 'ODE1',
+            name: '欧德大酒店',
+            address: '城站路1号',
+            category: 'stay',
+            lng: 120.1799,
+            lat: 30.24495,
+          },
+        ];
+      },
+    },
+  });
+  try {
+    const { status, body } = await getJson(base, '/api/poi/at?lng=120.179809&lat=30.244882');
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.data.name, '欧德大酒店', '就在脚下的那一条要当主名');
+    assert.strictEqual(body.data.poi, null, '它不是我们库里的点，不能当能拉详情的那条');
+    assert.strictEqual(
+      body.data.address,
+      '浙江省杭州市上城区小营街道福缘巷歌德商务楼',
+      '地址照旧是这个坐标的'
+    );
+  } finally {
+    await close();
+  }
+});
+
+test('点地图：搜索服务没额度也不影响前两级（静默跳过）', async () => {
+  const { base, close } = await start({
+    amap: {
+      async nearbyPoi() {
+        const e = new Error('USER_DAILY_QUERY_OVER_LIMIT');
+        e.code = 'AMAP_ERROR';
+        throw e;
+      },
+    },
+  });
+  try {
+    const { status, body } = await getJson(base, '/api/poi/at?lng=120.30&lat=30.10');
+    assert.strictEqual(status, 200, '额度用完也得给出地址，不能 500');
+    assert.strictEqual(body.data.name, '岙上沈');
+    assert.ok(body.data.address, '地址要在');
+  } finally {
+    await close();
+  }
+});
+
+test('点地图：高德逆地理也报错（额度用尽等）如实上抛，不吞成假成功', async () => {
   const { base, close } = await start({
     amap: {
       async reverseGeocode() {
