@@ -456,11 +456,43 @@
   }
 
   // 点地图空白（非旗子）——用于关掉信息卡；需要时由 app.js 自行做「刚点过旗子」的去抖
+  // 回调带上点击处的经纬度：底图自带的 POI 标注点不动，app.js 要靠它就近接管到库里真有的点
   function onMapClick(cb) {
     if (!map || typeof map.on !== 'function') return;
-    map.on('click', () => {
-      if (typeof cb === 'function') cb();
+    map.on('click', (e) => {
+      if (typeof cb === 'function') cb(e && e.lnglat ? e.lnglat : null);
     });
+  }
+
+  // 点地图任意处 → 找附近（屏幕 maxPx 像素内）我们库里真有的那条点：
+  // 「湖滨步行街」这种底图地名不归我们管，但站在它上面的那条酒店是我们的 ⇒ 接管它
+  function nearestPoi(lnglat, list, maxPx) {
+    if (!map || !lnglat || !Array.isArray(list) || !list.length) return null;
+    const lim = Number(maxPx) || 24;
+    const b = map.getBounds && map.getBounds();
+    const size = map.getSize && map.getSize();
+    if (!b || !size || !size.width) return null;
+    const span = (lim * (b.getEast() - b.getWest())) / size.width; // 先用经纬度粗筛，省掉整屏投影
+    if (!(span > 0)) return null;
+    const lng = lnglat.lng != null ? lnglat.lng : lnglat.getLng();
+    const lat = lnglat.lat != null ? lnglat.lat : lnglat.getLat();
+    const base = map.lngLatToContainer(new AMap.LngLat(lng, lat));
+    let best = null;
+    let bestD = lim;
+    for (let i = 0; i < list.length; i += 1) {
+      const p = list[i];
+      const plng = Number(p.lng);
+      const plat = Number(p.lat);
+      if (!Number.isFinite(plng) || !Number.isFinite(plat)) continue;
+      if (Math.abs(plng - lng) > span || Math.abs(plat - lat) > span) continue;
+      const q = map.lngLatToContainer(new AMap.LngLat(plng, plat));
+      const d = Math.sqrt((q.x - base.x) * (q.x - base.x) + (q.y - base.y) * (q.y - base.y));
+      if (d <= bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    return best;
   }
 
   // ---------- 路线连线（T3） ----------
@@ -626,6 +658,7 @@
     onViewSettled,
     onMarkerClick,
     onMapClick,
+    nearestPoi,
     flagHtml,
     routeStyle,
     drawRoute,

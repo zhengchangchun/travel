@@ -44,6 +44,8 @@
     view: 'list',
     cardPoi: null,
     ratingFilter: DEFAULT_RATING_FILTER,
+    searchKey: '', // 上一个关键词搜索（有值时列表口径 = 搜索结果，不是本视野）
+    searchHold: null, // 搜索后地图自己飞过去的那一下：视野不动就不拿「这一片的点」冲掉搜索结果
     bases: [], // 住宿锚点可以有多个（换酒店/多层住宿）
     base: null, // 其中「当前」那个（看周边/回中/自动成线用它）
     baseRadiusM: 1000, // 锚点周边半径（米）
@@ -278,8 +280,11 @@
       el.title = '先选一个分类（可多选）再看结果';
       return;
     }
-    const bits = ['显示 ' + shown + ' / 本视野 ' + state.pois.length + ' 条', filterText()];
-    if (total > shown) bits.push('合条件共 ' + total + ' 条');
+    const bits = state.searchKey
+      ? ['搜索「' + state.searchKey + '」命中 ' + state.pois.length + ' 条' + (total > shown ? '（先显示 ' + shown + ' 条）' : '')]
+      : ['显示 ' + shown + ' / 本视野 ' + state.pois.length + ' 条'];
+    bits.push(filterText());
+    if (!state.searchKey && total > shown) bits.push('合条件共 ' + total + ' 条');
     // 落旗有上限：地图与列表口径对不上时要说清楚（P9-③）
     const mi = state.markerInfo;
     if (mi && mi.dropped > 0) {
@@ -311,14 +316,26 @@
   }
 
   function hideInfoCard() {
+    state.cardPoi = null;
     const el = $('infocard');
     if (el) el.classList.add('hidden');
   }
 
-  // 点地图空白关卡片：刚点过旗子（信息卡刚弹起来）时不关，避免「弹了又立刻被关掉」
+  // 点地图：底图自带的 POI 标注（如「湖滨步行街」）点不动，靠就近接管 —— 附近有我们库里真有的点就弹它的卡片，
+  // 真的点在一片空地上才关卡片。刚点过旗子时不处理，避免「弹了又立刻被关掉」。
   let lastPickAt = 0;
-  function onMapBlankClick() {
+  function onMapBlankClick(lnglat) {
     if (Date.now() - lastPickAt < 400) return;
+    const near = MapCtl.nearestPoi ? MapCtl.nearestPoi(lnglat, state.pois, 24) : null;
+    if (near) {
+      if (state.cardPoi && state.cardPoi === near) {
+        state.cardPoi = null;
+        hideInfoCard(); // 再点同一个：收起来
+        return;
+      }
+      onPickPoi(near);
+      return;
+    }
     hideInfoCard();
   }
 
@@ -1084,6 +1101,8 @@
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.resultLimit = RESULT_PAGE;
+    state.searchKey = '';
+    state.searchHold = null;
     renderCatChips();
     renderRatingSlider();
     refresh();
@@ -1170,6 +1189,8 @@
     }
     if (seq !== state.viewSeq) return; // 丢弃过期响应，只应用最后一次
     // ① 先落已有的旗（有多少画多少，不白屏）
+    // 走到这里说明口径已经回到「本视野」：搜索结果的标不再适用（搜索锁定也已解除）
+    state.searchKey = '';
     state.pois = dedupe(data.items || []);
     state.resultLimit = RESULT_PAGE;
     UI.showLegend(state.pois.length > 0 || state.cityTotal > 0);
@@ -1355,8 +1376,27 @@
       state.suppressView = false;
       return;
     }
+    // 搜索完地图自己飞到了结果那一片：视野没真的动过，就别用「这一片的所有点」把搜索结果冲掉
+    // （用户 2026-11-11：搜「湖滨步行街」刚看到结果，三秒后列表变成一屏咖啡店）
+    if (state.searchHold) {
+      if (viewMatchesHold()) return;
+      state.searchHold = null; // 用户真的动了地图 ⇒ 解除锁定，恢复「视野即口径」
+    }
     pruneToViewport(MapCtl.getBounds());
     fetchPoisInView();
+  }
+
+  // 当前视野是否还停在搜索后飞过去的那个位置（中心 + 比例都没动就蒜）
+  function viewMatchesHold() {
+    const h = state.searchHold;
+    if (!h || !MapCtl.isReady()) return false;
+    const zoom = MapCtl.getZoom();
+    if (zoom != null && Math.abs(zoom - h.zoom) > 0.05) return false;
+    const b = MapCtl.getBounds();
+    if (!b || typeof b.getWest !== 'function') return false;
+    const lng = (b.getWest() + b.getEast()) / 2;
+    const lat = (b.getSouth() + b.getNorth()) / 2;
+    return Math.abs(lng - h.lng) < 0.002 && Math.abs(lat - h.lat) < 0.002;
   }
 
   // 程序化飞行（点列表/定位）：不触发视野重载，避免冲掉当前列表
@@ -1415,6 +1455,8 @@
     state.activeCats.clear();
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
+    state.searchKey = '';
+    state.searchHold = null;
     state.pois = [];
     state.cityTotal = 0;
     state.trip = null; // N20：切城市必须重置当前行程，避免残留上一城市的行程
@@ -1657,10 +1699,17 @@
       state.resultLimit = RESULT_PAGE;
       // 关键词搜索：不过滤分类 ⇒ 四个分类 chip 全选中（列表与 chip 说的是同一件事）
       state.activeCats = new Set(Cats.all().map((c) => c.key));
+      // 搜索是「我要找这个东西」，不该再被浏览用的评分过滤挡掉：
+      // 搜「湖滨步行街」只回一条 3.7 分的酒店，被默认 ≥4.0 滤成 0 条 ⇒ 看着像点不了（用户 2026-11-11）
+      state.ratingFilter = 'all';
+      state.searchKey = keywords;
+      renderRatingSlider();
       renderCatChips();
       refresh();
       if (state.pois.length && MapCtl.isReady()) {
         flyTo(state.pois[0].lng, state.pois[0].lat, 15);
+        // 飞过去之后视野就等于搜索结果那一片：在用户真的动地图之前，不要让视野加载接管列表
+        state.searchHold = { lng: state.pois[0].lng, lat: state.pois[0].lat, zoom: 15 };
       }
       UI.setStatus(
         '「' +
@@ -1935,7 +1984,7 @@
         jsApiSecurityCode: state.config.jsApiSecurityCode,
       });
       MapCtl.onMarkerClick((poi) => onPickPoi(poi));
-      if (MapCtl.onMapClick) MapCtl.onMapClick(() => onMapBlankClick());
+      if (MapCtl.onMapClick) MapCtl.onMapClick((lnglat) => onMapBlankClick(lnglat));
       // 相机落定 → 立刻按新框裁剪已显示的旗；再防抖后加载（先缓存后实时搜索）
       MapCtl.onViewSettled((bounds) => {
         if (!state.suppressView) pruneToViewport(bounds);
