@@ -53,6 +53,14 @@ test('搜索后地图自己飞过去的那一下，不拿视野点冲掉搜索�
 test('点地图任意处：就近接管到库里真有的点（底图标注点不动）', () => {
   assert.match(MAP, /function nearestPoi/, 'map.js 缺 nearestPoi');
   assert.match(MAP, /nearestPoi,/, 'nearestPoi 未导出');
+  // AMap 2.0 的 Bounds 只有 getSouthWest/getNorthEast —— 写 getEast() 直接抛
+  const nearFn = MAP.match(/function nearestPoi[\s\S]*?\n  \}/)[0];
+  const nearCode = nearFn.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  assert.ok(
+    !/getEast\(\)|getWest\(\)/.test(nearCode),
+    'nearestPoi 用了 AMap 2.0 不存在的 bounds.getEast/West()'
+  );
+  assert.match(nearFn, /getBounds\(\)/, 'nearestPoi 应复用模块自己的 getBounds()');
   // 回调要把点击处经纬度带出来
   const onMapClick = MAP.match(/function onMapClick[\s\S]*?\n  \}/)[0];
   assert.match(onMapClick, /e\.lnglat/, 'onMapClick 未把 lnglat 传给回调');

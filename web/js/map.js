@@ -469,10 +469,12 @@
   function nearestPoi(lnglat, list, maxPx) {
     if (!map || !lnglat || !Array.isArray(list) || !list.length) return null;
     const lim = Number(maxPx) || 24;
-    const b = map.getBounds && map.getBounds();
+    // 用模块自己的 getBounds()：AMap 2.0 的 Bounds 只有 getSouthWest/getNorthEast，
+    // 写 b.getEast() 会直接抛 TypeError（真踩过）
+    const b = getBounds();
     const size = map.getSize && map.getSize();
     if (!b || !size || !size.width) return null;
-    const span = (lim * (b.getEast() - b.getWest())) / size.width; // 先用经纬度粗筛，省掉整屏投影
+    const span = (lim * (b.maxLng - b.minLng)) / size.width; // 先用经纬度粗筛，省掉整屏投影
     if (!(span > 0)) return null;
     const lng = lnglat.lng != null ? lnglat.lng : lnglat.getLng();
     const lat = lnglat.lat != null ? lnglat.lat : lnglat.getLat();
