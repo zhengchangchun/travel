@@ -167,6 +167,8 @@ module.exports = [
         )
         .filter((p) => p.name && p.name !== mainName)
         .sort((a, b) => a.distance - b.distance)
+        // 同名的只留最近的（同距时保留我们库里那条 —— 它可点开）
+        .filter((p, i, arr) => arr.findIndex((q) => q.name === p.name) === i)
         .slice(0, 8);
 
       return {
