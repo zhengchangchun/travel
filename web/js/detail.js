@@ -43,6 +43,9 @@
       photos,
       tags: Array.isArray(poi.tags) ? poi.tags.slice(0, 12) : [],
       amapUrl: poi.amapUrl || 'https://www.amap.com/detail/' + (id == null ? '' : id),
+      // P19：点地图问「这里是哪」时，卡片顺带列出这一带还有哪些点
+      nearby: Array.isArray(poi.nearby) ? poi.nearby.slice(0, 5) : [],
+      atPoint: !!poi.atPoint,
     };
   }
 
@@ -174,6 +177,22 @@
           '</div>'
         : '';
 
+    // 点地图查到的位置：把这一带其他点列出来（有就显示，不要占位）
+    const nearby = Array.isArray(data.nearby) ? data.nearby : [];
+    const nearbyHtml = nearby.length
+      ? '<div class="at-nearby"><span class="at-nearby-title">这一带还有</span>' +
+        nearby
+          .map(
+            (p) =>
+              '<span class="at-nearby-item">' +
+              esc(p.name) +
+              (Number(p.distance) > 0 ? '<i>' + Math.round(Number(p.distance)) + 'm</i>' : '') +
+              '</span>'
+          )
+          .join('') +
+        '</div>'
+      : '';
+
     card.innerHTML =
       galleryHtml(photos) +
       '<div class="card-head">' +
@@ -197,14 +216,19 @@
       '<button class="copy-addr" title="复制地址">复制</button>' +
       '</div>' +
       tagsHtml +
+      nearbyHtml +
       sourcesHtml +
       '<div class="card-actions">' +
       (data.category === 'stay' ? '<button class="btn base-pick">定为住宿</button>' : '') +
       '<a class="btn" href="' + esc(navUrl) + '" target="_blank" rel="noopener">导航</a>' +
-      '<a class="btn amap" href="' + esc(data.amapUrl) + '" target="_blank" rel="noopener">去高德看评价</a>' +
+      (data.atPoint
+        ? ''
+        : '<a class="btn amap" href="' + esc(data.amapUrl) + '" target="_blank" rel="noopener">去高德看评价</a>') +
       '<button class="btn primary add-pin">加入行程</button>' +
       '</div>' +
-      '<p class="detail-note">图片来源：高德（官方图 / 用户实拍，已在图上标明）；高德接口不提供评价正文，点「去高德看评价」看真实评价</p>' +
+      (data.atPoint
+        ? '<p class="detail-note">地址来自高德逆地理编码；这个位置暂时没有更多详情</p>'
+        : '<p class="detail-note">图片来源：高德（官方图 / 用户实拍，已在图上标明）；高德接口不提供评价正文，点「去高德看评价」看真实评价</p>') +
       '<p class="card-dismiss-hint">× / Esc / 点地图空白 都能关掉这个卡片</p>';
 
     card.classList.remove('hidden');

@@ -64,4 +64,31 @@ module.exports = [
       return cached(ctx, () => ctx.amap.poiDetail(String(id).trim()));
     },
   },
+  {
+    // 点地图任意处问「这里是哪」（P19）。
+    // ① 我们库里已经有这一带的点 ⇒ 零调用直接给（用户最想要的也是那个点）
+    // ② 没有 ⇒ 逆地理编码（搜索类配额用尽时它通常还有额度），拿地址 + 附近 POI
+    method: 'GET',
+    path: '/api/poi/at',
+    async handler(ctx) {
+      const { lng, lat } = ctx.query;
+      if (lng === undefined || lat === undefined || lng === '' || lat === '') {
+        throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 lng/lat');
+      }
+      const x = Number(lng);
+      const y = Number(lat);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new ctx.HttpError(400, 'BAD_REQUEST', 'lng/lat 必须是数字');
+      }
+      if (typeof ctx.db.poisNearPoint === 'function') {
+        const local = ctx.db.poisNearPoint({ lng: x, lat: y, deg: 0.0015, limit: 5 });
+        if (local.length) {
+          return { source: 'local', lng: x, lat: y, poi: local[0], nearby: local.slice(1) };
+        }
+      }
+      const at = await cached(ctx, () => ctx.amap.reverseGeocode({ lng: x, lat: y }));
+      if (!at) throw new ctx.HttpError(502, 'AMAP_ERROR', '这个位置查不到地址');
+      return Object.assign({ source: 'amap', lng: x, lat: y }, at);
+    },
+  },
 ];

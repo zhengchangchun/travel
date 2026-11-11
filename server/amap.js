@@ -55,6 +55,24 @@ function classifyType(typecode) {
   return null;
 }
 
+// regeo 的 pois[].type 是「商务住宅;楼宇;商务写字楼」这种文本，不是 typecode ⇒ 先换成码再分类
+const TYPE_TEXT_CODE = {
+  餐饮服务: '05',
+  购物服务: '06',
+  体育休闲服务: '08',
+  医疗保健服务: '09',
+  住宿服务: '10',
+  风景名胜: '11',
+  商务住宅: '12',
+  科教文化服务: '14',
+  交通设施服务: '15',
+};
+
+function classifyTypeText(text) {
+  const head = String(text || '').split(';')[0].trim();
+  return classifyType(TYPE_TEXT_CODE[head] || '');
+}
+
 function pickAddress(raw) {
   const direct = firstString(raw.address);
   if (direct.trim()) return direct;
@@ -309,6 +327,48 @@ async function poiDetail(id) {
   return pois.length ? normalizePoi(pois[0]) : null;
 }
 
+// 逆地理编码：把一个坐标翻译成「这里是哪」（P19）。
+// 搜索类接口（place/text|around）配额用尽时，geocode/regeo 通常还有额度 —— 点地图就能用。
+async function reverseGeocode({ lng, lat, radius = 200 } = {}) {
+  const json = await amapGet('/v3/geocode/regeo', {
+    location: Number(lng) + ',' + Number(lat),
+    extensions: 'all',
+    radius: Number(radius) || 200,
+  });
+  const r = json && json.regeocode;
+  if (!r) return null;
+  const ac = r.addressComponent || {};
+  const pois = Array.isArray(r.pois) ? r.pois : [];
+  const roads = Array.isArray(r.roads) ? r.roads : [];
+  const near = pois[0] || null;
+  const street = ac.streetNumber || {};
+  const building = ac.building || {};
+  const neighborhood = ac.neighborhood || {};
+  const streetName = firstString(street.street);
+  const streetNo = firstString(street.number);
+  return {
+    address: firstString(r.formatted_address),
+    name:
+      firstString(near && near.name) ||
+      firstString(building.name) ||
+      firstString(neighborhood.name) ||
+      streetName,
+    category: near ? classifyTypeText(near.type) : classifyTypeText(building.type),
+    distance: near ? Number(near.distance) || 0 : 0,
+    street: streetName ? streetName + streetNo : '',
+    area: [ac.province, ac.city, ac.district, ac.township].map(firstString).filter(Boolean).join(' '),
+    building: firstString(building.name),
+    neighborhood: firstString(neighborhood.name),
+    places: pois.slice(0, 5).map((p) => ({
+      name: firstString(p.name),
+      type: firstString(p.type).split(';').pop(),
+      address: firstString(p.address),
+      distance: Number(p.distance) || 0,
+    })),
+    roads: roads.slice(0, 3).map((x) => ({ name: firstString(x.name), distance: Number(x.distance) || 0 })),
+  };
+}
+
 // ---------- 路径规划（T3） ----------
 
 function parsePolyline(str) {
@@ -478,6 +538,7 @@ module.exports = {
   searchPoi,
   searchPoiInArea,
   nearbyPoi,
+  reverseGeocode,
   searchPoiByDistrict,
   searchPoiAround,
   districts,

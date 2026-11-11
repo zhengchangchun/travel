@@ -722,6 +722,22 @@ function createDb(filePath) {
         .all(...params, lim);
       return rows.map((r) => ({ ...mapPoiRow(r), local: true }));
     },
+    // 点地图任意处：这一带我们库里真有的点（P19）。deg 是粗筛方框半径（度，0.0015 ≈ 150m）。
+    poisNearPoint({ lng, lat, deg = 0.0015, limit = 5 } = {}) {
+      const x = Number(lng);
+      const y = Number(lat);
+      const d = Number(deg) > 0 ? Number(deg) : 0.0015;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+      const lim = Math.max(1, Math.min(50, Number(limit) || 5));
+      // 经度方向乘 cos(纬度)² ≈ 0.75（杭州一带）—— 只用于排序，够用
+      const rows = db
+        .prepare(
+          'SELECT * FROM pois WHERE lng BETWEEN ? AND ? AND lat BETWEEN ? AND ?' +
+            ' ORDER BY ((lng - ?) * (lng - ?) * 0.75 + (lat - ?) * (lat - ?)) ASC LIMIT ?'
+        )
+        .all(x - d, x + d, y - d, y + d, x, x, y, y, lim);
+      return rows.map(mapPoiRow);
+    },
     poisStats(city) {
       const rows = stmts.countPoisByCat.all(city);
       const total = toNumber(stmts.countPoisCity.get(city).c);

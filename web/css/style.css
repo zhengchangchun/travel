@@ -895,6 +895,14 @@ button:disabled { opacity: .45; }
 .card-close { color: var(--ink-3); }
 .card-addr { background: rgba(255, 255, 255, .05); }
 .addr-text { color: var(--ink); }
+/* 点地图查到的位置：这一带还有哪些点（P19） */
+.at-nearby { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.at-nearby-title { font-size: 12px; color: var(--ink-3); }
+.at-nearby-item {
+  font-size: 12px; color: var(--ink-2); background: var(--surface-2);
+  border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px;
+}
+.at-nearby-item i { font-style: normal; color: var(--ink-3); margin-left: 6px; }
 .copy-addr { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-2); }
 .card-rows dt { color: var(--ink-3); }
 .card-rows dd { color: var(--ink); }

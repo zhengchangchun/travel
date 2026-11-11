@@ -118,5 +118,7 @@
     liveInView: (params) => request('/api/poi/inview?' + qs(params)),
     poisStats: (city) => request('/api/pois/stats?' + qs({ city })),
     getPoiDetail: (poiId) => request('/api/pois/' + encodeURIComponent(poiId)),
+    // 点地图任意处问「这里是哪」：库里没有就走逆地理编码（P19）
+    poiAt: (params) => request('/api/poi/at?' + qs(params)),
   };
 })();
