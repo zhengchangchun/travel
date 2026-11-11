@@ -177,8 +177,10 @@
           '</div>'
         : '';
 
-    // 点地图查到的位置：把这一带其他点列出来（有就显示，不要占位）
-    const nearby = Array.isArray(data.nearby) ? data.nearby : [];
+    // 点地图查到的位置：把这一带其他点列出来（有就显示；与标题同名的不重复列）
+    const nearby = (Array.isArray(data.nearby) ? data.nearby : []).filter(
+      (p) => p && p.name && p.name !== data.name
+    );
     const nearbyHtml = nearby.length
       ? '<div class="at-nearby"><span class="at-nearby-title">这一带还有</span>' +
         nearby
@@ -194,7 +196,7 @@
       : '';
 
     card.innerHTML =
-      galleryHtml(photos) +
+      (data.atPoint ? '' : galleryHtml(photos)) +
       '<div class="card-head">' +
       '<span class="dot" style="background:' + esc(color) + '"></span>' +
       '<b class="detail-name">' + esc(data.name || '') + '</b>' +
