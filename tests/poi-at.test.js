@@ -27,6 +27,7 @@ const HUBIN = {
 
 const REGEO = {
   address: '浙江省绍兴市柯桥区杨汛桥街道岙上沈',
+  landmark: '岙上沈',
   name: '岙上沈',
   category: null,
   distance: 74.6,
@@ -80,7 +81,11 @@ test('点地图：点击处压着我们的点、名字也对得上 ⇒ 直接弹
   const { db, base, calls, close } = await start({
     amap: {
       async reverseGeocode() {
-        return Object.assign({}, REGEO, { name: '驿居酒店', address: '浙江省杭州市上城区湖滨街道平海路58号' });
+        return Object.assign({}, REGEO, {
+          name: '驿居酒店',
+          landmark: '驿居酒店',
+          address: '浙江省杭州市上城区湖滨街道平海路58号',
+        });
       },
     },
   });
@@ -103,7 +108,12 @@ test('点地图：坐标重合但名字对不上 ⇒ 主名是底图上那个（
   const { db, base, close } = await start({
     amap: {
       async reverseGeocode() {
-        return Object.assign({}, REGEO, { name: '杭州大剧院', address: '浙江省杭州市上城区新业路39号' });
+        return Object.assign({}, REGEO, {
+          // 真实情况：最近 POI 是旁边一个喷泉，而地址地标是你点的那栋楼
+          name: '新城音乐喷泉',
+          landmark: '杭州大剧院',
+          address: '浙江省杭州市上城区四季青街道杭州大剧院',
+        });
       },
     },
   });
@@ -115,7 +125,7 @@ test('点地图：坐标重合但名字对不上 ⇒ 主名是底图上那个（
     assert.strictEqual(status, 200);
     assert.strictEqual(body.data.poi, null, '名字对不上就不能当点击处那一条');
     assert.strictEqual(body.data.name, '杭州大剧院', '主名要是底图上写的那个');
-    assert.strictEqual(body.data.address, '浙江省杭州市上城区新业路39号');
+    assert.strictEqual(body.data.address, '浙江省杭州市上城区四季青街道杭州大剧院');
     const hit = (body.data.nearby || []).find((p) => p.name === 'La Lune月光女神西餐厅');
     assert.ok(hit, '它应该出现在「这一带还有」里');
     assert.strictEqual(hit.poi_id, 'LUNE1');

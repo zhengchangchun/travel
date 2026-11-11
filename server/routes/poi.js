@@ -133,9 +133,15 @@ module.exports = [
       // 主信息先说「这个坐标上是什么」（逆地理编码的最近地名）——
       // 我们库里那条即使坐标重合，名字对不上也不能当主名：
       // 用户点的是底图上写的「杭州大剧院」，不是楼上那家「La Lune 西餐厅」。
-      const sameAsOurs = !!(onIt && at && at.name && looksSamePlace(at.name, onIt.name));
+      const sameAsOurs = !!(
+        onIt &&
+        at &&
+        looksSamePlace(at.landmark || at.name, onIt.name)
+      );
       const useOurs = sameAsOurs || (!at && !!onIt);
-      const mainName = useOurs ? onIt.name : (at && at.name) || (onIt && onIt.name) || '';
+      const mainName = useOurs
+        ? onIt.name
+        : (at && (at.landmark || at.name)) || (onIt && onIt.name) || '';
 
       const nearby = local
         .filter((p) => !useOurs || !onIt || String(p.poi_id) !== String(onIt.poi_id))

@@ -346,8 +346,18 @@ async function reverseGeocode({ lng, lat, radius = 200 } = {}) {
   const neighborhood = ac.neighborhood || {};
   const streetName = firstString(street.street);
   const streetNo = firstString(street.number);
+  // 「这里是哪」的地标名：从完整地址里剥掉省/市/区/街道
+  // （浙江省杭州市上城区四季青街道杭州大剧院 ⇒ 杭州大剧院）
+  // 比 pois[0] 准：近年 POI 可能是旁边一个喷泉，而你点的是那栋楼
+  let landmark = firstString(r.formatted_address);
+  [ac.province, ac.city, ac.district, ac.township].forEach((part) => {
+    const s = firstString(part);
+    if (s) landmark = landmark.split(s).join('');
+  });
+  landmark = landmark.trim();
   return {
     address: firstString(r.formatted_address),
+    landmark,
     name:
       firstString(near && near.name) ||
       firstString(building.name) ||
