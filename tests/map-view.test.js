@@ -182,6 +182,7 @@ test('map.setMarkers 取消过期批次：只保留最后一次渲染', async ()
   const stats = {};
   const MapCtl = loadMap(fake, stats);
   await MapCtl.init('map', { jsApiKey: 'K' });
+  fake.zoomValue = 15; // 落旗上限现在按缩放变，这条只测「过期批次取消」，用大缩放走满额
   MapCtl.setMarkers(pois('A', 500), () => false);
   MapCtl.setMarkers(pois('B', 3), () => false);
   await new Promise((r) => setTimeout(r, 120));

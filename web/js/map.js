@@ -201,6 +201,18 @@
   // 超出后优先保「已选中的点 + 住宿锚点」，其余按传入顺序截断，并回报 dropped 让上层说明。
   const MARKER_LIMIT = 500;
 
+  // 缩得小时少画几面：500 面旗在 zoom 13 会糊成一片（用户 2026-11-11「首先是一个地图」）
+  function limitForZoom(zoom) {
+    if (zoom === null || zoom === undefined) return MARKER_LIMIT;
+    const z = Number(zoom);
+    if (!Number.isFinite(z)) return MARKER_LIMIT;
+    if (z <= 11) return 60;
+    if (z <= 12) return 100;
+    if (z <= 13) return 160;
+    if (z <= 14) return 300;
+    return MARKER_LIMIT;
+  }
+
   function poiIdOf(p) {
     return p ? p.id || p.poi_id || null : null;
   }
@@ -216,20 +228,21 @@
 
   function capList(list, isSelected) {
     const items = Array.isArray(list) ? list : [];
-    if (items.length <= MARKER_LIMIT) return { items, dropped: 0 };
+    const lim = limitForZoom(map && map.getZoom ? map.getZoom() : null);
+    if (items.length <= lim) return { items, dropped: 0 };
     const must = [];
     const rest = [];
     items.forEach((p) => {
       const keep = (isSelected ? !!isSelected(p) : false) || isBasePoi(p);
       (keep ? must : rest).push(p);
     });
-    const room = Math.max(0, MARKER_LIMIT - must.length);
+    const room = Math.max(0, lim - must.length);
     const shown = must.concat(rest.slice(0, room));
     return { items: shown, dropped: items.length - shown.length };
   }
 
   function markerLimit() {
-    return MARKER_LIMIT;
+    return limitForZoom(map && map.getZoom ? map.getZoom() : null);
   }
 
   function setMarkers(list, isSelected) {
