@@ -35,6 +35,10 @@ test('搜索后地图自己飞过去的那一下，不拿视野点冲掉搜索�
   assert.match(fn[0], /state\.searchHold/, 'onViewChanged 未看 searchHold');
   assert.match(fn[0], /viewMatchesHold\(\)/, 'onViewChanged 未判断视野是否真动过');
   assert.ok(/function viewMatchesHold/.test(APP), '缺 viewMatchesHold');
+  // getBounds() 给的是普通对象（不是 AMap.Bounds）：别再写 b.getWest() 这种不存在的 API（真踩过）
+  const holdFn = APP.match(/function viewMatchesHold[\s\S]*?\n  \}/)[0];
+  assert.match(holdFn, /b\.minLng/, 'viewMatchesHold 应从 minLng/maxLng 算中心');
+  assert.ok(!/b\.getWest\(\)/.test(holdFn), 'viewMatchesHold 用了不存在的 b.getWest()');
   // 搜索命中后要真的记下锁定视野
   const search = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/)[0];
   assert.match(search, /state\.searchHold = \{/, '搜索后未锁定视野');

@@ -1393,9 +1393,10 @@
     const zoom = MapCtl.getZoom();
     if (zoom != null && Math.abs(zoom - h.zoom) > 0.05) return false;
     const b = MapCtl.getBounds();
-    if (!b || typeof b.getWest !== 'function') return false;
-    const lng = (b.getWest() + b.getEast()) / 2;
-    const lat = (b.getSouth() + b.getNorth()) / 2;
+    if (!b) return false;
+    // getBounds() 给的是 {minLng,minLat,maxLng,maxLat} 这种普通对象（不是 AMap.Bounds）
+    const lng = (b.minLng + b.maxLng) / 2;
+    const lat = (b.minLat + b.maxLat) / 2;
     return Math.abs(lng - h.lng) < 0.002 && Math.abs(lat - h.lat) < 0.002;
   }
 
