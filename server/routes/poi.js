@@ -9,6 +9,23 @@ function metresBetween(lng1, lat1, lng2, lat2) {
   return Math.sqrt(x * x + dLat * dLat) * R;
 }
 
+// 「这两个名字是不是同一个地方」（去括号、去空白后看是否相等/前缀包含）
+// 「驿居酒店」vs「驿居酒店(杭州西湖湖滨步行街音乐喷泉店)」⇒ 是
+// 「杭州大剧院」vs「La Lune月光女神西餐厅」⇒ 不是
+function looksSamePlace(a, b) {
+  const norm = (s) =>
+    String(s == null ? '' : s)
+      .replace(/[（(【\[][^）)】\]]*[）)】\]]/g, '')
+      .replace(/[\s·,，、\-—]/g, '');
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const shorter = x.length <= y.length ? x : y;
+  const longer = x.length <= y.length ? y : x;
+  return shorter.length >= 3 && longer.startsWith(shorter);
+}
+
 async function cached(ctx, producer) {
   const key = ctx.cacheKey;
   const hit = ctx.cache.get(key);
@@ -113,8 +130,15 @@ module.exports = [
         throw new ctx.HttpError(502, 'AMAP_ERROR', '这个位置查不到地址');
       }
 
+      // 主信息先说「这个坐标上是什么」（逆地理编码的最近地名）——
+      // 我们库里那条即使坐标重合，名字对不上也不能当主名：
+      // 用户点的是底图上写的「杭州大剧院」，不是楼上那家「La Lune 西餐厅」。
+      const sameAsOurs = !!(onIt && at && at.name && looksSamePlace(at.name, onIt.name));
+      const useOurs = sameAsOurs || (!at && !!onIt);
+      const mainName = useOurs ? onIt.name : (at && at.name) || (onIt && onIt.name) || '';
+
       const nearby = local
-        .filter((p) => !onIt || String(p.poi_id) !== String(onIt.poi_id))
+        .filter((p) => !useOurs || !onIt || String(p.poi_id) !== String(onIt.poi_id))
         .map((p) => ({
           name: p.name,
           address: p.address,
@@ -135,20 +159,21 @@ module.exports = [
               }))
             : []
         )
-        .filter((p) => p.name && (!onIt || p.name !== onIt.name))
+        .filter((p) => p.name && p.name !== mainName)
         .sort((a, b) => a.distance - b.distance)
         .slice(0, 8);
 
       return {
-        source: onIt ? 'local' : 'amap',
+        source: useOurs ? 'local' : 'amap',
         lng: x,
         lat: y,
-        name: (onIt && onIt.name) || (at && at.name) || '',
+        name: mainName,
         address: (at && at.address) || (onIt && onIt.address) || '',
-        category: (onIt && onIt.category) || (at && at.category) || null,
+        category: useOurs ? onIt.category : (at && at.category) || (onIt && onIt.category) || null,
         street: (at && at.street) || '',
         area: (at && at.area) || '',
-        poi: onIt,
+        // 只有「同一个地方」才把我们的点当成点击处那条，前端据此直接弹它的详情卡
+        poi: useOurs ? onIt : null,
         nearby,
       };
     },

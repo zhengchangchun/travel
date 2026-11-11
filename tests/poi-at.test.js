@@ -34,7 +34,10 @@ const REGEO = {
   area: '浙江省 绍兴市 柯桥区 杨汛桥街道',
   building: '',
   neighborhood: '',
-  places: [{ name: '岙上沈', type: '村庄级地名', address: '柯桥区', distance: 74.6 }],
+  places: [
+    { name: '岙上沈', type: '村庄级地名', address: '柯桥区', distance: 74.6 },
+    { name: '太平禅寺', type: '寺庙道观', address: '山联村306', distance: 152.8 },
+  ],
   roads: [],
 };
 
@@ -42,11 +45,13 @@ async function start(opts = {}) {
   const db = createDb(':memory:');
   const calls = { reverse: 0 };
   const amap = {
-    async reverseGeocode() {
+    async reverseGeocode({ lng, lat }) {
       calls.reverse += 1;
+      if (opts.amap && typeof opts.amap.reverseGeocode === 'function') {
+        return opts.amap.reverseGeocode({ lng, lat });
+      }
       return REGEO;
     },
-    ...(opts.amap || {}),
   };
   const app = createApp({ config: TEST_CONFIG, db, amap });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
@@ -71,8 +76,14 @@ async function getJson(base, p) {
   return { status: res.status, body: await res.json() };
 }
 
-test('点地图：点击处正好压着我们的点 ⇒ 主名就是那一条（地址仍取这个坐标的）', async () => {
-  const { db, base, calls, close } = await start();
+test('点地图：点击处压着我们的点、名字也对得上 ⇒ 直接弹它的详情（poi 非空）', async () => {
+  const { db, base, calls, close } = await start({
+    amap: {
+      async reverseGeocode() {
+        return Object.assign({}, REGEO, { name: '驿居酒店', address: '浙江省杭州市上城区湖滨街道平海路58号' });
+      },
+    },
+  });
   try {
     db.upsertPoi(HUBIN); // 坐标与点击处完全一致
     const { status, body } = await getJson(base, '/api/poi/at?lng=120.165652&lat=30.254265');
@@ -81,8 +92,35 @@ test('点地图：点击处正好压着我们的点 ⇒ 主名就是那一条（
     assert.strictEqual(body.data.poi.name, HUBIN.name);
     assert.strictEqual(body.data.poi.poi_id, HUBIN.poi_id);
     assert.strictEqual(body.data.name, HUBIN.name, '主名用点击处那一条');
-    assert.ok(body.data.address, '地址要有（这个坐标的地址）');
+    assert.ok(body.data.address, '地址要有');
     assert.strictEqual(calls.reverse, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('点地图：坐标重合但名字对不上 ⇒ 主名是底图上那个（杭州大剧院 ≠ 楼上那家餐厅）', async () => {
+  const { db, base, close } = await start({
+    amap: {
+      async reverseGeocode() {
+        return Object.assign({}, REGEO, { name: '杭州大剧院', address: '浙江省杭州市上城区新业路39号' });
+      },
+    },
+  });
+  try {
+    db.upsertPoi(
+      Object.assign({}, HUBIN, { poi_id: 'LUNE1', name: 'La Lune月光女神西餐厅', category: 'food' })
+    );
+    const { status, body } = await getJson(base, '/api/poi/at?lng=120.165652&lat=30.254265');
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.data.poi, null, '名字对不上就不能当点击处那一条');
+    assert.strictEqual(body.data.name, '杭州大剧院', '主名要是底图上写的那个');
+    assert.strictEqual(body.data.address, '浙江省杭州市上城区新业路39号');
+    const hit = (body.data.nearby || []).find((p) => p.name === 'La Lune月光女神西餐厅');
+    assert.ok(hit, '它应该出现在「这一带还有」里');
+    assert.strictEqual(hit.poi_id, 'LUNE1');
+    assert.ok(hit.distance <= 5, '就在原地，距离要很小，实际 ' + hit.distance);
+    assert.strictEqual(hit.source, 'local', '我们库里的那一条要能点开');
   } finally {
     await close();
   }
@@ -119,7 +157,9 @@ test('点地图：这一带库里没点 ⇒ 逆地理编码拿地址（搜索类
     assert.strictEqual(body.data.lng, 120.3);
     assert.strictEqual(body.data.lat, 30.1);
     assert.strictEqual(calls.reverse, 1);
-    assert.ok(body.data.nearby.length >= 1, '这一带还有什么要一起给出来');
+    const names = (body.data.nearby || []).map((p) => p.name);
+    assert.ok(names.includes('太平禅寺'), '这一带还有什么要一起给出来，实际 ' + JSON.stringify(names));
+    assert.ok(!names.includes('岙上沈'), '与主名同名的不该在附近列表里重复');
   } finally {
     await close();
   }
