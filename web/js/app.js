@@ -1253,7 +1253,12 @@
       state.pois = [];
       MapCtl.clearMarkers();
       UI.showLegend(false);
-      UI.setViewHint('放大地图以加载本区域地点');
+      // 有城市轮廓时先把「这是哪座城、多大」说出来，再引导放大（用户 2026-11-12）
+      UI.setViewHint(
+        state.outline
+          ? '已框出 ' + state.outline.name + ' 的范围 · 放大地图看具体地点'
+          : '放大地图以加载本区域地点'
+      );
       refresh();
       return;
     }

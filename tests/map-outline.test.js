@@ -159,7 +159,7 @@ test('app.js：切城市先走「城市轮廓」路径，拿不到才退回主�
 
 test('app.js：整城视野不落点（倍率门槛仍在），放大进城才落点', () => {
   assert.match(APP, /const MIN_MARKER_ZOOM = \d+;/, '缺落点倍率门槛');
-  const gate = APP.match(/if \(zoom != null && \(zoom < MIN_MARKER_ZOOM[\s\S]{0,260}/);
+  const gate = APP.match(/if \(zoom != null && \(zoom < MIN_MARKER_ZOOM[\s\S]{0,420}/);
   assert.ok(gate, '缺倍率门槛分支');
   assert.match(gate[0], /state\.pois = \[\]/, '倍率不够时不该有待落点');
   assert.match(gate[0], /MapCtl\.clearMarkers\(\)/, '倍率不够时地图上不该有点');
