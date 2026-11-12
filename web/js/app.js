@@ -288,7 +288,7 @@
     // 落旗有上限：地图与列表口径对不上时要说清楚（P9-③）；截断按评分优先（P20）
     const mi = state.markerInfo;
     if (mi && mi.dropped > 0) {
-      bits.push('地图按评分优先落 ' + mi.shown + ' 个点（放大看更多）');
+      bits.push('地图每类挑高分的落 ' + mi.shown + ' 个点（放大看更多）');
     }
     el.textContent = bits.join(' · ');
     el.title = el.textContent;
