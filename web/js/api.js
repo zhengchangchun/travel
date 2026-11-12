@@ -55,6 +55,7 @@
   window.TravelAPI = {
     getConfig: () => request('/api/config'),
     searchCity: (q) => request('/api/city/search?' + qs({ q })),
+    cityBoundary: (city) => request('/api/city/boundary?' + qs({ city })),
     searchPoi: (params) => request('/api/poi/search?' + qs(params)),
     nearbyPoi: (params) => request('/api/poi/nearby?' + qs(params)),
     poiDetail: (id) => request('/api/poi/detail?' + qs({ id })),

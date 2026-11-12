@@ -118,6 +118,17 @@ CREATE TABLE IF NOT EXISTS poi_coverage (
   truncated    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (city, category, gx, gy)
 );
+
+-- 城市行政轮廓（P21）：一次拉下来长期用（高德行政区查询有日配额）
+CREATE TABLE IF NOT EXISTS city_boundaries (
+  city       TEXT PRIMARY KEY,
+  name       TEXT,
+  adcode     TEXT,
+  center     TEXT,
+  bbox       TEXT,
+  rings      TEXT,
+  fetched_at TEXT NOT NULL
+);
 `;
 
 const DEFAULT_CATEGORY_LABELS = {
@@ -321,6 +332,14 @@ function createDb(filePath) {
     listCoverageRange: db.prepare(
       `SELECT gx, gy, collected_at, n_inserted, truncated FROM poi_coverage
        WHERE city = ? AND category = ? AND gx BETWEEN ? AND ? AND gy BETWEEN ? AND ?`
+    ),
+    getCityBoundary: db.prepare('SELECT * FROM city_boundaries WHERE city = ?'),
+    upsertCityBoundary: db.prepare(
+      `INSERT INTO city_boundaries (city, name, adcode, center, bbox, rings, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(city) DO UPDATE SET
+         name = excluded.name, adcode = excluded.adcode, center = excluded.center,
+         bbox = excluded.bbox, rings = excluded.rings, fetched_at = excluded.fetched_at`
     ),
   };
 
@@ -851,6 +870,35 @@ function createDb(filePath) {
         lines.push(`${index + 1}. ${pin.name} — ${pin.address || '（无详细地址）'}${suffix}`);
       });
       return lines.join('\n');
+    },
+    // 城市轮廓：rings 不在或为空就当作没缓存（宁可重新拉，也别画一张空图）
+    getCityBoundary(city) {
+      const row = stmts.getCityBoundary.get(city);
+      if (!row) return null;
+      const rings = parseJsonArray(row.rings);
+      if (!rings.length) return null;
+      return {
+        name: row.name || city,
+        adcode: row.adcode || '',
+        center: parseJsonArray(row.center),
+        bbox: parseJsonArray(row.bbox),
+        rings,
+        fetchedAt: row.fetched_at,
+        cached: true,
+      };
+    },
+    saveCityBoundary(city, b) {
+      const data = b || {};
+      stmts.upsertCityBoundary.run(
+        city,
+        data.name || city,
+        data.adcode || '',
+        JSON.stringify(data.center || null),
+        JSON.stringify(data.bbox || null),
+        JSON.stringify(data.rings || []),
+        data.fetchedAt || new Date().toISOString()
+      );
+      return this.getCityBoundary(city);
     },
     close() {
       db.close();

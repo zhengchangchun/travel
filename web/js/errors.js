@@ -24,6 +24,8 @@
     NO_DATA: '没抓到内容（链接失效或要登录）· 换一条链接',
     BAD_PLATFORM: '暂不支持这个平台 · 换小红书 / 抖音 / 快手 / B站',
     NOT_IMPLEMENTED: '这个平台还没接抓取',
+    // ---- 城市轮廓 ----
+    BOUNDARY_UNAVAILABLE: '城市轮廓暂时拿不到（高德配额或网络）· 先按主城区显示',
   };
   const KEYS = Object.keys(CODE_TEXT);
 

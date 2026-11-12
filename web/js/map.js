@@ -433,6 +433,92 @@
     return markers.size;
   }
 
+  // ---------- 城市外轮廓（P21）：先看清整座城市有多大，再往里慢选 ----------
+  // 用户 2026-11-12：「刚选一个城市，肯定要大概先看下整个城市的轮廓和范围，城市边缘最好加个边框」
+  const CITY_LINE = '#35d0c0'; // 与暗色主题的第二个强调色同源
+  let cityShapes = [];
+
+  // 边界淡填充：描边才是主角，填充只用来「一眼看出哪块是这座城市」
+  function drawCityOutline(rings) {
+    if (!map || !Array.isArray(rings) || !rings.length) return 0;
+    clearCityOutline();
+    const drawn = [];
+    rings.forEach((ring) => {
+      const path = (Array.isArray(ring) ? ring : [])
+        .map((p) => [Number(p[0]), Number(p[1])])
+        .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (path.length < 3) return;
+      const shape = new AMap.Polygon({
+        path,
+        strokeColor: CITY_LINE,
+        strokeWeight: 2,
+        strokeOpacity: 0.9,
+        fillColor: CITY_LINE,
+        fillOpacity: 0.07,
+        bubble: true, // 轮廓盖住整座城：点击要能冒泡到地图（「点地图查地址」照旧）
+        zIndex: 20,
+      });
+      shape.setMap(map);
+      drawn.push(shape);
+    });
+    cityShapes = drawn;
+    return drawn.length;
+  }
+
+  function clearCityOutline() {
+    if (!cityShapes.length) return;
+    const shapes = cityShapes;
+    cityShapes = [];
+    if (!map) return;
+    try {
+      if (typeof map.remove === 'function' && shapes.length > 1) {
+        map.remove(shapes);
+        return;
+      }
+    } catch (err) {
+      /* 批量失败：逐面摘 */
+    }
+    shapes.forEach((s) => {
+      try {
+        map.remove(s);
+      } catch (err) {
+        /* 已不在图上：忽略 */
+      }
+    });
+  }
+
+  function cityOutlineCount() {
+    return cityShapes.length;
+  }
+
+  // 把相机收到城市外接矩形（bbox = [minLng,minLat,maxLng,maxLat]），较为落定后 resolve
+  function fitOutline(bbox, padding) {
+    return new Promise((resolve) => {
+      const box = Array.isArray(bbox) ? bbox.map(Number) : [];
+      if (!map || box.length !== 4 || box.some((n) => !Number.isFinite(n))) {
+        resolve(false);
+        return;
+      }
+      const pad = Number(padding) || 48;
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        if (typeof map.off === 'function') map.off('moveend', onEnd);
+        resolve(ok);
+      };
+      const onEnd = () => finish(true);
+      map.on('moveend', onEnd);
+      try {
+        map.setBounds(new AMap.Bounds([box[0], box[1]], [box[2], box[3]]), false, [pad, pad, pad, pad]);
+      } catch (err) {
+        finish(false);
+        return;
+      }
+      setTimeout(() => finish(true), 1500);
+    });
+  }
+
   function fitView() {
     if (!map || markers.size === 0) return;
     map.setFitView(Array.from(markers.values()));
@@ -728,6 +814,10 @@
     modeForZoom,
     renderMode: () => renderMode,
     capMarkers: capList,
+    drawCityOutline,
+    clearCityOutline,
+    cityOutlineCount,
+    fitOutline,
     fitView,
     fitBbox,
     setBase,

@@ -58,6 +58,7 @@
     resultLimit: RESULT_PAGE, // 结果列表当前展示上限（「显示更多」递增）
     zoomTooLow: false, // 倍率不够、没加载地点（空态只提示这一件事）
     markerInfo: null, // 上一次落旗回执（{shown,dropped}）：超上限时要在结果条里说明
+    outline: null, // 当前城市的行政轮廓（P21）：整城视野时只画边框不落点
     liveMode: 'driving', // 实时耗时用哪种出行方式
     liveLegs: [], // 相邻两点的耗时（[i] = 第 i+1 → 第 i+2 段）
     liveEstimate: false, // 有没有路段是按直线估的（界面带 ≈）
@@ -1561,7 +1562,17 @@
       typeof city.lng === 'number' && typeof city.lat === 'number'
         ? { lng: city.lng, lat: city.lat }
         : null;
-    if (center && MapCtl.isReady()) {
+
+    // 先给「整座城市的轮廓」：画边框 + 把相机收到全城，这一屏不落点。
+    // 用户 2026-11-12：刚选一个城市，先看轮廓和范围，再进城慢慢选。
+    const outline = await loadCityOutline(state.city);
+    if (outline && MapCtl.isReady()) {
+      state.suppressView = true; // 收到全城引发的 moveend 不重复触发视野加载
+      await MapCtl.fitOutline(outline.bbox); // 等相机落定
+      setTimeout(() => {
+        state.suppressView = false;
+      }, 700);
+    } else if (center && MapCtl.isReady()) {
       UI.setStatus('定位中…');
       state.suppressView = true; // 定位引发的 moveend 不重复触发视野加载
       await MapCtl.setZoomAndCenter(center.lng, center.lat, CITY_ZOOM); // 等相机落定
@@ -1584,6 +1595,28 @@
     }
     await refreshTrips();
     await loadCityView(state.city);
+  }
+
+  // 城市轮廓（P21）：拿得到就画边框并把相机框到全城；拿不到就退回「主城区 + 点位」的老路径。
+  // 轮廓是整座地级市（杭州含淳安/建德）⇒ 首屏倍率远低于落点门槛，地图上不会有点：
+  // 「先看范围、放大进城再落点」正是要的效果（用户 2026-11-12）。
+  async function loadCityOutline(city) {
+    if (!MapCtl.isReady()) return null;
+    try {
+      const data = await API.cityBoundary(city);
+      const bbox = data && Array.isArray(data.bbox) ? data.bbox : null;
+      const rings = data && Array.isArray(data.rings) ? data.rings : null;
+      if (bbox && bbox.length === 4 && rings && rings.length) {
+        state.outline = data;
+        MapCtl.drawCityOutline(rings);
+        return data;
+      }
+    } catch (err) {
+      UI.setStatus(human(err));
+    }
+    state.outline = null;
+    MapCtl.clearCityOutline();
+    return null;
   }
 
   // ---------- 城市选择：输入框 + 下拉建议合成一个控件（P10） ----------

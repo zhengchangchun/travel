@@ -161,6 +161,81 @@ async function districts(city) {
   return out;
 }
 
+// ---------- 城市行政边界（P21）：先让用户看清「整座城市有多大」 ----------
+// extensions=all 的 districts[0].polyline 才是轮廓；多段用 "|" 分隔（岛屿 / 飞地各成一段）。
+const BOUNDARY_MIN_DEG = 0.0015; // 抽稀步长 ≈ 150m（看轮廓不需要 6000 个点）
+const BOUNDARY_MAX_PER_RING = 1200;
+
+function parseDistrictRings(text) {
+  return String(text || '')
+    .split('|')
+    .map((part) => parsePolyline(part))
+    .filter((ring) => ring.length >= 3);
+}
+
+function thinRing(ring) {
+  if (ring.length <= 3) return ring;
+  const out = [ring[0]];
+  let anchor = ring[0];
+  for (let i = 1; i < ring.length; i += 1) {
+    const p = ring[i];
+    if (Math.abs(p[0] - anchor[0]) >= BOUNDARY_MIN_DEG || Math.abs(p[1] - anchor[1]) >= BOUNDARY_MIN_DEG) {
+      out.push(p);
+      anchor = p;
+    }
+  }
+  const first = ring[0];
+  const last = out[out.length - 1];
+  if (last[0] !== first[0] || last[1] !== first[1]) out.push(first);
+  return out.length >= 3 ? out : ring;
+}
+
+function capRing(ring, max = BOUNDARY_MAX_PER_RING) {
+  if (ring.length <= max) return ring;
+  const step = Math.ceil(ring.length / max);
+  const out = ring.filter((_, i) => i % step === 0);
+  const last = ring[ring.length - 1];
+  const tail = out[out.length - 1];
+  if (!tail || tail[0] !== last[0] || tail[1] !== last[1]) out.push(last);
+  return out;
+}
+
+// 城市轮廓：中心 + 外接矩形 + 抽稀后的环（给前端画「城市边框」并把相机收到全城）
+async function cityBoundary(city) {
+  const json = await amapGet('/v3/config/district', {
+    keywords: city,
+    subdistrict: 0,
+    extensions: 'all',
+  });
+  const d = (Array.isArray(json.districts) ? json.districts : [])[0];
+  if (!d) throw new AmapError(`高德没找到「${city}」的行政区数据`);
+  const rings = parseDistrictRings(d.polyline).map((ring) => capRing(thinRing(ring)));
+  const points = rings.reduce((acc, ring) => acc.concat(ring), []);
+  let bbox = null;
+  if (points.length) {
+    const lngs = points.map((p) => p[0]);
+    const lats = points.map((p) => p[1]);
+    bbox = [
+      Math.min.apply(null, lngs),
+      Math.min.apply(null, lats),
+      Math.max.apply(null, lngs),
+      Math.max.apply(null, lats),
+    ];
+  }
+  const center = String(d.center || '')
+    .split(',')
+    .map(Number);
+  return {
+    name: d.name || city,
+    adcode: d.adcode || '',
+    level: d.level || 'city',
+    center: Number.isFinite(center[0]) && Number.isFinite(center[1]) ? center : null,
+    bbox,
+    rings,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 async function amapGet(pathname, params = {}) {
   const url = new URL(AMAP_BASE + pathname);
   for (const [k, v] of Object.entries(params)) {
@@ -552,6 +627,10 @@ module.exports = {
   searchPoiByDistrict,
   searchPoiAround,
   districts,
+  cityBoundary,
+  parseDistrictRings,
+  thinRing,
+  capRing,
   poiDetail,
   normalizePoi,
   classifyType,
