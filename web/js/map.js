@@ -279,6 +279,39 @@
     return 0;
   }
 
+  // 名额按分类轮转发：只按评分全局排会被高分扎堆的类别吃掉整屏
+  // （实测杭州 z13：90 个点里 85 个是住宿，地图变成「酒店图」）。
+  // 每个分类内部仍是评分高的先上；轮到自己那类没点了就跳过，名额自然留给别类。
+  function pickBalanced(rest, room) {
+    const cats = window.TravelCategories && typeof window.TravelCategories.all === 'function'
+      ? window.TravelCategories.all()
+      : [];
+    const buckets = new Map();
+    cats.forEach((c) => {
+      if (c && c.key != null) buckets.set(String(c.key), []);
+    });
+    rest.forEach((p) => {
+      const k = String((p && p.category) || '');
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(p);
+    });
+    buckets.forEach((list) => list.sort(preferRank));
+    const keys = Array.from(buckets.keys());
+    const out = [];
+    for (let round = 0; out.length < room; round += 1) {
+      let took = false;
+      for (let i = 0; i < keys.length && out.length < room; i += 1) {
+        const list = buckets.get(keys[i]);
+        if (list.length > round) {
+          out.push(list[round]);
+          took = true;
+        }
+      }
+      if (!took) break;
+    }
+    return out;
+  }
+
   function capList(list, isSelected) {
     const items = Array.isArray(list) ? list : [];
     const lim = limitForZoom(map && map.getZoom ? map.getZoom() : null);
@@ -289,9 +322,8 @@
       const keep = (isSelected ? !!isSelected(p) : false) || isBasePoi(p);
       (keep ? must : rest).push(p);
     });
-    rest.sort(preferRank);
     const room = Math.max(0, lim - must.length);
-    const shown = must.concat(rest.slice(0, room));
+    const shown = must.concat(pickBalanced(rest, room));
     return { items: shown, dropped: items.length - shown.length };
   }
 

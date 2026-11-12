@@ -62,7 +62,11 @@ function harness() {
       Text: function () {},
     },
     addEventListener: () => {},
-    TravelCategories: { colorOf: () => '#336699', labelOf: () => '美食' },
+    TravelCategories: {
+      all: () => [{ key: 'food' }, { key: 'stay' }, { key: 'sight' }, { key: 'play' }],
+      colorOf: () => '#336699',
+      labelOf: () => '美食',
+    },
     TravelScoreColor: null,
   };
   const doc = { createElement: () => ({}), head: { appendChild() {} } };
@@ -125,6 +129,20 @@ test('map.js：截断时留评分高的（不是先返回的）', async () => {
   const capped2 = h.MapCtl.capMarkers(list, (p) => p.id === picked.id);
   const ids = capped2.items.map((p) => p.id);
   assert.ok(ids.indexOf('p0') >= 0 && ids.indexOf(picked.id) >= 0, '锚点与已选中必须在场');
+});
+
+test('map.js：名额按分类轮转，不被单一类别吃光', async () => {
+  const h = harness();
+  await h.MapCtl.init('map', { jsApiKey: 'K' });
+  h.fakeMap.zoomValue = 13;
+  // 现实里住宿这类高分扎堆：只按评分排会把整屏都给它（实测 90 个里 85 个住宿）
+  const stays = pois(200, () => 4.9).map((p) => Object.assign({}, p, { category: 'stay' }));
+  const foods = pois(20, () => 3.1).map((p) => Object.assign({}, p, { category: 'food' }));
+  const capped = h.MapCtl.capMarkers(stays.concat(foods), () => false);
+  const count = (k) => capped.items.filter((p) => p.category === k).length;
+  assert.strictEqual(capped.items.length, 90, '总量仍守上限');
+  assert.strictEqual(count('food'), 20, '低分但量少的类别也要全上（轮到它时有人就上）');
+  assert.strictEqual(count('stay'), 70, '剩下的名额才轮到住宿');
 });
 
 test('map.js：z13 落下的是圆点（12px 居中），放大到 14 整批换回旗子', async () => {
