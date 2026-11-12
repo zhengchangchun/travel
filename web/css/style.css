@@ -895,8 +895,11 @@ button:disabled { opacity: .45; }
 }
 .view-count b, .view-count span { color: var(--ink); }
 .view-hint {
-  background: rgba(109, 139, 255, .16); border: 1px solid rgba(109, 139, 255, .45); color: #c8d3ff;
-  backdrop-filter: blur(10px); border-radius: 12px;
+  /* 底图在 P11 换成亮色后，浅紫字（#c8d3ff）在浅色地图上几乎看不见 ⇒ 跟同排的
+     .view-count 一样用暗玻璃 + 亮字，只留一圈强调色边框区分（用户 2026-11-12 的提示要能读） */
+  background: var(--glass); border: 1px solid rgba(109, 139, 255, .55); color: var(--ink);
+  backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
 }
 .view-progress { background: rgba(74, 214, 154, .14); border: 1px solid rgba(74, 214, 154, .4); color: #9df0c6; border-radius: 12px; }
 .map-error { background: rgba(255, 107, 107, .16); border: 1px solid rgba(255, 107, 107, .5); color: #ffc9c9; border-radius: 12px; backdrop-filter: blur(10px); }
