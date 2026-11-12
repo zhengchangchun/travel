@@ -1259,6 +1259,8 @@
 
   // 只显示当前地图范围内的：把已有点按当前视野框裁剪（左右上下平移时立刻摘掉框外的旗）
   function pruneToViewport(bounds) {
+    // 轮廓屏：列表里是全城精选，不是「本视野的点」—— 按当前框裁它没有意义
+    if (state.overviewPicks) return;
     if (!bounds || !state.pois.length) return;
     const before = state.pois.length;
     const kept = state.pois.filter(
@@ -1526,12 +1528,16 @@
   // 程序化飞行（点列表/定位）：不触发视野重载，避免冲掉当前列表
   function flyTo(lng, lat, zoom, opts) {
     if (!MapCtl.isReady()) return;
+    // 从轮廓清单点进来（reload）：不压视野事件 —— 让飞行结束的那一下 moveend 自己按新视野加载
+    // （AMap 的飞行动画有好几秒，定时器根本卡不准；压掉就再也等不到加载）
+    if (opts && opts.reload) {
+      MapCtl.flyTo(lng, lat, zoom);
+      return;
+    }
     state.suppressView = true;
     MapCtl.flyTo(lng, lat, zoom);
     setTimeout(() => {
       state.suppressView = false;
-      // 从轮廓清单点进来：飞到街道级后按新视野加载（低倍率那一屏本来就不落点）
-      if (opts && opts.reload) fetchPoisInView();
     }, 800);
   }
 

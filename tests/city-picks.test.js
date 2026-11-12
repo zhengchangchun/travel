@@ -59,7 +59,16 @@ test('点清单一条：飞到街道级 + 按新视野重新加载', () => {
   assert.match(pick[0], /state\.overviewPicks = false/, '点完要退出清单口径');
   const fly = APP.match(/function flyTo\(lng, lat, zoom, opts\)[\s\S]*?\n  \}/);
   assert.ok(fly, '缺 flyTo');
-  assert.match(fly[0], /if \(opts && opts\.reload\) fetchPoisInView\(\)/, '飞到位后没按新视野加载');
+  // 飞行动画有好几秒：reload 这条走「不压视野事件」，让飞行结束的 moveend 自己按新视野加载
+  assert.match(fly[0], /if \(opts && opts\.reload\) \{[\s\S]{0,120}?return;/, 'reload 这条应该直接飞、不压视野事件');
+  assert.ok(
+    !/opts\.reload[\s\S]{0,120}fetchPoisInView/.test(fly[0]),
+    '别用定时器卡点加载：飞行动画时长不定，等 moveend 才准'
+  );
+  // 清单是全城口径，按当前框修剪它没有意义
+  const prune = APP.match(/function pruneToViewport\(bounds\)[\s\S]*?\n  \}/);
+  assert.ok(prune, '缺 pruneToViewport');
+  assert.match(prune[0], /if \(state\.overviewPicks\) return;/, '轮廓屏不该按当前框裁精选清单');
 });
 
 test('口径要分家：轮廓屏说「全城精选」，不说「本视野」', () => {
