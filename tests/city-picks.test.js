@@ -13,6 +13,7 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const APP = read('web/js/app.js');
 const UI = read('web/js/ui.js');
+const CSS = read('web/css/style.css');
 
 test('轮廓屏：门槛分支照旧不落点，但要补「全城高分精选」清单', () => {
   assert.match(APP, /const CITY_PICKS_PER_CAT = \d+;/, '缺每类取几条的常量');
@@ -79,6 +80,13 @@ test('口径要分家：轮廓屏说「全城精选」，不说「本视野」',
   assert.ok(pickAt >= 0 && viewAt > pickAt, '轮廓屏口径要排在「本视野」口径之前');
   assert.match(summary[0], /全城高分精选 ' \+ shown \+ ' 条/, '结果条缺清单说明');
   assert.match(APP, /UI\.setViewCount\(state\.pois\.length, state\.cityTotal, '全城精选'\)/, '计数条没换口径');
+});
+
+test('地图上的提示在亮底图上要能读（不是暗色主题那套浅紫字）', () => {
+  const rules = CSS.match(/\.view-hint \{[^}]*\}/g) || [];
+  assert.ok(rules.length, 'css 缺 .view-hint');
+  assert.ok(!rules.some((r) => /#c8d3ff/.test(r)), '提示字别再是浅紫（浅色底图上看不见）');
+  assert.match(rules[rules.length - 1], /color:\s*var\(--ink\)/, '地图区那条提示要用亮字');
 });
 
 test('ui.setViewCount：label 缺省「当前视野」，轮廓屏传「全城精选」', () => {

@@ -895,7 +895,7 @@ button:disabled { opacity: .45; }
 }
 .view-count b, .view-count span { color: var(--ink); }
 .view-hint {
-  /* 底图在 P11 换成亮色后，浅紫字（#c8d3ff）在浅色地图上几乎看不见 ⇒ 跟同排的
+  /* 底图在 P11 换成亮色后，暗色主题那套浅紫字在浅色地图上几乎看不见 ⇒ 跟同排的
      .view-count 一样用暗玻璃 + 亮字，只留一圈强调色边框区分（用户 2026-11-12 的提示要能读） */
   background: var(--glass); border: 1px solid rgba(109, 139, 255, .55); color: var(--ink);
   backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
