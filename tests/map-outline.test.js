@@ -159,9 +159,18 @@ test('app.js：切城市先走「城市轮廓」路径，拿不到才退回主�
 
 test('app.js：整城视野不落点（倍率门槛仍在），放大进城才落点', () => {
   assert.match(APP, /const MIN_MARKER_ZOOM = \d+;/, '缺落点倍率门槛');
-  const gate = APP.match(/if \(zoom != null && \(zoom < MIN_MARKER_ZOOM[\s\S]{0,420}/);
+  const gate = APP.match(/if \(zoom != null && \(zoom < MIN_MARKER_ZOOM[\s\S]{0,900}/);
   assert.ok(gate, '缺倍率门槛分支');
   assert.match(gate[0], /state\.pois = \[\]/, '倍率不够时不该有待落点');
   assert.match(gate[0], /MapCtl\.clearMarkers\(\)/, '倍率不够时地图上不该有点');
   assert.match(gate[0], /放大地图以加载本区域地点/, '要告诉用户怎么看到点');
+  // P22：轮廓之后还能细选 —— 门槛分支照旧清空落点，但要把「全城高分精选」补进列表
+  assert.match(gate[0], /loadCityPicks\(\)/, '整城视野要补一份可细选的清单');
+  const refreshFn = APP.match(/function refresh\(opts\)[\s\S]*?\n  \}/);
+  assert.ok(refreshFn, '缺 refresh');
+  assert.match(
+    refreshFn[0],
+    /state\.overviewPicks\n?\s*\? full\.filter\(\(p\) => Selection\.has\(p\) \|\| baseIs\(p\)\)/,
+    '轮廓屏的精选清单不该落到地图上（自己挑过的点除外）'
+  );
 });

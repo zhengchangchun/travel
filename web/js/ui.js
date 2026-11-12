@@ -16,10 +16,11 @@
   }
 
   // 双口径计数：当前视野 N 条 · 全城已收录 M 条
-  function setViewCount(viewN, total) {
+  // label 缺省「当前视野」；轮廓屏传「全城精选」（那时列表口径不是本视野）
+  function setViewCount(viewN, total, label) {
     const el = $('view-count');
     if (!el) return;
-    el.textContent = '当前视野 ' + viewN + ' 条 · 全城已收录 ' + total + ' 条';
+    el.textContent = (label || '当前视野') + ' ' + viewN + ' 条 · 全城已收录 ' + total + ' 条';
   }
 
   // 视野提示（「本区域加载中…」「放大地图以加载」）：空串则隐藏

@@ -23,6 +23,8 @@
   const MIN_MARKER_ZOOM = 13;
   // 按视野自动采集的最低倍率（默认 13）；与落点阈值同值
   const MIN_COLLECT_ZOOM = 13;
+  // 轮廓屏（整城视野）的「全城高分精选」：每个分类各取几条进列表（只读本地已收录，零高德调用）
+  const CITY_PICKS_PER_CAT = 15;
 
   // 分类筛选：多选，选中的都显示（不再有「全部」这一项；要看全就叠满四个，或直接用关键词搜）
 
@@ -59,6 +61,7 @@
     zoomTooLow: false, // 倍率不够、没加载地点（空态只提示这一件事）
     markerInfo: null, // 上一次落旗回执（{shown,dropped}）：超上限时要在结果条里说明
     outline: null, // 当前城市的行政轮廓（P21）：整城视野时只画边框不落点
+    overviewPicks: false, // 列表里装的是「全城高分精选」（轮廓屏）还是本视野的点（P22）
     liveMode: 'driving', // 实时耗时用哪种出行方式
     liveLegs: [], // 相邻两点的耗时（[i] = 第 i+1 → 第 i+2 段）
     liveEstimate: false, // 有没有路段是按直线估的（界面带 ≈）
@@ -279,6 +282,14 @@
     if (!state.onlySelected && catFilterEmpty()) {
       el.textContent = '—';
       el.title = '先选一个分类（可多选）再看结果';
+      return;
+    }
+    // 轮廓屏还没有「本视野」这回事：清单口径单说（P22）
+    if (state.overviewPicks) {
+      const pickBits = ['全城高分精选 ' + shown + ' 条'];
+      pickBits.push(filterText());
+      el.textContent = pickBits.join(' · ');
+      el.title = el.textContent + '（放大地图看这一片，或点一条飞过去）';
       return;
     }
     const bits = state.searchKey
@@ -709,7 +720,11 @@
   function updateStatus(list) {
     // 倍率不够时的空态：这是唯一的原因，只说这一句
     if (state.zoomTooLow) {
-      UI.setStatus('放大地图以加载本区域地点');
+      UI.setStatus(
+        state.overviewPicks
+          ? '已框出 ' + state.city + ' 的范围 · 左边清单是全城高分精选，点一条就飞过去'
+          : '放大地图以加载本区域地点'
+      );
       return;
     }
     // 首屏/切城之后的未选分类态：不在状态栏重复引导，留给结果列表那一处 CTA（P9-①）
@@ -724,6 +739,11 @@
 
   // 双口径计数：当前视野 N 条 · 全城已收录 M 条
   function updateViewCount() {
+    // 轮廓屏：列表装的是全城精选，不是本视野的点 —— 两个口径别混着说
+    if (state.overviewPicks) {
+      UI.setViewCount(state.pois.length, state.cityTotal, '全城精选');
+      return;
+    }
     UI.setViewCount(state.pois.length, state.cityTotal);
   }
 
@@ -926,7 +946,14 @@
     renderResultSummary(full.length, list.length);
     updateStatus(full);
     updateViewCount();
-    if (drawMarkers) renderMap(full, fit);
+    if (drawMarkers) {
+      // 轮廓屏：精选清单只在列表里、不落图（用户 2026-11-12「先看轮廓，之后还可以细选」）；
+      // 自己挑过的点（选中 / 住宿锚点）照旧画出来
+      const onMap = state.overviewPicks
+        ? full.filter((p) => Selection.has(p) || baseIs(p))
+        : full;
+      renderMap(onMap, fit);
+    }
     renderSelection();
     if (state.view === 'itinerary') renderItinerary();
   }
@@ -1194,7 +1221,10 @@
     state.cardPoi = poi;
     lastPickAt = Date.now();
     // 从列表点进来要把相机带到那个点；从地图上点则不飞（它就在眼前，飞一下会把视野扯走）
-    if (!(opts && opts.noFly)) flyTo(poi.lng, poi.lat, 15);
+    // 轮廓屏的精选清单点进来：飞到位后要按新视野重新加载，否则街道级那一屏还是没点
+    const fromPicks = state.overviewPicks === true;
+    if (!(opts && opts.noFly)) flyTo(poi.lng, poi.lat, 15, { reload: fromPicks });
+    if (fromPicks) state.overviewPicks = false;
     window.TravelDetail.show($('infocard'), poi, state.city, {
       onAddPin,
       isSelected: (p) => Selection.has(p),
@@ -1250,7 +1280,9 @@
     if (zoom != null && (zoom < MIN_MARKER_ZOOM || zoom < MIN_COLLECT_ZOOM)) {
       // 倍率阈值门控：不请求、不画点、不采集，只提示
       state.zoomTooLow = true;
+      state.overviewPicks = false; // 先收成「只有轮廓」这一版，精选清单回来再补（P22）
       state.pois = [];
+      state.searchKey = ''; // 缩回整城：搜索口径失效，免得汇总条把精选说成搜索结果
       MapCtl.clearMarkers();
       UI.showLegend(false);
       // 有城市轮廓时先把「这是哪座城、多大」说出来，再引导放大（用户 2026-11-12）
@@ -1260,9 +1292,12 @@
           : '放大地图以加载本区域地点'
       );
       refresh();
+      // 轮廓之后还要能细选：补一份全城高分精选进列表（只读本地库，零配额；不落图）
+      loadCityPicks();
       return;
     }
     state.zoomTooLow = false;
+    state.overviewPicks = false;
     const bbox = currentBbox();
     if (!bbox) return;
     const seq = (state.viewSeq += 1);
@@ -1489,12 +1524,14 @@
   }
 
   // 程序化飞行（点列表/定位）：不触发视野重载，避免冲掉当前列表
-  function flyTo(lng, lat, zoom) {
+  function flyTo(lng, lat, zoom, opts) {
     if (!MapCtl.isReady()) return;
     state.suppressView = true;
     MapCtl.flyTo(lng, lat, zoom);
     setTimeout(() => {
       state.suppressView = false;
+      // 从轮廓清单点进来：飞到街道级后按新视野加载（低倍率那一屏本来就不落点）
+      if (opts && opts.reload) fetchPoisInView();
     }, 800);
   }
 
@@ -1600,6 +1637,56 @@
     }
     await refreshTrips();
     await loadCityView(state.city);
+  }
+
+  // 轮廓之后还能细选（用户 2026-11-12）：整城视野里地图不落点，但列表要给一份「全城高分精选」——
+  // 每个分类各取一批高分点（只读本地已收录，零高德调用），点一条即飞过去并在街道级落旗。
+  let picksSeq = 0;
+  let picksCache = { city: '', items: [] };
+
+  function applyCityPicks(items) {
+    // 名额按分类轮转发（同地图落旗口径）：不然高分扎堆的住宿会把整张清单吃掉
+    state.pois = MapCtl.capMarkers(items, (p) => Selection.has(p)).items;
+    state.overviewPicks = true;
+    state.resultLimit = RESULT_PAGE;
+    refresh();
+  }
+
+  async function loadCityPicks() {
+    const city = state.city;
+    if (!city || !MapCtl.isReady()) return;
+    const seq = (picksSeq += 1);
+    if (picksCache.city === city && picksCache.items.length) {
+      applyCityPicks(picksCache.items);
+      return;
+    }
+    const cats =
+      window.TravelCategories && typeof window.TravelCategories.all === 'function'
+        ? window.TravelCategories.all()
+        : [];
+    const keys = cats.map((c) => c && c.key).filter(Boolean);
+    const lists = await Promise.all(
+      (keys.length ? keys : [null]).map((key) =>
+        API.listPois({ city, category: key || undefined, sort: 'rating', limit: CITY_PICKS_PER_CAT })
+          .then((data) => (data && data.items) || [])
+          .catch(() => [])
+      )
+    );
+    // 已经换城、已经进城（有人把它缩回又放大）：这一批作废
+    if (seq !== picksSeq || state.city !== city || !state.zoomTooLow) return;
+    const seen = new Set();
+    const items = [];
+    lists.forEach((rows) =>
+      rows.forEach((p) => {
+        const id = String((p && p.id) || '');
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        items.push(p);
+      })
+    );
+    if (!items.length) return; // 本地一条都没有：保持空态（照旧只提示放大）
+    picksCache = { city, items };
+    applyCityPicks(items);
   }
 
   // 城市轮廓（P21）：拿得到就画边框并把相机框到全城；拿不到就退回「主城区 + 点位」的老路径。
