@@ -49,6 +49,32 @@
     );
   }
 
+  // 远看的小圆点：色相认分类、明暗认评分（与旗子同一套色阶），悬停仍报名字与评分
+  function dotHtml(poi, selected) {
+    const SC = window.TravelScoreColor;
+    const color = SC
+      ? SC.colorFor(poi.category, poi.rating)
+      : window.TravelCategories.colorOf(poi.category);
+    const top = SC ? SC.isTop(poi.rating) : false;
+    const noRating = !poi.rating;
+    const isBase = isBaseId(poi.id) || isBaseId(poi.poi_id);
+    return (
+      '<div class="poi-dot' + (selected ? ' selected' : '') + (top ? ' top' : '') +
+      (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + '" data-category="' +
+      esc(poi.category) + '" ' +
+      'style="--flag-color:' + esc(color) + '" title="' + esc(flagTitle(poi, top, isBase)) + '"></div>'
+    );
+  }
+
+  // 当前呈现档该给什么内容/锚点（圆点以自己为中心，旗子钉在自己的尖端）
+  function contentFor(poi, selected, mode) {
+    return mode === 'dot' ? dotHtml(poi, selected) : flagHtml(poi, selected);
+  }
+
+  function offsetFor(mode) {
+    return mode === 'dot' ? new AMap.Pixel(-6, -6) : new AMap.Pixel(-13, -34);
+  }
+
   function loadSdk(cfg) {
     return new Promise((resolve, reject) => {
       if (window.AMap) {
@@ -141,8 +167,8 @@
     if (markers.has(key)) return markers.get(key);
     const marker = new AMap.Marker({
       position: [poi.lng, poi.lat],
-      content: flagHtml(poi, selected),
-      offset: new AMap.Pixel(-13, -34),
+      content: contentFor(poi, selected, renderMode),
+      offset: offsetFor(renderMode),
       extData: { poi, selected },
       zIndex: selected ? 200 : 100,
     });
@@ -161,8 +187,8 @@
     if (markers.has(key)) return null;
     const marker = new AMap.Marker({
       position: [poi.lng, poi.lat],
-      content: flagHtml(poi, selected),
-      offset: new AMap.Pixel(-13, -34),
+      content: contentFor(poi, selected, renderMode),
+      offset: offsetFor(renderMode),
       extData: { poi, selected },
       zIndex: selected ? 200 : 100,
     });
@@ -206,11 +232,25 @@
     if (zoom === null || zoom === undefined) return MARKER_LIMIT;
     const z = Number(zoom);
     if (!Number.isFinite(z)) return MARKER_LIMIT;
-    if (z <= 11) return 60;
-    if (z <= 12) return 100;
-    if (z <= 13) return 160;
-    if (z <= 14) return 300;
+    if (z <= 11) return 40;
+    if (z <= 12) return 60;
+    if (z <= 13) return 90;
+    if (z <= 14) return 160;
     return MARKER_LIMIT;
+  }
+
+  // 远看用小圆点、近看才是旗子（用户 2026-11-12「上来就一堆点，很影响看东西」）：
+  // 旗是 26×34 的方块 + 旗杆，铺一片就把底图盖住；圆点只报「这一带有什么、大概多好」。
+  // 旗与点不是同一套 DOM ⇒ 跨档时整批重画（见 syncMarkers）。
+  const DOT_MAX_ZOOM = 13;
+  let renderMode = 'flag';
+
+  function modeForZoom(zoom) {
+    // 注意 Number(null) === 0：拿不到倍率要先判掉，否则会被当成「缩到最小」
+    if (zoom === null || zoom === undefined) return 'flag';
+    const z = Number(zoom);
+    if (!Number.isFinite(z)) return 'flag';
+    return z <= DOT_MAX_ZOOM ? 'dot' : 'flag';
   }
 
   function poiIdOf(p) {
@@ -226,6 +266,19 @@
     return isBaseId(id) || (!!p && isBaseId(p.poi_id));
   }
 
+  // 截断时留「更值得看」的：评分高的先上（无评分排最后），同分按名字稳定排序。
+  // 之前是按传入顺序切 —— 屏幕上那 90 个点是「先返回的」而不是「最好的」。
+  function preferRank(a, b) {
+    const ra = Number(a && a.rating) || 0;
+    const rb = Number(b && b.rating) || 0;
+    if (rb !== ra) return rb - ra;
+    const na = String((a && a.name) || '');
+    const nb = String((b && b.name) || '');
+    if (na < nb) return -1;
+    if (na > nb) return 1;
+    return 0;
+  }
+
   function capList(list, isSelected) {
     const items = Array.isArray(list) ? list : [];
     const lim = limitForZoom(map && map.getZoom ? map.getZoom() : null);
@@ -236,6 +289,7 @@
       const keep = (isSelected ? !!isSelected(p) : false) || isBasePoi(p);
       (keep ? must : rest).push(p);
     });
+    rest.sort(preferRank);
     const room = Math.max(0, lim - must.length);
     const shown = must.concat(rest.slice(0, room));
     return { items: shown, dropped: items.length - shown.length };
@@ -248,6 +302,7 @@
   function setMarkers(list, isSelected) {
     if (!map) return { shown: 0, dropped: 0 };
     clearMarkers();
+    renderMode = modeForZoom(getZoom()); // 整批重画：顺便跟上远/近呈现档
     const token = markerBatch;
     const capped = capList(list, isSelected);
     const items = capped.items;
@@ -272,6 +327,14 @@
   // 返回 { added, removed, kept }：added 是本次排队的数量（分帧画完，非瞬时值）
   function syncMarkers(list, isSelected) {
     if (!map) return { added: 0, removed: 0, kept: 0, shown: 0, dropped: 0 };
+    let removed = 0;
+    const mode = modeForZoom(getZoom());
+    if (mode !== renderMode) {
+      // 放大/缩小跨过阈值：圆点 ↔ 旗子不是同一套 DOM，整批重画
+      renderMode = mode;
+      removed += markers.size;
+      clearMarkers();
+    }
     const capped = capList(list, isSelected);
     const items = capped.items;
     const wanted = new Map();
@@ -279,7 +342,6 @@
       const k = poiKey(p);
       if (!wanted.has(k)) wanted.set(k, p);
     });
-    let removed = 0;
     const gone = [];
     Array.from(markers.keys()).forEach((k) => {
       if (wanted.has(k)) return;
@@ -376,7 +438,7 @@
       const wasBase = before.indexOf(id) >= 0;
       if (!wasBase && !isBaseId(id) && !isBaseId(poi.poi_id)) return; // 前后都不是锚点 ⇒ 样子没变
       try {
-        marker.setContent(flagHtml(poi, !!data.selected));
+        marker.setContent(contentFor(poi, !!data.selected, renderMode));
       } catch (err) {
         /* 单面重画失败不影响其他 */
       }
@@ -630,6 +692,9 @@
     syncMarkers,
     markerCount,
     markerLimit,
+    limitForZoom,
+    modeForZoom,
+    renderMode: () => renderMode,
     capMarkers: capList,
     fitView,
     fitBbox,

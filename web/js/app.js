@@ -285,10 +285,10 @@
       : ['显示 ' + shown + ' / 本视野 ' + state.pois.length + ' 条'];
     bits.push(filterText());
     if (!state.searchKey && total > shown) bits.push('合条件共 ' + total + ' 条');
-    // 落旗有上限：地图与列表口径对不上时要说清楚（P9-③）
+    // 落旗有上限：地图与列表口径对不上时要说清楚（P9-③）；截断按评分优先（P20）
     const mi = state.markerInfo;
     if (mi && mi.dropped > 0) {
-      bits.push('地图只落前 ' + mi.shown + ' 面（放大可看切片）');
+      bits.push('地图按评分优先落 ' + mi.shown + ' 个点（放大看更多）');
     }
     el.textContent = bits.join(' · ');
     el.title = el.textContent;

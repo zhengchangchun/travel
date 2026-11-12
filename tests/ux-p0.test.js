@@ -175,10 +175,10 @@ test('map.js：落旗有上限，超出时保留已选中/住宿锚点并回报 
   assert.ok(has('p0'), '住宿锚点必须保留');
 });
 
-test('app.js：落旗被截断时结果条说明「地图只落前 N 面」', () => {
+test('app.js：落旗被截断时结果条说明「地图按评分优先落 N 个点」', () => {
   assert.match(APP, /state\.markerInfo = MapCtl\.syncMarkers\(/, 'renderMap 要收下落旗回执');
   assert.match(APP, /mi\.dropped > 0/, '被截断要判出来');
-  assert.match(APP, /地图只落前/, '结果条要说明落旗上限');
+  assert.match(APP, /地图按评分优先落/, '结果条要说明落旗上限与截断口径');
 });
 
 // ---------- ④ 信息卡更好关 ----------

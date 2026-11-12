@@ -293,6 +293,25 @@ button.danger:hover { background: #ad2102; }
 .itin-toolbar { margin-bottom: 6px; }
 
 /* 地图旗子选中态 */
+/* 远看的小圆点（zoom ≤ 13）：只报「这一带有什么」，不抢底图（用户 2026-11-12） */
+.poi-dot {
+  width: 12px; height: 12px; box-sizing: border-box; cursor: pointer;
+  border-radius: 50%;
+  background: var(--flag-color, #8A8F99);
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+.poi-dot.selected {
+  border-width: 2px;
+  box-shadow: 0 0 0 3px rgba(109, 139, 255, .75), 0 1px 3px rgba(0, 0, 0, .35);
+}
+.poi-dot.top { box-shadow: 0 0 0 2px rgba(255, 210, 63, .85), 0 1px 3px rgba(0, 0, 0, .3); }
+.poi-dot.no-rating { border-color: #b8bcc4; }
+.poi-dot.base {
+  border-color: #FFD23F; border-width: 2.5px;
+  box-shadow: 0 0 0 2px rgba(255, 210, 63, .55), 0 1px 3px rgba(0, 0, 0, .35);
+}
+
 .flag.selected { transform: scale(1.12); transform-origin: bottom center; }
 .flag.selected .flag-head {
   border-color: #ffffff;
@@ -950,6 +969,15 @@ button:disabled { opacity: .45; }
 .modal-mask { background: rgba(6, 8, 12, .68); backdrop-filter: blur(6px); }
 .modal-box { background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px; box-shadow: var(--shadow); }
 .modal-msg { color: var(--ink); }
+
+/* 圆点：暗底上补一圈白描边 + 投影，不然小点会陷进底图 */
+.poi-dot { border-color: rgba(255, 255, 255, .92); box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+.poi-dot.top { box-shadow: 0 0 0 2px rgba(255, 210, 63, .8), 0 1px 4px rgba(0, 0, 0, .5); }
+.poi-dot.selected { box-shadow: 0 0 0 3px rgba(109, 139, 255, .6), 0 1px 4px rgba(0, 0, 0, .55); }
+.poi-dot.base {
+  border-color: #FFD23F;
+  box-shadow: 0 0 0 2px rgba(255, 210, 63, .6), 0 1px 4px rgba(0, 0, 0, .55);
+}
 
 /* 旗子：暗底上加密一层描边，避免和深色底图糊在一起 */
 .flag-head { border-color: rgba(255, 255, 255, .92); box-shadow: 0 2px 8px rgba(0, 0, 0, .55); }

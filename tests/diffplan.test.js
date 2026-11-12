@@ -52,7 +52,15 @@ test('地图旗子走增量：syncMarkers 保留不动的，只补/删变化的�
   assert.match(m[0], /map\.remove\(/, '未从地图移除');
   assert.match(m[0], /if \(!markers\.has\(k\)\)/, '已有的旗子应跳过（不重画）');
   assert.match(m[0], /addChunk\(/, '新增走批量 addChunk');
-  assert.ok(!/clearMarkers\(\)/.test(m[0]), 'syncMarkers 不应整屏清空');
+  // P20：远/近呈现档切换（圆点 ↔ 旗子不是同一套 DOM）是唯一的整屏重画例外，必须带条件
+  const clearAt = m[0].indexOf('clearMarkers()');
+  if (clearAt >= 0) {
+    assert.match(
+      m[0].slice(0, clearAt),
+      /mode !== renderMode/,
+      'syncMarkers 只允许在「呈现档切换」时整屏重画，其余一律走增量'
+    );
+  }
   assert.match(MAP, /\n    syncMarkers,/, 'syncMarkers 未导出');
   assert.match(APP, /MapCtl\.syncMarkers\(/, 'renderMap 未走增量');
 });
