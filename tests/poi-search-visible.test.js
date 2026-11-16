@@ -11,6 +11,7 @@ const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const APP = read('web/js/app.js');
 const MAP = read('web/js/map.js');
+const UI = read('web/js/ui.js');
 
 test('关键词搜索不套浏览用的评分过滤（否则命中却被滤成 0 条）', () => {
   const fn = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/);
@@ -74,4 +75,48 @@ test('点地图任意处：一律问「这里是哪」，不用附近的点冒�
   // 关卡片时把 cardPoi 一并清掉
   const hide = APP.match(/function hideInfoCard[\s\S]*?\n  \}/)[0];
   assert.match(hide, /state\.cardPoi = null/, 'hideInfoCard 未清 cardPoi');
+});
+
+/* 用户 2026-11-16「可以根据名称去搜索地点」：整城视野（轮廓屏）里搜名字曾经等于没搜 ——
+   列表是换了，但地图上一个点不落、结果条还把它说成「全城高分精选」，飞过去落定那一下
+   又按脚下的小框把命中裁掉。这三条口径各自钉一颗钉子。 */
+test('在轮廓屏里搜名字：必须退出「全城精选」口径，命中要落在地图上', () => {
+  const fn = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/)[0];
+  assert.match(fn, /state\.overviewPicks = false/, '搜索后未退出轮廓屏口径（地图上不会落点、条上还写全城精选）');
+  assert.match(fn, /state\.zoomTooLow = false/, '搜索后未解掉倍率门槛（空态提示会盖在命中上）');
+  // 晚一步回来的「全城精选」会把搜索结果顶掉：在飞的那一批要作废
+  assert.match(fn, /picksSeq \+= 1/, '搜索未作废在飞的全城精选（它会晚一步把命中顶掉）');
+  // 先把口径退掉再 refresh：否则第一帧还是轮廓屏那套（不落点 + 说成全城精选）
+  const tail = fn.slice(fn.indexOf('state.zoomTooLow = false'));
+  assert.ok(tail.indexOf('refresh()') > -1, '要先退出口径再 refresh，否则第一帧还是轮廓屏那套');
+});
+
+test('相机落在命中处：不按这个框裁搜索结果，但旗子要按新倍率重画', () => {
+  const prune = APP.match(/function pruneToViewport\(bounds\)[\s\S]*?\n  \}/)[0];
+  assert.match(prune, /state\.searchHold && viewMatchesHold\(\)/, 'pruneToViewport 不认搜索锁定 ⇒ 相 机落定会把命中裁成脚下那几条');
+  const settled = APP.match(/MapCtl\.onViewSettled\(\(bounds\) => \{[\s\S]*?\n      \}\);/)[0];
+  assert.match(settled, /state\.searchHold && viewMatchesHold\(\)/, 'onViewSettled 未给搜索留口');
+  assert.match(settled, /renderMap\(currentList\(\), false\)/, '搜索落定后应只重画旗子（列表/状态保持搜索结果口径）');
+  // 相机真的被用户动了 ⇒ 还是要回到「视野即口径」
+  const view = APP.match(/function onViewChanged\(\)[\s\S]*?\n  \}/)[0];
+  assert.match(view, /state\.searchHold = null/, 'onViewChanged 仍要能解除搜索锁定');
+});
+
+test('搜不到不该把原来的清单清空，措辞要说「没找到」', () => {
+  const fn = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/)[0];
+  assert.match(fn, /const before = \{[\s\S]*?pois: state\.pois/, '未备份搜索前的清单状态');
+  assert.match(fn, /if \(!hits\.length\) \{/, '缺「一条都没搜到」的分支');
+  assert.match(fn, /Object\.assign\(state, before\)/, '搜不到时应把原清单原样放回去');
+  assert.match(fn, /没找到「/, '措辞应说「没找到」，别只说「搜索失败」');
+  assert.match(fn, /没找到 · ' \+ human\(err\)/, '搜索报错时也要落在「没找到」口径上');
+});
+
+test('命中来源要说清：高德 / 本地已收录 / OpenStreetMap，OSM 那条还要打标', () => {
+  const fn = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/)[0];
+  assert.match(fn, /来自本地已收录/, '本地兑底没说来源');
+  assert.match(fn, /来自 OpenStreetMap/, 'OSM 兑底没说来源（不能把别人的数据说成自己的）');
+  // 结果行上给 OSM 那几条一个可见的标记
+  const item = UI.match(/function buildItem\(poi, key, sig, handlers, onPick\)[\s\S]*?\n  \}/)[0];
+  assert.match(item, /poi\.source === 'osm'/, '结果行没给 OSM 命中打标');
+  assert.match(read('web/css/style.css'), /\.poi-tag\.src/, '缺 OSM 标记的样式');
 });

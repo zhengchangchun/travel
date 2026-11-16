@@ -1261,6 +1261,9 @@
   function pruneToViewport(bounds) {
     // 轮廓屏：列表里是全城精选，不是「本视野的点」—— 按当前框裁它没有意义
     if (state.overviewPicks) return;
+    // 搜索把相机送到命中那一片：相机落定那一下不能拿「脚下这个小框」裁搜索结果
+    // （实测：整城视野搜「西湖」60 条命中，飞到街道级后只剩民宿那 1 条）
+    if (state.searchHold && viewMatchesHold()) return;
     if (!bounds || !state.pois.length) return;
     const before = state.pois.length;
     const kept = state.pois.filter(
@@ -1901,15 +1904,48 @@
     }
   }
 
+  // 按名字找地点（用户 2026-11-16「可以根据名称去搜索地点」）。
+  // 搜索是「找这个地方」，不是「浏览这一片」—— 轮廓屏那套口径（地图不落点 / 清单说「全城高分精选」/
+  // 倍率门槛）必须让位，否则在整城视野里搜「西湖」会：列表换了、地图空着、条上还写「全城高分精选」。
   async function doPoiSearch() {
     const keywords = $('poi-input').value.trim();
     if (!keywords) return;
     UI.setStatus('搜索「' + keywords + '」…');
+    // 一条都没搜到时把原来的清单原样留着（轮廓屏的全城精选、放大后的本视野点，都别被清空）
+    const before = {
+      pois: state.pois,
+      searchKey: state.searchKey,
+      resultLimit: state.resultLimit,
+      overviewPicks: state.overviewPicks,
+      zoomTooLow: state.zoomTooLow,
+      activeCats: state.activeCats,
+      ratingFilter: state.ratingFilter,
+    };
     try {
       const results = await API.searchPoi({ city: state.city, keywords });
-      // 高德不可用/没结果时后端会回退到本地库（每条带 local 标记）—— 结果口径要对用户说清
-      const fromLocal = results.length > 0 && results[0].local === true;
-      state.pois = dedupe(results);
+      // 高德不可用/没结果时后端会依次回退到本地库、OpenStreetMap（命中行带 local / source 标记）
+      // —— 来源口径要对用户说清（别把别人的数据说成自己的）
+      const hits = dedupe(results);
+      const src = hits.length ? (hits[0].local ? 'local' : String(hits[0].source || '')) : '';
+      const srcNote =
+        src === 'local'
+          ? '（高德暂时不可用，来自本地已收录）'
+          : src === 'osm'
+            ? '（高德暂时不可用，来自 OpenStreetMap）'
+            : '';
+      if (!hits.length) {
+        Object.assign(state, before);
+        renderRatingSlider();
+        renderCatChips();
+        refresh();
+        UI.setStatus(
+          '没找到「' +
+            keywords +
+            '」· 换个词试试（如 西湖 / 火锅），或者放大地图直接看这一片有哪些地点'
+        );
+        return;
+      }
+      state.pois = hits;
       state.resultLimit = RESULT_PAGE;
       // 关键词搜索：不过滤分类 ⇒ 四个分类 chip 全选中（列表与 chip 说的是同一件事）
       state.activeCats = new Set(Cats.all().map((c) => c.key));
@@ -1917,24 +1953,23 @@
       // 搜「湖滨步行街」只回一条 3.7 分的酒店，被默认 ≥4.0 滤成 0 条 ⇒ 看着像点不了（用户 2026-11-11）
       state.ratingFilter = 'all';
       state.searchKey = keywords;
+      // 退出轮廓屏口径：命中要落在地图上、结果条要说「搜索命中」；
+      // 同时在飞的「全城精选」作废 —— 它晚一步回来会把搜索结果顶掉（实测整城视野搜「西湖」就是这样）
+      picksSeq += 1;
+      state.overviewPicks = false;
+      state.zoomTooLow = false;
       renderRatingSlider();
       renderCatChips();
       refresh();
-      if (state.pois.length && MapCtl.isReady()) {
+      if (MapCtl.isReady()) {
         flyTo(state.pois[0].lng, state.pois[0].lat, 15);
         // 飞过去之后视野就等于搜索结果那一片：在用户真的动地图之前，不要让视野加载接管列表
         state.searchHold = { lng: state.pois[0].lng, lat: state.pois[0].lat, zoom: 15 };
       }
-      UI.setStatus(
-        '「' +
-          keywords +
-          '」找到 ' +
-          state.pois.length +
-          ' 个结果' +
-          (fromLocal ? '（高德暂时不可用，来自本地已收录）' : '')
-      );
+      UI.setStatus('「' + keywords + '」找到 ' + state.pois.length + ' 个结果' + srcNote);
     } catch (err) {
-      UI.setStatus('搜索失败：' + human(err));
+      // 高德不可用 + 我们库里也没命中：既说清楚「没找到」，也说清为什么只搜了已收录的库
+      UI.setStatus('「' + keywords + '」没找到 · ' + human(err));
     }
   }
 
@@ -2203,7 +2238,15 @@
       if (MapCtl.onMapClick) MapCtl.onMapClick((lnglat) => onMapBlankClick(lnglat));
       // 相机落定 → 立刻按新框裁剪已显示的旗；再防抖后加载（先缓存后实时搜索）
       MapCtl.onViewSettled((bounds) => {
-        if (!state.suppressView) pruneToViewport(bounds);
+        if (state.suppressView) return;
+        // 搜索的相机落到命中处：这一下既不裁列表，也不把它换成「这一片的点」，
+        // 但旗子是按倍率分档的（城市级 40 个圆点 → 街道级旗子）⇒ 照新倍率重画一遍
+        if (state.searchHold && viewMatchesHold()) {
+          // 只重画旗子（按新倍率分档）：列表与状态条保持搜索结果口径，别被「本视野」那套话顶掉
+          renderMap(currentList(), false);
+          return;
+        }
+        pruneToViewport(bounds);
       });
       MapCtl.onMoveEnd(() => onViewChanged());
       UI.hideMapError();

@@ -78,9 +78,10 @@ test('只显示当前地图范围内：相机落定立刻裁剪，防抖后再�
   assert.match(APP, /function\s+pruneToViewport/, 'app.js 缺 pruneToViewport');
   assert.match(MAP, /function\s+onViewSettled/, 'map.js 缺 onViewSettled（不防抖的落定回调）');
   assert.match(APP, /MapCtl\.onViewSettled\(/, 'app.js 未注册落定裁剪');
+  // 落定回调默认按新框裁剪（例外：搜索刚把相机落到命中那一瞬，见 poi-search-visible.test.js）
   assert.match(
     APP,
-    /onViewSettled[\s\S]{0,200}pruneToViewport\(bounds\)/,
+    /onViewSettled\([\s\S]{0,400}pruneToViewport\(bounds\)/,
     '落定回调未按新框裁剪'
   );
   const m = APP.match(/function\s+onViewChanged[\s\S]*?\n  \}/);
