@@ -95,3 +95,13 @@ test('头图不放大裁切：整图完整显示 + 高度随图片比例自适�
   assert.match(DETAIL, /loading="lazy"/, '缩略图应懒加载');
   assert.match(DETAIL, /decoding="async"/, '大图/缩略图应异步解码');
 });
+
+test('OSM 兑底结果不给「高德详情」入口（那个 id 链过去只会 404）', () => {
+  const keys = Src.sourcesFor({ id: 'osm:R2308774', name: '之江实验室', source: 'osm' }, '杭州').map((s) => s.key);
+  assert.ok(keys.indexOf('amap') < 0, 'OSM 行不该出现高德详情入口');
+  const local = { poi_id: 'B0FFH12345', name: '老王火锅', local: true };
+  assert.ok(
+    Src.sourcesFor(local, '杭州').some((s) => s.key === 'amap'),
+    '我们自己收录的（原本就是高德 id）仍要给高德详情'
+  );
+});

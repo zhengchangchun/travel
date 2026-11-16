@@ -253,6 +253,8 @@ async function start(opts = {}) {
       ...amap,
     },
     collectIntervalMs: 0,
+    // OSM 兑底（Photon）默认注入空实现：单测一律离线，要测兑底就自己塞一个假的
+    osm: opts.osm || { searchOsm: async () => [] },
   });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
@@ -343,5 +345,73 @@ test('GET /api/poi/search：高德没结果时也回退本地；两边都没有�
     assert.strictEqual(body.error.msg, 'USER_DAILY_QUERY_OVER_LIMIT');
   } finally {
     await s2.close();
+  }
+});
+
+test('GET /api/poi/search：高德没额度 + 本地也没命中 ⇒ 拿 OSM 兑底，但只认同名', async () => {
+  const osmCalls = [];
+  const s = await start({
+    amap: {
+      calls: { poiSearch: 0 },
+      async searchPoi() {
+        this.calls.poiSearch += 1;
+        const err = new Error('USER_DAILY_QUERY_OVER_LIMIT');
+        err.code = 'AMAP_ERROR';
+        throw err;
+      },
+    },
+    osm: {
+      async searchOsm(args) {
+        osmCalls.push(args);
+        return [
+          { id: 'osm:R1', name: '杭州大剧院', address: '之江东路 66 号', lng: 120.21, lat: 30.25, category: 'play', source: 'osm' },
+          { id: 'osm:W9', name: '环城东路', address: '', lng: 120.17, lat: 30.24, category: 'sight', source: 'osm' },
+        ];
+      },
+    },
+  });
+  try {
+    const res = await fetch(
+      s.base + '/api/poi/search?city=' + encodeURIComponent('杭州') + '&keywords=' + encodeURIComponent('杭州大剧院')
+    );
+    const body = await res.json();
+    assert.strictEqual(res.status, 200, 'OSM 有同名 ⇒ 不该报错');
+    assert.deepStrictEqual(body.data.map((p) => p.id), ['osm:R1'], '名字对不上的（环城东路）不要 —— 错点比没点更坏');
+    assert.strictEqual(body.data[0].source, 'osm', '来源要如实标 osm（前端靠它写「来自 OpenStreetMap」）');
+    assert.strictEqual(osmCalls.length, 1, 'OSM 只该被叫一次');
+    assert.strictEqual(osmCalls[0].city, '杭州', 'OSM 兑底要带上城市');
+    assert.strictEqual(osmCalls[0].keywords, '杭州大剧院');
+  } finally {
+    await s.close();
+  }
+});
+
+test('GET /api/poi/search：三边都没命中才报高德的原因（OSM 不拿别的点凑数）', async () => {
+  const s = await start({
+    amap: {
+      calls: { poiSearch: 0 },
+      async searchPoi() {
+        this.calls.poiSearch += 1;
+        const err = new Error('USER_DAILY_QUERY_OVER_LIMIT');
+        err.code = 'AMAP_ERROR';
+        throw err;
+      },
+    },
+    osm: {
+      async searchOsm() {
+        return [{ id: 'osm:W9', name: '环城东路', address: '', lng: 120.17, lat: 30.24, category: 'sight', source: 'osm' }];
+      },
+    },
+  });
+  try {
+    const res = await fetch(
+      s.base + '/api/poi/search?city=' + encodeURIComponent('杭州') + '&keywords=' + encodeURIComponent('杭州大剧院')
+    );
+    assert.strictEqual(res.status, 502);
+    const body = await res.json();
+    assert.strictEqual(body.error.code, 'AMAP_ERROR');
+    assert.match(body.error.msg, /USER_DAILY_QUERY_OVER_LIMIT/);
+  } finally {
+    await s.close();
   }
 });

@@ -115,6 +115,9 @@
       '<b class="poi-name">' + esc(poi.name) + '</b>' +
       topStarHtml(poi) +
       '<span class="poi-tag">' + esc(label) + '</span>' +
+      (poi.source === 'osm'
+        ? '<span class="poi-tag src" title="这条来自 OpenStreetMap（高德不可用时的兑底）">OSM</span>'
+        : '') +
       (poi.category === 'stay' ? baseButton(isBase) : '') +
       starButton(selected, color) +
       '</div>' +

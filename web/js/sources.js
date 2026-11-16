@@ -42,9 +42,11 @@
   }
 
   // 高德自己的详情页（唯一「内容来源确定」的一条：数据本身就是高德给的）
+  // OSM 兑底结果没有高德 poi_id（id 形如 osm:R123456），链过去只会 404 ⇒ 不给这条
   function amapEntry(poi) {
     const id = poi && (poi.id || poi.poi_id);
     if (!id) return null;
+    if ((poi && poi.source === 'osm') || /^osm:/.test(String(id))) return null;
     return {
       key: 'amap',
       label: '高德',

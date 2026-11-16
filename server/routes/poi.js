@@ -1,4 +1,6 @@
 // 两点间近似距离（米）：给「附近」排序用，精度足够
+const { matchesName } = require('../geocode-osm');
+
 function metresBetween(lng1, lat1, lng2, lat2) {
   const R = 6371000;
   const rad = Math.PI / 180;
@@ -64,7 +66,25 @@ module.exports = [
       if (Array.isArray(remote) && remote.length) return remote;
       const hit = localHit();
       if (hit.length) return hit;
-      if (remoteError) throw remoteError; // 本地也没有 ⇒ 如实报高德的原因
+      // 三级兜底的最后一级：OSM（Photon，免 key）。「按名字搜地点」不该因为高德没额度就整条断掉，
+      // 但 OSM 经常给一条无关街道 ⇒ 只认名字对得上的（错点比没点更坏，用户 2026-11-16）
+      const kw = String(keywords == null ? '' : keywords).trim();
+      if (kw.length >= 2 && ctx.osm && typeof ctx.osm.searchOsm === 'function') {
+        try {
+          const list = await ctx.osm.searchOsm({
+            city: params.city,
+            keywords: kw,
+            limit: 8,
+          });
+          const same = (Array.isArray(list) ? list : []).filter(
+            (p) => p && matchesName(kw, p.name)
+          );
+          if (same.length) return same.map((p) => Object.assign({}, p, { source: 'osm' }));
+        } catch (err) {
+          /* OSM 也不成：保持原样，下面如实报高德的原因 */
+        }
+      }
+      if (remoteError) throw remoteError; // 三边都没有 ⇒ 如实报高德的原因
       return Array.isArray(remote) ? remote : [];
     },
   },

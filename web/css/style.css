@@ -127,6 +127,8 @@ button.primary:hover { background: #0958d9; }
 .poi-head .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .poi-name { flex: 1; font-weight: 600; }
 .poi-tag { font-size: 11px; color: #6b7280; background: #f0f1f3; border-radius: 6px; padding: 1px 6px; }
+/* 来源标记（OSM 兑底结果）：跟分类标签同尺寸，但一眼看得出不是同一件事 */
+.poi-tag.src { color: #0f766e; background: #e0f2f1; font-weight: 600; }
 .poi-addr { color: #4b5563; font-size: 12px; margin-top: 4px; }
 .poi-meta { color: #1677ff; font-size: 12px; margin-top: 3px; }
 .poi-item .del {
@@ -882,6 +884,7 @@ button:disabled { opacity: .45; }
 .poi-addr, .note-place-addr { color: var(--ink-2); }
 .poi-meta, .detail-meta { color: var(--accent-2); }
 .poi-tag { background: rgba(255, 255, 255, .06); color: var(--ink-2); }
+.poi-tag.src { background: rgba(94, 230, 168, .14); color: #5ee6a8; }
 .poi-item .del { color: var(--danger); }
 .trip-name { color: var(--ink-3); }
 .poi-list .empty, .note-empty { color: var(--ink-3); }
