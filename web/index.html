@@ -88,7 +88,12 @@
       <div id="right-body" class="right-body">
         <section class="card pin-card">
           <h2>我的选择 <span id="selection-count" class="count">0</span></h2>
-          <p class="card-sub">挑点：在列表里点 ★ · 挑好再「规划行程」</p>
+          <p class="card-sub">加地点：打字按名字找（本地已收录 ＋ OpenStreetMap）· 或在左边列表点 ★ 挑</p>
+          <div id="add-combo" class="combo">
+            <input id="add-input" class="combo-input" placeholder="加个地点：如 西湖 / 之江实验室" autocomplete="off"
+                   role="combobox" aria-expanded="false" aria-controls="add-results" aria-autocomplete="list" />
+            <div id="add-results" class="combo-list hidden" role="listbox" aria-label="地点建议"></div>
+          </div>
           <div class="row">
             <button id="only-selected-btn" class="chip toggle" title="只看我选中的">只看我选中的</button>
             <button id="plan-btn" class="primary" title="规划行程">规划行程</button>
@@ -208,6 +213,7 @@
   <script src="/js/categories.js"></script>
   <script src="/js/errors.js"></script>
   <script src="/js/citybox.js"></script>
+  <script src="/js/placebox.js"></script>
   <script src="/js/rating.js"></script>
   <script src="/js/quickroute.js"></script>
   <script src="/js/api.js"></script>

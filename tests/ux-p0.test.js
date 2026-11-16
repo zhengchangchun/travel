@@ -198,7 +198,11 @@ test('信息卡：× 是个好点的按钮，并告诉用户 Esc / 点空白也�
 // ---------- ⑤ 右栏两张卡不再撞脸 ----------
 
 test('右栏：「我的选择」是挑点区、「我的行程」是存档区，各有说明与样式', () => {
-  assert.match(HTML, /<p class="card-sub">挑点：[^<]*规划行程/, '「我的选择」缺说明');
+  assert.match(
+    HTML,
+    /<p class="card-sub">加地点：[^<]*按名字找[^<]*点 ★/,
+    '「我的选择」的说明要写清两条路：按名字加 / 在列表点 ★'
+  );
   assert.match(HTML, /class="card trip-card"/, '「我的行程」应带 trip-card 类');
   assert.match(CSS, /\.card-sub\s*\{/, '缺 .card-sub 样式');
   assert.match(CSS, /\.trip-card\s*\{[^}]*border-style:\s*dashed/s, '存档卡要有区分样式');
@@ -273,13 +277,14 @@ const SEED = [
   { poi_id: 'L4', city: '上海', category: 'food', name: '上海火锅', address: '黄浦区', lng: 121.47, lat: 31.23, rating: '4.9' },
 ];
 
-test('db.searchPoisLocal：按城市 + 关键词（多词 AND）+ 评分降序，命中带 local 标记', () => {
+test('db.searchPoisLocal：按城市 + 关键词（多词 AND）+ 名字前缀优先，命中带 local 标记', () => {
   const db = createDb(':memory:');
   SEED.forEach((p) => db.upsertPoi(p));
   const hit = db.searchPoisLocal({ city: '杭州', keywords: '火锅' });
-  assert.deepStrictEqual(hit.map((p) => p.poi_id), ['L1', 'L2'], '应按评分降序，且不跨城市');
+  // 名字以关键词开头的（火锅青年）在前，名字里只含它的（老王火锅）在后；同档才比评分。不跨城市
+  assert.deepStrictEqual(hit.map((p) => p.poi_id), ['L2', 'L1'], '应以名字开头、同档再比评分，且不跨城市');
   assert.strictEqual(hit[0].local, true, '本地命中要带 local:true');
-  assert.strictEqual(hit[0].id, 'L1', 'mapPoiRow 的 id 别名要保留');
+  assert.strictEqual(hit[0].id, 'L2', 'mapPoiRow 的 id 别名要保留');
   assert.deepStrictEqual(db.searchPoisLocal({ city: '杭州', keywords: '老王 火锅' }).map((p) => p.poi_id), ['L1']);
   assert.deepStrictEqual(db.searchPoisLocal({ city: '杭州', keywords: '火锅', category: 'stay' }), []);
   assert.deepStrictEqual(db.searchPoisLocal({ city: '杭州', keywords: '' }), []);
@@ -303,7 +308,7 @@ test('GET /api/poi/search：高德报错时回退本地已收录，并如实告�
     const body = await res.json();
     assert.strictEqual(res.status, 200, '有本地结果时不该报 502');
     assert.strictEqual(body.ok, true);
-    assert.deepStrictEqual(body.data.map((p) => p.poi_id), ['L1', 'L2']);
+    assert.deepStrictEqual(body.data.map((p) => p.poi_id), ['L2', 'L1']);
     assert.strictEqual(body.data[0].local, true, '前端要靠 local 标记说明来源');
     assert.strictEqual(s.amap.calls.poiSearch, 1, '高德仍应被尝试一次');
   } finally {
@@ -320,7 +325,7 @@ test('GET /api/poi/search：高德没结果时也回退本地；两边都没有�
     assert.deepStrictEqual(empty.data, [], '关键词为空时不该瞎猜，返回空');
 
     const hit = await (await fetch(s.base + '/api/poi/search' + url + encodeURIComponent('火锅'))).json();
-    assert.deepStrictEqual(hit.data.map((p) => p.poi_id), ['L1', 'L2'], '远端 0 条 ⇒ 用本地');
+    assert.deepStrictEqual(hit.data.map((p) => p.poi_id), ['L2', 'L1'], '远端 0 条 ⇒ 用本地');
   } finally {
     await s.close();
   }
@@ -414,4 +419,20 @@ test('GET /api/poi/search：三边都没命中才报高德的原因（OSM 不拿
   } finally {
     await s.close();
   }
+});
+
+test('db.searchPoisLocal：名字里有的排在只有地址里有的前面（同档再按评分）', () => {
+  const db = createDb(':memory:');
+  [
+    { poi_id: 'X1', city: '杭州', category: 'stay', name: 'IJULY民宿(宋城12号店)', address: '杭州西湖和昌云潮6-221', lng: 120.1, lat: 30.2, rating: '5.0' },
+    { poi_id: 'X2', city: '杭州', category: 'sight', name: '西湖风景名胜区', address: '龙井路 1 号', lng: 120.12, lat: 30.24, rating: '4.9' },
+    { poi_id: 'X3', city: '杭州', category: 'food', name: '楼外楼(西湖店)', address: '孤山路 30 号', lng: 120.13, lat: 30.25, rating: '4.5' },
+  ].forEach((p) => db.upsertPoi(p));
+  const hit = db.searchPoisLocal({ city: '杭州', keywords: '西湖' });
+  assert.deepStrictEqual(
+    hit.map((p) => p.poi_id),
+    ['X2', 'X3', 'X1'],
+    '名字命中的先出（X2 4.9 在 X3 4.5 前），只有地址里带西湖的（X1）垫底'
+  );
+  assert.strictEqual(hit[0].local, true);
 });

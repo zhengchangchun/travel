@@ -712,8 +712,9 @@ function createDb(filePath) {
       return { total, items: rows.map(mapPoiRow) };
     },
     // P9-⑥ 本地关键词搜索：高德配额用尽 / 没结果时的回退，直接查本地已收录的 pois。
-    // 支持空格分开的多词：每个词都必须在 name/address 里出现（AND），按评分降序。
-    // 命中行带 local: true，调用方据此告诉用户「结果来自本地缓存」。
+    // 支持空格分开的多词：每个词都必须在 name/address 里出现（AND）。
+    // 排序：**名字里有的排在「只有地址里有」的前面**（搜「西湖」不该先给一条地址里带西湖的民宿），
+    // 同一档再按评分降序。命中行带 local: true，调用方据此告诉用户「结果来自本地缓存」。
     searchPoisLocal({ city, keywords, category, limit = 60 } = {}) {
       const kw = String(keywords == null ? '' : keywords).trim();
       if (!city || !kw) return [];
@@ -732,13 +733,21 @@ function createDb(filePath) {
           params.push('%' + t + '%', '%' + t + '%');
         });
       const lim = Math.max(1, Math.min(200, Number(limit) || 60));
+      // ORDER BY 里的 ? 按出现顺序接在 WHERE 的 ? 后面。
+      // 档位：名字**完全相同** > 名字**以它开头** > 名字里含它 > 只有地址里有它；
+      // 同一档内按评分降序（搜「西湖」先给「西湖风景名胜区」，而不是「…民宿(西湖湖滨商圈店)」）
       const rows = db
         .prepare(
           'SELECT * FROM pois WHERE ' +
             where.join(' AND ') +
-            " ORDER BY (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC LIMIT ?"
+            ' ORDER BY CASE' +
+            ' WHEN name = ? THEN 0' +
+            ' WHEN name LIKE ? THEN 1' +
+            ' WHEN name LIKE ? THEN 2' +
+            ' ELSE 3 END,' +
+            " (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC LIMIT ?"
         )
-        .all(...params, lim);
+        .all(...params, kw, kw + '%', '%' + kw + '%', lim);
       return rows.map((r) => ({ ...mapPoiRow(r), local: true }));
     },
     // 点地图任意处：这一带我们库里真有的点（P19）。deg 是粗筛方框半径（度，0.0015 ≈ 150m）。

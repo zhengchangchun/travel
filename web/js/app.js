@@ -924,6 +924,29 @@
     );
   }
 
+  // 列表之外还要画的点：自己挑过的（我的选择）与住宿锚点。
+  // 从右栏「加地点」加进来的点常常不在当前列表里（轮廓屏的精选、或本视野缓存里都没有它），
+  // 但它必须在地图上看得见 —— 否则加了三个点，地图一点反应都没有（用户 2026-11-16）。
+  function markerExtras(shown) {
+    const have = new Set();
+    const keyOf = (p) => String((p && p.id) || (p && p.name) + '@' + (p && p.lng) + ',' + (p && p.lat));
+    (shown || []).forEach((p) => have.add(keyOf(p)));
+    const out = [];
+    Selection.list().forEach((p) => {
+      const k = keyOf(p);
+      if (have.has(k)) return;
+      have.add(k);
+      out.push(p);
+    });
+    state.bases.forEach((b) => {
+      const k = keyOf(b);
+      if (have.has(k)) return;
+      have.add(k);
+      out.push(b);
+    });
+    return out;
+  }
+
   function refresh(opts) {
     const fit = !!(opts && opts.fit);
     const drawMarkers = !opts || opts.markers !== false;
@@ -952,7 +975,7 @@
       const onMap = state.overviewPicks
         ? full.filter((p) => Selection.has(p) || baseIs(p))
         : full;
-      renderMap(onMap, fit);
+      renderMap(onMap.concat(markerExtras(onMap)), fit);
     }
     renderSelection();
     if (state.view === 'itinerary') renderItinerary();
@@ -1907,6 +1930,206 @@
   // 按名字找地点（用户 2026-11-16「可以根据名称去搜索地点」）。
   // 搜索是「找这个地方」，不是「浏览这一片」—— 轮廓屏那套口径（地图不落点 / 清单说「全城高分精选」/
   // 倍率门槛）必须让位，否则在整城视野里搜「西湖」会：列表换了、地图空着、条上还写「全城高分精选」。
+  // ---------- 右栏「加地点」（用户 2026-11-16）----------
+  // 与左边「搜索地点」的分工：左边是浏览/找地方（结果铺在列表与地图上）；
+  // 右边这个输入框只干一件事 —— 把搜到的点加进这一趟的清单，接着「规划行程」→「分享」。
+  const PlaceBox = window.TravelPlaceBox;
+  const ADD_DEBOUNCE_MS = 220;
+  let addOptions = [];
+  let addActive = -1;
+  let addSeq = 0;
+  let addTimer = null;
+
+  function addComboEl() {
+    return $('add-combo');
+  }
+
+  function addListOpen() {
+    const box = $('add-results');
+    return !!(box && !box.classList.contains('hidden'));
+  }
+
+  function closeAddList() {
+    const box = $('add-results');
+    const input = $('add-input');
+    if (addTimer) {
+      clearTimeout(addTimer);
+      addTimer = null;
+    }
+    // 在飞的搜索一并作废：否则结果回来会把刚收起的下拉又弹开
+    addSeq += 1;
+    addOptions = [];
+    addActive = -1;
+    if (box) {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+    }
+    if (input) input.setAttribute('aria-expanded', 'false');
+  }
+
+  function addItemEl(opt, index) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'city-item' + (index === addActive ? ' active' : '');
+    btn.setAttribute('role', 'option');
+    btn.setAttribute('aria-selected', index === addActive ? 'true' : 'false');
+    btn.setAttribute('tabindex', '-1'); // 用 ↑↓ 选；Tab 直接走出这个控件
+    const name = document.createElement('b');
+    name.textContent = opt.selected ? opt.name + '（已在选择里）' : opt.name;
+    btn.appendChild(name);
+    if (opt.sub) {
+      const sub = document.createElement('span');
+      sub.className = 'combo-sub';
+      sub.textContent = opt.sub;
+      btn.appendChild(sub);
+    }
+    btn.onmousedown = (e) => e.preventDefault(); // 别让 input 先 blur（blur 会收起下拉，点就落空）
+    btn.onclick = () => addPlaceToSelection(addOptions[index]);
+    return btn;
+  }
+
+  // mode: 'loading' | 'options' | 'empty'（note 是空态/失败时要说的话）
+  function renderAddList(mode, note) {
+    const box = $('add-results');
+    const input = $('add-input');
+    if (!box) return;
+    const q = input ? input.value.trim() : '';
+    box.innerHTML = '';
+    if (mode === 'loading') {
+      box.appendChild(comboHeadEl('搜索「' + q + '」…'));
+    } else if (!addOptions.length) {
+      box.appendChild(comboHeadEl(note || PlaceBox.emptyText(q), 'combo-empty'));
+    } else {
+      box.appendChild(comboHeadEl(PlaceBox.statusText(addOptions.length, q)));
+      addOptions.forEach((opt, i) => box.appendChild(addItemEl(opt, i)));
+    }
+    box.classList.remove('hidden');
+    if (input) input.setAttribute('aria-expanded', 'true');
+  }
+
+  async function runAddSearch(q) {
+    const seq = ++addSeq;
+    renderAddList('loading');
+    let results = null;
+    let failed = null;
+    try {
+      results = await API.searchPoi({ city: state.city, keywords: q });
+    } catch (err) {
+      failed = err;
+    }
+    // 过期响应 / 输入已经变了 ⇒ 丢掉这次结果
+    const input = $('add-input');
+    if (seq !== addSeq || !input || input.value.trim() !== q) return;
+    if (failed) {
+      addOptions = [];
+      addActive = -1;
+      renderAddList('empty', human(failed).slice(0, 60));
+      return;
+    }
+    addOptions = PlaceBox.buildOptions(results, {
+      limit: 6,
+      isSelected: (p) => Selection.has(p),
+    });
+    addActive = addOptions.length ? 0 : -1;
+    renderAddList(addOptions.length ? 'options' : 'empty');
+  }
+
+  function scheduleAddSearch(delay) {
+    const input = $('add-input');
+    const q = input ? input.value.trim() : '';
+    if (addTimer) {
+      clearTimeout(addTimer);
+      addTimer = null;
+    }
+    if (!q) {
+      closeAddList();
+      return;
+    }
+    addSeq += 1; // 输入一变，在飞的旧查询作废
+    addOptions = [];
+    addActive = -1;
+    renderAddList('loading');
+    addTimer = setTimeout(
+      () => {
+        addTimer = null;
+        runAddSearch(q);
+      },
+      delay == null ? ADD_DEBOUNCE_MS : delay
+    );
+  }
+
+  function moveAddActive(delta) {
+    if (!addOptions.length) return;
+    addActive = PlaceBox.moveActive(addActive, delta, addOptions.length);
+    renderAddList('options');
+  }
+
+  // 加进「我的选择」：已在里面的不重复加、也不把它点掉（那是在列表里点 ★ 的语义）
+  async function addPlaceToSelection(opt) {
+    if (!opt || !opt.poi) return;
+    const poi = opt.poi;
+    const input = $('add-input');
+    closeAddList();
+    if (input) input.value = '';
+    if (Selection.has(poi)) {
+      UI.setStatus('「' + poi.name + '」已经在你的选择里了');
+      return;
+    }
+    UI.setStatus('正在加入「' + poi.name + '」…');
+    try {
+      await Selection.select(poi);
+      await reloadSelection();
+      // 加进来的点不在眼前就把相机带过去（否则只有右栏列表动了，地图没反应）
+      if (MapCtl.isReady()) {
+        const b = MapCtl.getBounds();
+        const inside =
+          !!b &&
+          Number(poi.lng) >= b.minLng &&
+          Number(poi.lng) <= b.maxLng &&
+          Number(poi.lat) >= b.minLat &&
+          Number(poi.lat) <= b.maxLat;
+        if (!inside) flyTo(poi.lng, poi.lat, 15);
+      }
+      UI.setStatus(
+        '已加入我的选择：' + poi.name + '（共 ' + Selection.count() + ' 个点 · 规划行程 → 分享）'
+      );
+    } catch (err) {
+      UI.setStatus('加入失败：' + human(err));
+    }
+  }
+
+  async function onAddKey(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!addListOpen() || !addOptions.length) scheduleAddSearch(0);
+      else moveAddActive(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (e.key === 'Escape') {
+      closeAddList();
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const input = $('add-input');
+    const q = input ? input.value.trim() : '';
+    if (!q) return;
+    if (addOptions.length) {
+      addPlaceToSelection(addOptions[PlaceBox.pickIndex(addOptions, addActive)]);
+      return;
+    }
+    // 结果还没回来就按了回车：等这次查询落地，再用同一套规则选
+    if (addTimer) {
+      clearTimeout(addTimer);
+      addTimer = null;
+    }
+    addSeq += 1; // 在飞的旧查询作废
+    await runAddSearch(q);
+    if (addOptions.length) {
+      addPlaceToSelection(addOptions[PlaceBox.pickIndex(addOptions, addActive)]);
+    }
+  }
+
   async function doPoiSearch() {
     const keywords = $('poi-input').value.trim();
     if (!keywords) return;
@@ -2089,13 +2312,30 @@
     // 点/点到外面收起下拉（下拉项自己的 mousedown 已 preventDefault，不会先触发 blur）
     document.addEventListener('click', (e) => {
       const combo = cityComboEl();
-      if (!cityListOpen() || !combo || combo.contains(e.target)) return;
-      closeCityList();
+      if (cityListOpen() && combo && !combo.contains(e.target)) closeCityList();
+      const addCombo = addComboEl();
+      if (addListOpen() && addCombo && !addCombo.contains(e.target)) closeAddList();
     });
     $('poi-search-btn').onclick = doPoiSearch;
     $('poi-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doPoiSearch();
     });
+    // 右栏「加地点」：打字即出建议、↑↓ 选、回车加入「我的选择」
+    const addInput = $('add-input');
+    if (addInput) {
+      addInput.addEventListener('input', () => scheduleAddSearch());
+      addInput.addEventListener('keydown', onAddKey);
+      addInput.addEventListener('focus', () => {
+        if (addInput.value.trim()) scheduleAddSearch(0); // 回来继续看上次没选完的建议
+      });
+      addInput.addEventListener('blur', () => {
+        setTimeout(() => {
+          const combo = addComboEl();
+          if (combo && combo.contains(document.activeElement)) return;
+          if (addListOpen()) closeAddList();
+        }, 120);
+      });
+    }
     $('only-selected-btn').onclick = onToggleOnlySelected;
     const clearFilterBtn = $('filter-clear-btn');
     // 评分滑块（P10）：拖 = 实时跟手，松手后重算一次；键盘/点轨道也走同一个入口
