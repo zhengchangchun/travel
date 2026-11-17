@@ -1,8 +1,25 @@
+const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const share = require('../share');
 const routemap = require('../routemap');
 
 const SHARE_DIR = () => process.env.TRAVEL_SHARE_DIR || path.join(__dirname, '..', '..', 'share');
+
+// 在系统的文件管理器里把这个文件「选中」显示出来 —— 生成的分享文件落在仓库目录里，
+// 让他自己去翻目录找很别扭；点一下就能直接拖进微信。服务本来就只监听 127.0.0.1，
+// 所以这个动作只有本机能触发。
+function revealFile(full) {
+  const run = (cmd, args) => {
+    const r = spawnSync(cmd, args, { timeout: 5000 });
+    if (r.error) return { ok: false, message: cmd + ': ' + r.error.message };
+    if (r.status !== 0) return { ok: false, message: cmd + ' 退出码 ' + r.status };
+    return { ok: true };
+  };
+  if (process.platform === 'darwin') return run('/usr/bin/open', ['-R', full]);
+  if (process.platform === 'win32') return run('explorer', ['/select,' + full]);
+  return run('xdg-open', [path.dirname(full)]);
+}
 
 // 行程分享载荷：库里读行程 + 有序点，住宿锚点在前端（localStorage）⇒ 由请求体带过来
 function sharePayload(ctx, tripId) {
@@ -81,6 +98,26 @@ module.exports = [
         // 同一个服务里就能打开看（浏览器里的链接，不是本地路径）
         preview: '/share/' + encodeURIComponent(out.base + '.html'),
       };
+    },
+  },
+  {
+    // 让分享文件「现身」：在 Finder / 资源管理器里选中它（只认分享目录里的文件）
+    method: 'POST',
+    path: '/api/share/reveal',
+    handler(ctx) {
+      const name = String((ctx.body && ctx.body.file) || '').trim();
+      if (!name) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 file');
+      const dir = path.resolve(SHARE_DIR());
+      const full = path.resolve(dir, path.basename(name)); // basename：不接受任何路径
+      if (path.dirname(full) !== dir || !fs.existsSync(full)) {
+        throw new ctx.HttpError(404, 'NOT_FOUND', '这个分享文件还没生成');
+      }
+      const reveal = ctx.reveal || revealFile;
+      const r = reveal(full);
+      if (!r || r.ok !== true) {
+        throw new ctx.HttpError(500, 'REVEAL_FAILED', (r && r.message) || '打开目录失败');
+      }
+      return { ok: true, file: path.basename(full), dir };
     },
   },
   {

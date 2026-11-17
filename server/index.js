@@ -195,6 +195,8 @@ function createApp(opts = {}) {
           }),
     // T9 R2：同一 (city,category) 单飞 + 作废旧 run
     viewportRuns: opts.viewportRuns || createViewportRunRegistry(),
+    // 分享文件「在文件管理器里显示」：可注入（测试里换成假实现，别真弹 Finder）
+    reveal: opts.reveal,
   };
 
   async function handleApi(req, res, ctx, method, pathname, query) {

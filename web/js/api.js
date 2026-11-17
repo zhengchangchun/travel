@@ -64,6 +64,8 @@
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
     // P13 行程分享：拿分享载荷（文本） / 生成分享包（html+txt+json）
     shareTrip: (tripId, payload) => request('/api/trips/' + tripId + '/share', post(payload || {})),
+    // 让生成的分享文件在文件管理器里现身（Finder 里选中它）
+    revealShare: (file) => request('/api/share/reveal', post({ file })),
     exportTripShare: (tripId, payload) =>
       request('/api/trips/' + tripId + '/share/export', post(payload || {})),
     addPin: (payload) => request('/api/pins', post(payload)),

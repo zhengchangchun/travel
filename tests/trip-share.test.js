@@ -260,7 +260,88 @@ test('分享接口的边界：空行程 400、行程不存在 404', async () => 
   });
 });
 
-// ---------- ③ 结构约束 ----------
+// ---------- ③ 让分享文件「现身」（POST /api/share/reveal）----------
+
+test('分享文件能一键在文件管理器里选中（不真弹 Finder，reveal 可注入）', async () => {
+  await withTmpShareDir(async (dir) => {
+    const seen = [];
+    const s = await start({
+      reveal: (full) => {
+        seen.push(full);
+        return { ok: true };
+      },
+    });
+    try {
+      const trip = (await req(s.base, '/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city: '杭州', title: '现身' }),
+      })).body.data;
+      await req(s.base, '/api/pins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trip_id: trip.id, name: '西湖', lng: 120.14, lat: 30.24, category: 'sight' }),
+      });
+      const exp = await req(s.base, `/api/trips/${trip.id}/share/export`, { method: 'POST' });
+      const html = exp.body.data.files.find((f) => f.kind === 'html');
+      assert.ok(html, '应该有一个 html 文件');
+
+      const ok = await req(s.base, '/api/share/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: html.name }),
+      });
+      assert.equal(ok.status, 200);
+      assert.equal(ok.body.data.file, html.name);
+      assert.equal(seen.length, 1, 'reveal 应该被调一次');
+      assert.equal(seen[0], path.join(dir, html.name));
+
+      // 没给文件名 / 文件不存在 / 路径穿越：都要拒，且绝不调 reveal
+      const noFile = await req(s.base, '/api/share/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      assert.equal(noFile.status, 400);
+      const missing = await req(s.base, '/api/share/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: 'nope.html' }),
+      });
+      assert.equal(missing.status, 404);
+      const evil = await req(s.base, '/api/share/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: '../../server/db.js' }),
+      });
+      assert.equal(evil.status, 404, '路径穿越必须被挡');
+      assert.equal(seen.length, 1, '被拒的请求不该触发 reveal');
+    } finally {
+      await s.close();
+    }
+  });
+});
+
+test('reveal 失败（比如没有图形环境）要报 500 REVEAL_FAILED，而不是假装成功', async () => {
+  await withTmpShareDir(async (dir) => {
+    const s = await start({ reveal: () => ({ ok: false, message: 'open -R: 不行' }) });
+    try {
+      fs.writeFileSync(path.join(dir, 'x.html'), '<html></html>', 'utf8');
+      const r = await req(s.base, '/api/share/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: 'x.html' }),
+      });
+      assert.equal(r.status, 500);
+      assert.equal(r.body.error.code, 'REVEAL_FAILED');
+      assert.match(r.body.error.msg, /不行/);
+    } finally {
+      await s.close();
+    }
+  });
+});
+
+// ---------- ④ 结构约束 ----------
 
 test('右栏改名「行程规划」，并且分享有两个入口（行程视图工具条 + 我的行程卡）', () => {
   assert.match(HTML, /<div class="right-head">\s*<h2>行程规划<\/h2>/, '右栏标题应为行程规划');
@@ -286,4 +367,42 @@ test('app.js / api.js：分享走 POST /api/trips/:id/share/export，并把文�
   const render = APP.match(/function renderShareResult\(res\)[\s\S]*?\n  \}/);
   assert.ok(render, '缺 renderShareResult');
   assert.match(render[0], /res\.preview/, '结果块要给出预览链接');
+});
+
+test('分享结果块要给出「发出去」的动作：下载网页版 + 在文件管理器里显示 + 复制文案 + 预览', () => {
+  const render = APP.match(/function renderShareResult\(res\)[\s\S]*?\n  \}/);
+  assert.ok(render, '缺 renderShareResult');
+  assert.match(render[0], /dl\.download = htmlFile\.name/, '网页版要能下载（download 属性）');
+  assert.match(render[0], /API\.revealShare\(htmlFile\.name\)/, '要有「在文件管理器里显示」');
+  assert.match(render[0], /copyText\(res\.text\)/, '要有复制文案');
+  assert.match(render[0], /res\.preview/, '要有预览链接');
+  // 点完分享要自己滚到结果处并闪一下（结果块在「我的行程」卡里，点按钮的地方在行程面板顶部）
+  assert.match(render[0], /scrollIntoView/, '结果块要滚动到可见');
+  assert.match(render[0], /share-flash/, '结果块要闪一下');
+  assert.match(CSS, /\.share-result \.share-acts\s*\{/, '动作行要有样式');
+  assert.match(CSS, /@keyframes share-flash/, '闪烁动画要有样式');
+  assert.match(API, /revealShare:\s*\(file\)/, 'api.js 缺 revealShare');
+});
+
+test('生成中要禁用两个分享入口，避免重复点把配额打满', () => {
+  const js = APP.match(/async function onShareTrip\(modes\)[\s\S]*?\n  \}/);
+  assert.ok(js, '缺 onShareTrip');
+  assert.match(js[0], /b\.disabled = true/, '生成中要禁用按钮');
+  assert.match(js[0], /b\.disabled = false/, '要在 finally 里恢复');
+});
+
+test('默认的 reveal 实现：macOS 走 /usr/bin/open -R，其它平台各走各的，不猜路径', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'server', 'routes', 'trips.js'), 'utf8');
+  assert.match(src, /run\('\/usr\/bin\/open', \['-R', full\]\)/, 'macOS 要在 Finder 里选中该文件');
+  assert.match(src, /'explorer', \['\/select,' \+ full\]/, 'Windows 要在资源管理器里选中');
+  assert.match(src, /'xdg-open', \[path\.dirname\(full\)\]/, '其它平台打开所在目录');
+  // 绝对路径调 open；路径必须先 basename 再 resolve（不能接受任何传入路径）
+  assert.match(src, /path\.resolve\(dir, path\.basename\(name\)\)/);
+  assert.match(src, /path\.dirname\(full\) !== dir/);
+  // 真实二进制在本机就该在（拿一个不存在的文件试：应当报错而不是假装成功）
+  if (process.platform === 'darwin') {
+    const { spawnSync } = require('node:child_process');
+    const r = spawnSync('/usr/bin/open', ['-R', path.join(os.tmpdir(), 'travel-share-no-such-file-xyz')]);
+    assert.notEqual(r.status, 0, 'open -R 对不存在的文件应返回非 0（这是 REVEAL_FAILED 分支的依据）');
+  }
 });

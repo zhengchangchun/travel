@@ -1131,7 +1131,7 @@
 
     const head = document.createElement('div');
     head.className = 'share-head';
-    head.textContent = '已生成 ' + res.count + ' 个点的分享包（' + res.files.length + ' 个文件）';
+    head.textContent = '已生成 ' + res.count + ' 个点的分享包';
     box.appendChild(head);
 
     // P14：真实路线的里程/耗时（地图规划出来的，不是直线估的）
@@ -1170,27 +1170,73 @@
     });
     box.appendChild(modesRow);
 
+    // 「怎么发给别人」摆到明面上：下载网页版 / 在文件管理器里显示 / 复制文案 / 预览
+    const htmlFile = (res.files || []).find((f) => f.kind === 'html') || null;
+    const acts = document.createElement('div');
+    acts.className = 'share-acts';
+
+    if (htmlFile) {
+      const dl = document.createElement('a');
+      dl.className = 'mini-btn primary';
+      dl.href = '/share/' + encodeURIComponent(htmlFile.name);
+      dl.download = htmlFile.name;
+      dl.textContent = '下载网页版';
+      dl.title = '存成一个网页文件，拖进微信 / QQ 发给别人就能看（离线自包含，对方不联网也行）';
+      acts.appendChild(dl);
+
+      const find = document.createElement('button');
+      find.type = 'button';
+      find.className = 'ghost mini-btn';
+      find.textContent = '在文件管理器里显示';
+      find.title = '打开文件所在目录并选中它 —— 直接从 Finder 拖进微信最省事';
+      find.onclick = async () => {
+        find.disabled = true;
+        try {
+          const r = await API.revealShare(htmlFile.name);
+          UI.setStatus('已在文件管理器里选中 ' + r.file + '（拖进微信就能发给别人）');
+        } catch (err) {
+          UI.setStatus('打开目录失败：' + human(err));
+        } finally {
+          find.disabled = false;
+        }
+      };
+      acts.appendChild(find);
+    }
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'ghost mini-btn';
+    copy.textContent = '复制文案';
+    copy.title = '纯文字版，直接粘到微信 / 短信就能看（含每点的地址与高德链接）';
+    copy.onclick = async () => {
+      const ok = await Itinerary.copyText(res.text);
+      UI.setStatus(ok ? '文案已复制，粘到微信就能发' : '已弹出复制框');
+    };
+    acts.appendChild(copy);
+
     const open = document.createElement('a');
     open.className = 'share-open';
     open.href = res.preview;
     open.target = '_blank';
     open.rel = 'noreferrer';
-    open.textContent = '先看看长什么样 ↗';
-    box.appendChild(open);
+    open.textContent = '预览 ↗';
+    open.title = '在自己电脑上先看一眼对方会看到什么';
+    acts.appendChild(open);
+    box.appendChild(acts);
 
-    const copy = document.createElement('button');
-    copy.className = 'ghost mini-btn';
-    copy.textContent = '复制分享文案';
-    copy.onclick = async () => {
-      const ok = await Itinerary.copyText(res.text);
-      UI.setStatus(ok ? '分享文案已复制，粘到微信就能发' : '已弹出复制框');
-    };
-    box.appendChild(copy);
-
+    // 三个文件各是干嘛的：说清楚，别让他猜（文件名放 title，太长会把版面撞乱）
     const dir = document.createElement('div');
     dir.className = 'share-dir';
-    dir.textContent = '文件：' + res.dir + '（' + res.files.map((f) => f.name).join('、') + '）';
+    dir.textContent = '网页版发给对方看 · 文案粘微信 · JSON 留档';
+    dir.title = (res.files || []).map((f) => f.name).join('\n') + '\n目录：' + res.dir;
     box.appendChild(dir);
+
+    // 这个方块在「我的行程」卡里，而点「分享」的地方可能在行程面板顶部 ⇒ 自动滚过来，并闪一下
+    if (box.scrollIntoView) box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box.classList.remove('share-flash');
+    void box.offsetWidth; // 重启动画
+    box.classList.add('share-flash');
+    setTimeout(() => box.classList.remove('share-flash'), 1800);
   }
 
   async function onShareTrip(modes) {
@@ -1203,15 +1249,23 @@
       return;
     }
     lastShareModes = (modes && modes.length ? modes : lastShareModes).slice();
+    const btns = [$('itinerary-share'), $('trip-share-btn')].filter(Boolean);
+    btns.forEach((b) => { b.disabled = true; });
     UI.setStatus('正在用地图生成真实路线（逐段规划 + 路线底图），稍等…');
     try {
       const trip = await ensureTrip();
       const res = await API.exportTripShare(trip.id, { base: shareBase(), modes: lastShareModes });
       renderShareResult(res);
       const ok = await Itinerary.copyText(res.text);
-      UI.setStatus(ok ? '分享包已生成，分享文案也复制好了' : '分享包已生成（可点「复制分享文案」）');
+      UI.setStatus(
+        ok
+          ? '分享包已生成：文案也复制好了 —— 想发文件就点「下载网页版」或「在文件管理器里显示」'
+          : '分享包已生成：点「下载网页版」发给别人，或点「复制文案」粘到微信'
+      );
     } catch (err) {
       UI.setStatus('生成分享包失败：' + human(err));
+    } finally {
+      btns.forEach((b) => { b.disabled = false; });
     }
   }
 

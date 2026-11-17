@@ -1236,6 +1236,24 @@ section.card.collapsed > .card-body { display: none; }
 .share-result .share-dir {
   flex: 1 1 100%; color: var(--ink-3, #8b93a1); font-size: 11.5px; word-break: break-all;
 }
+/* 分享结果的动作行：「怎么发给别人」要一眼看到（下载网页版 / 在文件管理器里显示 / 复制文案 / 预览） */
+.share-result .share-acts { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.share-result a.mini-btn {
+  display: inline-flex; align-items: center; text-decoration: none; flex: none;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--line-2, #3a4152); color: var(--ink, #e9edf6);
+}
+.share-result a.mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+.share-result a.mini-btn.primary {
+  background: linear-gradient(135deg, #5f7dff 0%, #6d8bff 45%, #35d0c0 130%);
+  border-color: transparent; color: #0b0d12; font-weight: 700;
+}
+.share-result a.mini-btn.primary:hover { filter: brightness(1.08); color: #0b0d12; }
+/* 点完分享自动滚到这个方块，再闪一下 —— 否则结果跑到视野外，像没反应 */
+.share-result.share-flash { animation: share-flash 1.8s ease-out 1; }
+@keyframes share-flash {
+  0% { box-shadow: 0 0 0 0 rgba(109, 139, 255, .55); border-color: var(--accent); }
+  100% { box-shadow: 0 0 0 14px rgba(109, 139, 255, 0); }
+}
 
 /* ⑦ 不可点的按钮：鼠标给个交代 */
 button:disabled { cursor: not-allowed; }
