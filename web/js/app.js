@@ -883,11 +883,65 @@
     Itinerary.render($('itinerary-list'), list, {
       onMove: onMovePin,
       onRemove: onRemoveFromItinerary,
+      onNote: onEditPinNote,
+      onReorder: onReorderItinerary,
+      onCancel: renderItinerary,
     });
+    syncTripNoteInput();
     if (!Route) return;
     // 「回到住宿」：把锚点当成最后一段接上（锚点已单独高亮，不写进行程点序）
     const start = baseForPlan();
     Route.draw(state.city, state.autoReturn && start && list.length ? list.concat([start]) : list);
+  }
+
+  // 行程备注输入框：不在编辑中就把服务端的值刷进去（不抢焦点、不覆盖正在打的字）
+  function syncTripNoteInput() {
+    const box = $('trip-note');
+    if (!box) return;
+    if (document.activeElement === box) return;
+    box.value = (state.trip && state.trip.note) || '';
+  }
+
+  // 每条地点的备注（「几点去 / 必点菜」）：写库后整条行程重画（备注也进分享包）
+  async function onEditPinNote(pin, text) {
+    try {
+      await Selection.setNote(pin.id, text);
+      UI.setStatus(text ? '已记下备注：' + text : '已清空这条的备注');
+    } catch (err) {
+      UI.setStatus('保存备注失败：' + human(err));
+    }
+  }
+
+  // 拖拽调序：把第 from 行挪到第 to 行的位置，一次 PUT 落库
+  async function onReorderItinerary(from, to) {
+    const ids = Selection.list().map((p) => p.id);
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return;
+    if (from === to || from < 0 || to < 0 || from >= ids.length || to >= ids.length) return;
+    const moved = ids.splice(from, 1)[0];
+    ids.splice(to, 0, moved);
+    try {
+      await Selection.reorder(ids);
+      UI.setStatus('顺序已调整：' + Selection.list().map((p, i) => i + 1 + '.' + p.name).join(' → '));
+    } catch (err) {
+      UI.setStatus('调整顺序失败：' + human(err));
+    }
+  }
+
+  // 整条行程的备注：失焦/回车保存（输入框在行程视图顶部）
+  async function onTripNoteChange() {
+    const box = $('trip-note');
+    if (!box) return;
+    const text = box.value.trim();
+    if (state.trip && ((state.trip.note || '') === text)) return;
+    try {
+      const trip = await ensureTrip();
+      const saved = await API.updateTrip(trip.id, { note: text });
+      state.trip = saved;
+      UI.setStatus(saved.note ? '行程备注已保存（会写进分享）' : '行程备注已清空');
+    } catch (err) {
+      UI.setStatus('保存行程备注失败：' + human(err));
+      syncTripNoteInput();
+    }
   }
 
   // 当前城市的住宿锚点（没定/不同城 ⇒ null）
@@ -2451,6 +2505,17 @@
     $('itinerary-share').onclick = () => onShareTrip();
     const tripShareBtn = $('trip-share-btn');
     if (tripShareBtn) tripShareBtn.onclick = () => onShareTrip();
+    const tripNote = $('trip-note');
+    if (tripNote) {
+      tripNote.onchange = onTripNoteChange;
+      // 回车立刻存：不用先点到别处
+      tripNote.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          tripNote.blur();
+        }
+      };
+    }
     $('trip-new-btn').onclick = async () => {
       // 同一城市只保留一个行程：已有就复用，避免“两条行程的 pin 并集”导致删了还有星标
       if (state.trip) {

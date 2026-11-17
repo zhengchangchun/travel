@@ -164,6 +164,24 @@ module.exports = [
     },
   },
   {
+    // 行程改内容：标题（title）与整条行程的备注（note）；两个都可只传一个
+    method: 'PATCH',
+    path: '/api/trips/:id',
+    handler(ctx) {
+      const id = Number(ctx.params.id);
+      let trip = ctx.db.getTrip(id);
+      if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
+      const b = ctx.body || {};
+      if (b.title !== undefined) {
+        const title = String(b.title).trim();
+        if (!title) throw new ctx.HttpError(400, 'BAD_REQUEST', '标题不能为空');
+        trip = ctx.db.updateTripTitle(id, title).trip;
+      }
+      if (b.note !== undefined) trip = ctx.db.updateTripNote(id, b.note).trip;
+      return trip;
+    },
+  },
+  {
     method: 'GET',
     path: '/api/trips/:id/pins',
     handler(ctx) {

@@ -29,6 +29,7 @@
       cost: pin.cost,
       tel: pin.tel,
       photo: pin.photo,
+      note: pin.note || '',
       sort_order: pin.sort_order,
     };
   }
@@ -112,6 +113,7 @@
       cost: poi.cost,
       tel: poi.tel,
       photo: poi.photo,
+      note: '',
     });
     notify();
     try {
@@ -209,6 +211,44 @@
     }
   }
 
+  // 写备注（每条地点自己的话）：乐观更新，失败回滚。
+  // 刚选中还没落库的点没有 pin 行号，PATCH 打不了 ⇒ 先把选中态从后端刷一遍再写。
+  async function setNote(key, note) {
+    const id = String(key);
+    const text = note == null ? '' : String(note);
+    const at = pins.findIndex((p) => p.id === id);
+    if (at < 0) return null;
+    const before = pins[at];
+    if ((before.note || '') === text) return before;
+    const backup = pins;
+    pins = pins.slice();
+    pins[at] = Object.assign({}, before, { note: text });
+    notify();
+    try {
+      let rowId = before.pinId;
+      if (typeof rowId !== 'number' || !Number.isFinite(rowId)) {
+        const data = await API.getSelection(city);
+        tripId = data.tripId;
+        pins = (data.pins || []).map(mapPin);
+        const hit = pins.find((p) => p.id === id);
+        if (!hit) throw new Error('没找到这条记录的落库行号，重试一次');
+        rowId = hit.pinId;
+        const i2 = pins.indexOf(hit);
+        pins[i2] = Object.assign({}, hit, { note: text });
+        notify();
+      }
+      const saved = await API.updatePinNote(rowId, text);
+      const i3 = pins.findIndex((p) => p.id === id);
+      if (i3 >= 0) pins[i3] = Object.assign({}, pins[i3], { note: (saved && saved.note) || null, pinId: rowId });
+      notify();
+      return pins[i3] || null;
+    } catch (err) {
+      pins = backup;
+      notify();
+      throw err;
+    }
+  }
+
   function subscribe(fn) {
     listeners.push(fn);
     return () => {
@@ -227,6 +267,7 @@
     toggle,
     move,
     reorder,
+    setNote,
     reset,
     subscribe,
     keyOf,

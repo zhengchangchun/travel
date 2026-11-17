@@ -151,6 +151,7 @@ function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors }
     byCat[k] = (byCat[k] || 0) + 1;
   });
   const title = (trip && trip.title) || `${city} · 我的行程`;
+  const tripNote = trip && trip.note ? String(trip.note) : '';
   const links = {
     firstToLast: list.length > 1 ? navUrl(list[0], list[list.length - 1], 'car') : '',
     walkFirstToLast: list.length > 1 ? navUrl(list[0], list[list.length - 1], 'walk') : '',
@@ -162,6 +163,8 @@ function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors }
     city: city || '',
     tripId: trip ? trip.id : null,
     title,
+    // 整条行程的备注（「周三到，先吃饭再逛」这类）—— 每条地点的备注在 stops[].note
+    tripNote,
     stops: list,
     base: base ? { name: base.name || '住宿', lng: Number(base.lng), lat: Number(base.lat) } : null,
     stats: { count: list.length, byCategory: byCat, hasBase: !!base },
@@ -178,6 +181,7 @@ function buildText(payload) {
   const day = localDay(p.generatedAt);
   const lines = [`${p.title}（${p.stats.count} 个点${p.base ? ' + 住宿' : ''}）`];
   lines.push(`生成于 ${day} · 由旅迹导出 · 链接可直接跳高德`);
+  if (p.tripNote) lines.push(`行程备注：${p.tripNote}`);
   const modes = Object.keys(p.maps || {}).filter((m) => p.maps[m]);
   if (modes.length) {
     lines.push('');
@@ -344,6 +348,9 @@ function buildHtml(payload) {
   const baseLine = p.base
     ? `<div class="base">住：${escHtml(p.base.name)}</div>`
     : '';
+  const tripNoteLine = p.tripNote
+    ? `<div class="tripnote"><b>行程备注</b> ${escHtml(p.tripNote)}</div>`
+    : '';
   const nav = p.links.firstToLast
     ? `<a class="btn" href="${escHtml(p.links.firstToLast)}" target="_blank" rel="noreferrer">全程驾车路线 ↗</a>` +
       (p.links.walkFirstToLast
@@ -403,6 +410,9 @@ function buildHtml(payload) {
   .leg.on .leg-meta { color:var(--accent); font-weight:600; }
   .rnote { color:var(--ink3); font-size:12px; margin-top:6px; line-height:1.6; }
   .base { font-size:13px; color:#a86400; margin:6px 0 0; }
+  .tripnote { font-size:13px; color:var(--ink); background:#fffdf3; border:1px solid #f0e2b8;
+              border-radius:10px; padding:8px 12px; margin:10px 0 0; line-height:1.7; }
+  .tripnote b { color:#a86400; margin-right:4px; }
   ol { list-style:none; margin:14px 0 0; padding:0; }
   .stop { display:flex; gap:10px; align-items:flex-start; background:#fff; border:1px solid var(--line);
           border-radius:12px; padding:12px; margin:0 0 10px; }
@@ -432,6 +442,7 @@ function buildHtml(payload) {
       .map((k) => `<span class="chip">${escHtml(k)} × ${p.stats.byCategory[k]}</span>`)
       .join('')}</div>
   </header>
+  ${tripNoteLine}
   <div class="sketch">${svg}</div>
   ${baseLine}
   <ol>${items}</ol>

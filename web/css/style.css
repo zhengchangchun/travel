@@ -278,10 +278,6 @@ button.danger:hover { background: #ad2102; }
 
 /* 行程视图 */
 .itinerary { margin-top: 6px; }
-.itin-group {
-  list-style: none; font-size: 12px; font-weight: 600; color: #374151;
-  background: #f0f1f3; border-radius: 6px; padding: 3px 8px; margin: 4px 0;
-}
 .itin-no {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border-radius: 50%; flex: none;
@@ -293,6 +289,35 @@ button.danger:hover { background: #ad2102; }
   padding: 1px 6px; font-size: 12px;
 }
 .itin-toolbar { margin-bottom: 6px; }
+/* 右栏只有 300px 宽：四个按钮必须保持一行，不要把「一键复制」折成「一键复/制」 */
+.itin-toolbar button { white-space: nowrap; padding: 4px 9px; }
+/* 拖拽把手：按住整行拖动调序（配合 ↑↓ 做「细微调整」） */
+.itin-handle {
+  flex: none; cursor: grab; color: #b3b8c2; font-size: 11px; letter-spacing: -2px;
+  padding: 0 2px 0 0; user-select: none;
+}
+.itin-item.dragging { opacity: .45; }
+.itin-item.drop-on { border-color: #1677ff; box-shadow: inset 0 3px 0 #1677ff; }
+/* 每条地点的备注：空时是「＋ 备注」，写了就是一行字 + 「改」 */
+.itin-note {
+  margin-top: 6px; font-size: 12px; line-height: 1.6; color: #5b6472;
+  border-left: 3px solid #dbe3ee; padding: 1px 0 1px 8px; word-break: break-all;
+}
+.itin-note.empty { border-left-color: transparent; padding-left: 0; }
+.itin-note .note-add, .itin-note .note-edit {
+  border: 1px dashed #c9d0da; background: transparent; color: #6b7280;
+  border-radius: 6px; padding: 1px 6px; font-size: 11.5px;
+}
+.itin-note .note-edit { border-style: solid; margin-left: 6px; }
+.itin-note .note-input {
+  width: 100%; box-sizing: border-box; font-size: 12px; padding: 3px 6px;
+  border: 1px solid #1677ff; border-radius: 6px;
+}
+/* 整条行程的备注 */
+.trip-note-input {
+  width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 6px 8px;
+  font-size: 12px; border: 1px solid #d7d9e0; border-radius: 8px;
+}
 
 /* 地图旗子选中态 */
 /* 远看的小圆点（zoom ≤ 13）：只报「这一带有什么」，不抢底图（用户 2026-11-12） */
@@ -955,9 +980,19 @@ button:disabled { opacity: .45; }
 /* 选中星标 / 行程 */
 .star { color: #454c59; }
 .star.active { color: var(--warn); }
-.itin-group { background: rgba(255, 255, 255, .05); color: var(--ink-2); }
 .itin-no, .route-leg-no { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b0d12; font-weight: 700; }
 .itin-btns button { background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-2); }
+.itin-handle { color: var(--ink-3); }
+.itin-item.drop-on { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+.itin-note { color: var(--ink-2); border-left-color: var(--line-2); }
+.itin-note.empty { border-left-color: transparent; }
+.itin-note .note-add, .itin-note .note-edit {
+  border-color: var(--line-2); color: var(--ink-3); background: rgba(255, 255, 255, .03);
+}
+.itin-note .note-input, .trip-note-input {
+  background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink);
+}
+.itin-note .note-input:focus, .trip-note-input:focus { outline: none; border-color: var(--accent); }
 .route-summary { background: var(--surface-2); border: 1px solid var(--line); }
 .route-chip.active { background: rgba(109, 139, 255, .18); border-color: var(--accent); color: #cfd8ff; }
 .route-metrics .metric b { color: var(--accent-2); }

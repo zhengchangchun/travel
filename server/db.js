@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS trips (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   city        TEXT NOT NULL,
   title       TEXT NOT NULL,
+  note        TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -190,6 +191,8 @@ function createDb(filePath) {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
   ensureColumn(db, 'pins', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
+  // 行程自己的备注（「先吃饭再逛」这类整条行程的话）—— 每条地点的备注在 pins.note
+  ensureColumn(db, 'trips', 'note', 'note TEXT');
   ensureColumn(db, 'poi_coverage', 'truncated', 'truncated INTEGER NOT NULL DEFAULT 0');
   // POI 内容指纹列（存量库前滚；缺失指纹的行在下面回填）
   ensureColumn(db, 'pois', 'content_sha256', 'content_sha256 TEXT');
@@ -213,6 +216,7 @@ function createDb(filePath) {
     listTrips: db.prepare('SELECT * FROM trips ORDER BY id DESC'),
     listTripsByCity: db.prepare('SELECT * FROM trips WHERE city = ? ORDER BY id DESC'),
     updateTripTitle: db.prepare('UPDATE trips SET title = ? WHERE id = ?'),
+    updateTripNote: db.prepare('UPDATE trips SET note = ? WHERE id = ?'),
     deleteTrip: db.prepare('DELETE FROM trips WHERE id = ?'),
     deletePinsOfTrip: db.prepare('DELETE FROM pins WHERE trip_id = ?'),
     deleteCityPins: db.prepare(
@@ -594,6 +598,18 @@ function createDb(filePath) {
     updatePinNote(id, note) {
       const info = stmts.updatePinNote.run(note, id);
       return { changes: info.changes, pin: stmts.getPin.get(id) };
+    },
+
+    // 整条行程的备注（空字符串也当成「写了个空的」，存 NULL 更干净）
+    updateTripTitle(id, title) {
+      const info = stmts.updateTripTitle.run(String(title), id);
+      return { changes: info.changes, trip: stmts.getTrip.get(id) };
+    },
+
+    updateTripNote(id, note) {
+      const text = note === undefined || note === null || String(note).trim() === '' ? null : String(note);
+      const info = stmts.updateTripNote.run(text, id);
+      return { changes: info.changes, trip: stmts.getTrip.get(id) };
     },
 
     // ---- T4 POI 缓存 ----

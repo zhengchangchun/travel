@@ -24,6 +24,14 @@
     };
   }
 
+  function patch(payload) {
+    return {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    };
+  }
+
   async function request(path, options) {
     let res;
     try {
@@ -62,6 +70,9 @@
     listTrips: (city) => request('/api/trips' + (city ? '?' + qs({ city }) : '')),
     createTrip: (payload) => request('/api/trips', post(payload)),
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
+    // 行程改内容：标题 / 整条行程的备注
+    updateTrip: (tripId, payload) =>
+      request('/api/trips/' + tripId, patch(payload || {})),
     // P13 行程分享：拿分享载荷（文本） / 生成分享包（html+txt+json）
     shareTrip: (tripId, payload) => request('/api/trips/' + tripId + '/share', post(payload || {})),
     // 让生成的分享文件在文件管理器里现身（Finder 里选中它）
@@ -88,12 +99,7 @@
     getNoteJob: (id) => request('/api/notes/jobs/' + id),
     cancelNoteJob: (id) => request('/api/notes/jobs/' + id + '/cancel', post({})),
     refreshNote: (id) => request('/api/notes/' + id + '/refresh', post({})),
-    updatePinNote: (id, note) =>
-      request('/api/pins/' + id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note }),
-      }),
+    updatePinNote: (id, note) => request('/api/pins/' + id, patch({ note })),
 
     // 选中（T2）
     getSelection: (city) => request('/api/selection?' + qs({ city })),
