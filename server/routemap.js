@@ -5,9 +5,9 @@
  *   ② 用高德静态地图把这条折线画在地图底图上，markers 标出点位序号；
  *   ③ 图片以 base64 内嵌进分享页 —— 分享页里没有 key，但看到的是真地图真路线。
  *
- * 支持的方式：driving / riding / walking（公交不生成静态图）。
+ * 支持的方式：driving / riding / walking / transit。
  * 骑行走的是 v5 的 /direction/bicycling：v3 那个接口对个人 key 是 SERVICE_NOT_AVAILABLE，
- * v5 打得通（2026-11-17 实测，别再按老笔记当它不可用）。
+ * v5 打得通；公交也是 v3 就能规划（2026-11-17 实测，别再按老笔记当它们不可用）。
  *
  * 约束（踩过的）：
  *   - 静态地图的 paths 必须写满 5 个字段（线宽,线色,线透明度,填充色,填充透明度），少一个就 20003；
@@ -15,8 +15,8 @@
  *   - 静态地图只走 GET，URL 不能太长 ⇒ 折线按等距抽稀到 ≤ MAX_PATH_POINTS 个点。
  */
 
-const MODE_LABEL = { driving: '驾车', riding: '骑行', walking: '步行' };
-const SUPPORTED_MODES = ['driving', 'riding', 'walking'];
+const MODE_LABEL = { driving: '驾车', riding: '骑行', walking: '步行', transit: '公交' };
+const SUPPORTED_MODES = ['driving', 'riding', 'walking', 'transit'];
 const MAX_PATH_POINTS = 200; // 单条 paths 的抽稀上限（实测 200 点 ≈ 4.5KB URL）
 // 高德静态地图最多只吃 **4 条 paths**（第 5 条一律 20003 UNKNOWN_ERROR，实测）⇒ 段数超过就并组
 const MAX_PATHS = 4;
@@ -271,7 +271,11 @@ async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city 
       if (data === undefined) {
         if (mode === 'walking') data = await amap.planWalking(origin, destination);
         else if (mode === 'riding') data = await amap.planRiding(origin, destination);
-        else data = await amap.planDriving(origin, destination);
+        else if (mode === 'transit') {
+          // 公交必须给城市名（高德的口径），没给就没法规划
+          if (!city) throw new Error('公交路线需要城市名');
+          data = await amap.planTransit(origin, destination, city);
+        } else data = await amap.planDriving(origin, destination);
         if (cache && cache.set) cache.set(key, data);
       }
       const poly = Array.isArray(data.polyline) ? data.polyline : [];
@@ -329,6 +333,7 @@ async function buildShareMaps({
   intervalMs,
   stops,
   modes,
+  city,
   size,
   scale,
   width = 760,
@@ -342,7 +347,7 @@ async function buildShareMaps({
   let first = true;
   for (const mode of wanted) {
     try {
-      const route = await routeForStops({ amap, cache, intervalMs, mode, stops });
+      const route = await routeForStops({ amap, cache, intervalMs, mode, stops, city });
       // 取景自己算：这样页面上能把每个点的像素位置算准、叠可点热区
       const view = fitViewForStopsAndPoints(stops, route.points, { width, height, pad });
       const map = await mapForRoute({

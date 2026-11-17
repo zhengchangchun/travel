@@ -1167,6 +1167,7 @@
     { value: 'driving', label: '驾车', modes: ['driving'] },
     { value: 'riding', label: '骑行', modes: ['riding'] },
     { value: 'walking', label: '步行', modes: ['walking'] },
+    { value: 'transit', label: '公交', modes: ['transit'] },
   ];
   let lastShareModes = SHARE_MODES[0].modes.slice();
 

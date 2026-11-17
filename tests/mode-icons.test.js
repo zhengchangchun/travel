@@ -223,11 +223,15 @@ test('mode 非法时的提示里有骑行这一项', async () => {
 
 // ---------- ④ 静态图与分享 ----------
 
-test('分享包的静态路线图也支持骑行（标签 + 规划接口）', () => {
-  assert.ok(routemap.SUPPORTED_MODES.includes('riding'), '静态图要支持骑行');
+test('分享包的静态路线图四种都支持（骑行与公交别再被当成不可用）', () => {
+  ['driving', 'riding', 'walking', 'transit'].forEach((m) => {
+    assert.ok(routemap.SUPPORTED_MODES.includes(m), '静态图要支持 ' + m);
+  });
   assert.equal(routemap.MODE_LABEL.riding, '骑行');
+  assert.equal(routemap.MODE_LABEL.transit, '公交');
   const src = read('server/routemap.js');
   assert.match(src, /mode === 'riding'.*amap\.planRiding/s, '静态图要调骑行规划');
+  assert.match(src, /mode === 'transit'.*planTransit/s, '静态图要调公交规划');
 });
 
 test('分享页里骑行的名字是「骑行」（某一路线图没生成时点名也是中文）', () => {

@@ -73,6 +73,8 @@ module.exports = [
             intervalMs: Number(ctx.routeIntervalMs) || 0,
             stops: payload.stops,
             modes,
+            // 公交路线要高德的城市名
+            city: payload.city,
           });
         } catch (err) {
           built = { maps: {}, errors: { all: (err && err.message) || '路线图生成失败' } };

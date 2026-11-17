@@ -35,7 +35,7 @@ const STOPS = [
 
 // 假高德：逐段返回「起点→终点」的直线折线 + 固定里程/耗时；staticMap 返回假 PNG
 function fakeAmap(opts = {}) {
-  const calls = { walking: 0, driving: 0, staticMap: 0 };
+  const calls = { walking: 0, driving: 0, riding: 0, transit: 0, staticMap: 0 };
   const mk = (o, d, dist, dur) => {
     const [olng, olat] = String(o).split(',').map(Number);
     const [dlng, dlat] = String(d).split(',').map(Number);
@@ -52,6 +52,16 @@ function fakeAmap(opts = {}) {
       calls.walking += 1;
       if (failLeg('failWalk', calls.walking - 1)) throw new Error('步行第' + calls.walking + '段失败');
       return mk(o, d, 1000, 700);
+    },
+    async planRiding(o, d) {
+      calls.riding += 1;
+      if (failLeg('failRide', calls.riding - 1)) throw new Error('骑行第' + calls.riding + '段失败');
+      return mk(o, d, 1500, 600);
+    },
+    async planTransit(o, d, city) {
+      if (!city) throw new Error('公交需要城市名');
+      calls.transit += 1;
+      return Object.assign(mk(o, d, 2500, 900), { transit: { segments: [] } });
     },
     async planDriving(o, d) {
       calls.driving += 1;
@@ -195,17 +205,45 @@ test('buildShareMaps：两种方式各一张图（data URI），某方式失败�
   assert.deepEqual(badMap.maps, {});
   assert.match(badMap.errors.driving, /CUQPS/);
 
-  // 只支持 key 打得通的两种方式（骑行/公交对个人 key 不可用）
+  // 只认这四种方式；认不出的名字直接滤掉（不报错、也不假装支持）
   const filtered = await routemap.buildShareMaps({
     amap: fakeAmap(),
     cache: withCache(),
     intervalMs: 0,
     stops: STOPS,
-    modes: ['bicycling', 'transit'],
+    modes: ['bicycling', 'helicopter'],
+    city: '杭州',
     mapGapMs: 0,
   });
   assert.deepEqual(filtered.maps, {});
   assert.deepEqual(filtered.errors, {});
+
+  // 骑行与公交都进静态图（骑行走 v5；公交必须带城市名）
+  const all = await routemap.buildShareMaps({
+    amap: fakeAmap(),
+    cache: withCache(),
+    intervalMs: 0,
+    stops: STOPS,
+    modes: ['riding', 'transit'],
+    city: '杭州',
+    mapGapMs: 0,
+  });
+  assert.deepEqual(Object.keys(all.maps).sort(), ['riding', 'transit']);
+  assert.equal(all.maps.riding.modeLabel, '骑行');
+  assert.equal(all.maps.transit.modeLabel, '公交');
+  assert.match(all.maps.riding.image, /^data:image\/png;charset=UTF-8;base64,/);
+
+  // 公交没给城市名：只进 errors，不把整包弄挂
+  const noCity = await routemap.buildShareMaps({
+    amap: fakeAmap(),
+    cache: withCache(),
+    intervalMs: 0,
+    stops: STOPS,
+    modes: ['transit'],
+    mapGapMs: 0,
+  });
+  assert.deepEqual(noCity.maps, {});
+  assert.match(noCity.errors.transit, /城市名/);
 });
 
 // ---------- ③ 分享包 ----------
@@ -326,7 +364,7 @@ async function seedTrip(base, n) {
   return trip;
 }
 
-test('导出接口：默认带上驾车+步行两张真实路线图；modes 只给一个时就只出一张', async () => {
+test('导出接口：不指定 modes 就把支持的四种都出一张；指定一个时就只出一张', async () => {
   await withTmpShareDir(async (dir) => {
     const amap = fakeAmap();
     const s = await start(amap);
@@ -337,7 +375,7 @@ test('导出接口：默认带上驾车+步行两张真实路线图；modes 只�
       const data = both.body.data;
       assert.deepEqual(
         data.maps.map((m) => m.mode).sort(),
-        ['driving', 'walking']
+        ['driving', 'riding', 'transit', 'walking']
       );
       assert.ok(data.maps.every((m) => m.bytes > 0));
       const html = fs.readFileSync(path.join(dir, data.files.find((f) => f.kind === 'html').name), 'utf8');
