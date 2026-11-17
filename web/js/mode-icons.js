@@ -4,6 +4,8 @@
    用法：TravelModeIcons.svg('riding', 14) → '<svg …>…</svg>' */
 (function () {
   const BODY = {
+    // 最快（不指定方式）：闪电
+    auto: '<path d="M11.4 2.6 5.4 11h3.9l-.9 6.4 6.2-8.4h-4l.8-6.4Z"/>',
     // 车：车身 + 两个轮子
     driving:
       '<path d="M3 14.2h14"/>' +

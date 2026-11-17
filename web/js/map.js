@@ -744,7 +744,6 @@
   function drawRoute(legs, mode, handlers) {
     clearRoute();
     if (!map || !AMap) return;
-    const base = routeStyle(mode);
     const all = [];
     (legs || []).forEach((leg) => {
       const failed = !leg.ok || leg.degraded;
@@ -755,7 +754,8 @@
           [leg.to.lng, leg.to.lat],
         ];
       }
-      const style = failed ? FAILED_STYLE : base;
+      const legMode = leg.mode || mode;
+      const style = failed ? FAILED_STYLE : routeStyle(legMode);
       const line = new AMap.Polyline({
         path,
         ...style,

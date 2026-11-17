@@ -117,9 +117,19 @@
       return res.text();
     },
 
-    // 路线（T3）
+    // 路线（T3）：mode 可以是具体方式，也可以是 auto（每段各取最快）
     route: (params) => request('/api/route?' + qs(params)),
-    itineraryRoute: (city, mode) => request('/api/itinerary/route?' + qs({ city, mode })),
+    itineraryRoute: (city, modeOrOpts) => {
+      const o = modeOrOpts && typeof modeOrOpts === 'object' ? modeOrOpts : { mode: modeOrOpts };
+      return request(
+        '/api/itinerary/route?' +
+          qs({
+            city,
+            mode: o.modes && o.modes.length ? undefined : o.mode,
+            modes: o.modes && o.modes.length ? o.modes.join(',') : undefined,
+          })
+      );
+    },
 
     // POI 缓存与实时搜索（T4 / L-1）
     listPois: (params) => request('/api/pois?' + qs(params)),

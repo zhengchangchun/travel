@@ -476,6 +476,26 @@ button.danger:hover { background: #ad2102; }
 .route-progress { font-size: 12px; color: #8b8f98; min-height: 16px; }
 
 .route-legs { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; }
+/* 每段的方式小标（图标 + 名字，颜色就是那段线在地图上的色） */
+.route-leg-mode {
+  flex: none; display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; color: var(--mode-color, #6b7280);
+  background: color-mix(in srgb, var(--mode-color, #6b7280) 12%, transparent);
+  border-radius: 6px; padding: 1px 5px;
+}
+/* 「这一段怎么走」：四个方式两两排，别每行一个把卡片拉得很长 */
+.leg-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.leg-modes-tip { flex: 1 1 100%; font-size: 11.5px; color: #8b8f98; }
+.leg-mode-btn {
+  flex: 1 1 calc(50% - 4px); justify-content: flex-start; min-width: 0;
+  display: inline-flex; align-items: center; gap: 3px; font-size: 11px;
+  padding: 2px 6px; border-radius: 6px; color: var(--mode-color, #6b7280);
+}
+.leg-mode-btn b { font-weight: 600; font-variant-numeric: tabular-nums; color: #6b7280; white-space: nowrap; }
+.leg-mode-btn span { white-space: nowrap; }
+.leg-mode-btn.on { border-color: var(--mode-color); background: color-mix(in srgb, var(--mode-color) 14%, transparent); }
+.leg-mode-btn.off { opacity: .45; cursor: not-allowed; }
+.route-modes-note { font-size: 11.5px; color: var(--ink-3); margin: 0 0 6px; }
 .route-leg { border: 1px solid #eef0f3; border-radius: 8px; overflow: hidden; }
 .route-leg-head {
   width: 100%; display: flex; align-items: center; gap: 6px; text-align: left;
@@ -1022,6 +1042,9 @@ button:disabled { opacity: .45; }
 .route-chip.active { background: color-mix(in srgb, var(--mode-color, #6d8bff) 22%, transparent); border-color: var(--mode-color, var(--accent)); color: var(--ink); }
 .route-metrics .metric b { color: var(--accent-2); }
 .route-metrics .metric small, .route-progress { color: var(--ink-3); }
+.route-leg-mode { background: color-mix(in srgb, var(--mode-color, #6d8bff) 18%, transparent); }
+.leg-modes-tip { color: var(--ink-3); }
+.leg-mode-btn b { color: var(--ink-3); }
 .route-leg { border: 1px solid var(--line); }
 .route-leg-head { background: var(--surface-2); color: var(--ink); }
 .route-leg-head:hover { background: rgba(255, 255, 255, .06); }

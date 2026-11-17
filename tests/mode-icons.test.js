@@ -32,15 +32,15 @@ test('mode-icons.js：驾车/骑行/步行/公交各有自己的图标，色由�
   new Function('window', ICONS)(win);
   const M = win.TravelModeIcons;
   assert.ok(M, '缺 window.TravelModeIcons');
-  assert.deepStrictEqual(M.keys.sort(), ['driving', 'riding', 'transit', 'walking']);
+  assert.deepStrictEqual(M.keys.sort(), ['auto', 'driving', 'riding', 'transit', 'walking']);
   const svgs = M.keys.map((k) => M.svg(k, 14));
   svgs.forEach((s) => {
     assert.match(s, /^<svg /);
     assert.match(s, /stroke="currentColor"/, '颜色要跟着外面走');
     assert.match(s, /width="14"/);
   });
-  // 四个图标不能长一样（各自 path 不同）
-  assert.equal(new Set(svgs).size, 4, '四个图标必须彼此不同');
+  // 五个图标不能长一样（各自 path 不同）
+  assert.equal(new Set(svgs).size, 5, '五个图标必须彼此不同');
   // 认不出的 key 别炸，退回一个默认图标
   assert.match(M.svg('nope', 12), /^<svg /);
 });
