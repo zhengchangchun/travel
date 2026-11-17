@@ -772,6 +772,8 @@
       },
       onRemove: onRemoveSelected,
       onMove: onMoveSelectionPin,
+      onNote: onEditPinNote,
+      onCancel: renderSelection,
       legs: state.liveLegs,
     });
     renderQuickLegs();
@@ -902,7 +904,7 @@
     box.value = (state.trip && state.trip.note) || '';
   }
 
-  // 每条地点的备注（「几点去 / 必点菜」）：写库后整条行程重画（备注也进分享包）
+  // 每条地点的备注（「几点去 / 必点菜」）：写库后两张清单都重画，备注也进分享包
   async function onEditPinNote(pin, text) {
     try {
       await Selection.setNote(pin.id, text);
@@ -910,6 +912,8 @@
     } catch (err) {
       UI.setStatus('保存备注失败：' + human(err));
     }
+    renderSelection();
+    if (state.view === 'itinerary') renderItinerary();
   }
 
   // 拖拽调序：把第 from 行挪到第 to 行的位置，一次 PUT 落库

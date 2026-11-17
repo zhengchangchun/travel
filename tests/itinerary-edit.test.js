@@ -20,6 +20,8 @@ const APP = read('web/js/app.js');
 const API = read('web/js/api.js');
 const SEL = read('web/js/selection.js');
 const ITIN = read('web/js/itinerary.js');
+const UI = read('web/js/ui.js');
+const NOTEBOX = read('web/js/notebox.js');
 
 const TEST_CONFIG = {
   port: 0,
@@ -214,10 +216,8 @@ test('selection.js：列表项带 note，能写备注（乐观更新 + 落库行
 test('行程视图：每行有备注入口，整条行程有备注输入框，顺序可拖拽也能 ↑↓', () => {
   assert.match(HTML, /id="trip-note"/, '缺行程备注输入框');
   assert.match(HTML, /id="trip-note"[\s\S]{0,400}行程备注/, '输入框要说明是行程备注');
-  assert.match(ITIN, /itin-note/, '每条要有备注位');
-  assert.match(ITIN, /note-add/, '空备注时要有「＋ 备注」入口');
-  assert.match(ITIN, /note-input/, '备注要能就地编辑');
-  assert.match(ITIN, /startNoteEdit\(/, '缺就地编辑');
+  assert.match(ITIN, /NoteBox\.html\(note\)/, '每行要挂备注位');
+  assert.match(ITIN, /NoteBox\.wire\(li,/, '备注位要能就地编辑');
   assert.match(ITIN, /itin-handle/, '缺拖拽把手');
   assert.match(ITIN, /dragstart[\s\S]*?drop[\s\S]*?onReorder/, '缺拖拽落位');
   assert.match(ITIN, /handlers\.onReorder\(from, index\)/, '放下时要回调新顺序');
@@ -225,6 +225,34 @@ test('行程视图：每行有备注入口，整条行程有备注输入框，�
   assert.match(ITIN, /onMove\(index, -1\)/, '↑↓ 调序不能丢');
   // 分组标题与顺序冲突（按分类分组会把人挪过的顺序又切碎）⇒ 已改成每行带分类标签
   assert.ok(!/itin-group/.test(ITIN), '行程视图不再插分类分组标题');
+});
+
+test('备注位（notebox.js）：两处共用，自由输入、回车存、Esc 撤、点空位也能进', () => {
+  assert.match(NOTEBOX, /'<div class="note-row'/, '要渲染 note-row');
+  assert.match(NOTEBOX, /note-add/, '空备注时要有「＋ 备注」');
+  assert.match(NOTEBOX, /note-input/, '要能就地写');
+  assert.match(NOTEBOX, /e\.key === 'Enter'/, '回车保存');
+  assert.match(NOTEBOX, /e\.key === 'Escape'/, 'Esc 取消');
+  assert.match(NOTEBOX, /blur/, '失焦也要保存');
+  assert.match(NOTEBOX, /maxLength = 200/, '备注限长，不让一整页文字进库');
+  assert.match(NOTEBOX, /e\.stopPropagation/, '点备注不要冒泡到行（否则一点就跳地图）');
+  // 加载顺序：notebox 要在 ui.js / itinerary.js 之前
+  const at = (f) => HTML.indexOf('/js/' + f);
+  assert.ok(at('notebox.js') > 0 && at('notebox.js') < at('ui.js'), 'notebox.js 必须先于 ui.js');
+  assert.ok(at('notebox.js') < at('itinerary.js'), 'notebox.js 必须先于 itinerary.js');
+});
+
+test('挑点阶段（我的选择）也能写备注：同一份数据，同一套入口', () => {
+  assert.match(UI, /window\.TravelNoteBox\.html\(pin\.note\)/, '我的选择每行也要有备注位');
+  assert.match(UI, /window\.TravelNoteBox\.wire\(li,/, '我的选择也能就地编辑');
+  const sel = APP.match(/UI\.renderSelectionPanel\(\$\('selection-list'\), Selection\.list\(\), \{[\s\S]*?\n    \}\);/);
+  assert.ok(sel, '缺 renderSelectionPanel 调用');
+  assert.match(sel[0], /onNote: onEditPinNote/, '挑点列表要接上备注');
+  assert.match(sel[0], /onCancel: renderSelection/, '收尾要重画列表');
+  const note = APP.match(/async function onEditPinNote\(pin, text\)[\s\S]*?\n  \}/);
+  assert.ok(note, '缺 onEditPinNote');
+  assert.match(note[0], /renderSelection\(\)/, '写完备注我的选择要重画');
+  assert.match(note[0], /renderItinerary\(\)/, '行程视图开着时也要重画');
 });
 
 test('app.js：备注 / 拖拽 / 行程备注三条线都接上了', () => {
@@ -250,10 +278,11 @@ test('app.js：备注 / 拖拽 / 行程备注三条线都接上了', () => {
 
 test('备注/拖拽的样式都在（深色主题下也要看得见）', () => {
   assert.match(CSS, /\.trip-note-input\s*\{/, '缺行程备注输入框样式');
-  assert.match(CSS, /\.itin-note\s*\{/, '缺每条备注样式');
+  assert.match(CSS, /\.note-row\s*\{/, '缺每条备注样式');
   assert.match(CSS, /\.itin-item\.drop-on/, '缺拖拽落点提示样式');
   assert.match(CSS, /\.itin-handle\s*\{/, '缺拖拽把手样式');
-  assert.match(CSS, /\.itin-note \.note-input/, '缺就地编辑输入框样式');
+  assert.match(CSS, /\.note-row \.note-input/, '缺就地编辑输入框样式');
   // 深色主题里不能只有浅色的那套
-  assert.match(CSS, /\.itin-note \.note-input, \.trip-note-input/, '深色主题缺这两处样式');
+  assert.match(CSS, /\.note-row \.note-input, \.trip-note-input/, '深色主题缺这两处样式');
+  assert.ok(!/\.itin-note/.test(CSS), '旧类名 .itin-note 已改名 .note-row，别留死样式');
 });

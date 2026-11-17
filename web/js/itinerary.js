@@ -1,6 +1,7 @@
 /* 行程视图：按 sort_order 列出、拖拽或 ↑↓ 调序、每条写备注、一键复制 / 下载 .md */
 (function () {
   const Cats = window.TravelCategories;
+  const NoteBox = window.TravelNoteBox;
 
   // 正在拖的行号（同一次拖拽里共用；放下/结束时清掉）
   let dragFrom = null;
@@ -9,44 +10,6 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
-  }
-
-  // 就地编辑备注：回车 / 失焦保存，Esc 取消（保存由 app 层调 PATCH，失败会回滚）
-  function startNoteEdit(li, pin, current, handlers) {
-    const box = li.querySelector('.itin-note');
-    if (!box || box.dataset.editing === '1') return;
-    box.dataset.editing = '1';
-    const input = document.createElement('input');
-    input.className = 'note-input';
-    input.value = current;
-    input.maxLength = 200;
-    input.placeholder = '这条的备注：几点去 / 必点菜 / 要带什么';
-    box.textContent = '';
-    box.appendChild(input);
-    let done = false;
-    const finish = async (save) => {
-      if (done) return;
-      done = true;
-      const text = input.value.trim();
-      if (!save || text === current) {
-        if (handlers.onCancel) handlers.onCancel();
-        return;
-      }
-      try {
-        if (handlers.onNote) await handlers.onNote(pin, text);
-      } catch (err) {
-        /* 提示在 app 层，这里只负责把界面还原 */
-      }
-      if (handlers.onCancel) handlers.onCancel();
-    };
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-    });
-    input.addEventListener('blur', () => finish(true));
-    input.focus();
-    input.select();
   }
 
   // 拖拽：按住行内把手拖动 → 落到目标行上（源行移到目标行的位置），一次 PUT 落库
@@ -116,12 +79,7 @@
         '</div>' +
         '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
         (meta.length ? '<div class="poi-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
-        '<div class="itin-note' + (note ? '' : ' empty') + '"' +
-        (note ? ' title="点这里改备注"' : '') + '>' +
-        (note
-          ? esc(note) + '<button class="note-edit" title="改备注">改</button>'
-          : '<button class="note-add">＋ 备注</button>') +
-        '</div>';
+        NoteBox.html(note);
 
       const up = li.querySelector('.up');
       const down = li.querySelector('.down');
@@ -131,15 +89,12 @@
       if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
 
       if (handlers.onNote) {
-        const box = li.querySelector('.itin-note');
-        const btn = li.querySelector('.note-edit') || li.querySelector('.note-add');
-        if (btn) btn.onclick = (e) => { e.stopPropagation(); startNoteEdit(li, pin, note, handlers); };
-        if (box) {
-          box.onclick = (e) => {
-            e.stopPropagation();
-            if (e.target === box) startNoteEdit(li, pin, note, handlers);
-          };
-        }
+        NoteBox.wire(li, {
+          value: note,
+          placeholder: '这条的备注：几点去 / 必点菜 / 要带什么',
+          onSave: (text) => (handlers.onNote ? handlers.onNote(pin, text) : null),
+          onDone: handlers.onCancel,
+        });
       }
       if (handlers.onReorder) wireDrag(li, index, container, handlers);
       container.appendChild(li);

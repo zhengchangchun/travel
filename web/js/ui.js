@@ -229,6 +229,7 @@
         '<span class="poi-tag">' + esc(label) + '</span>' +
         '</div>' +
         '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
+        window.TravelNoteBox.html(pin.note) +
         legHtml +
         '<div class="sel-actions">' +
         '<button class="up" title="往前挪一位"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
@@ -250,6 +251,15 @@
       }
       if (down && handlers.onMove) {
         down.onclick = (e) => { e.stopPropagation(); handlers.onMove(i, 1); };
+      }
+      // 挑点阶段也能写备注（与行程视图同一份数据：pins.note）
+      if (handlers && handlers.onNote) {
+        window.TravelNoteBox.wire(li, {
+          value: pin.note,
+          placeholder: '这条的备注：几点去 / 必点菜 / 要带什么',
+          onSave: (text) => handlers.onNote(pin, text),
+          onDone: handlers.onCancel,
+        });
       }
       container.appendChild(li);
     });
