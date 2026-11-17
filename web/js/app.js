@@ -785,7 +785,9 @@
     const box = $('quick-legs');
     if (!box) return;
     const pins = Selection.list();
-    const show = pins.length >= 2;
+    // 行程视图里已经有自己那套「出行方式 + 总里程/耗时」了（route-modes + route-summary），
+    // 这里再摆一遍就是上下两个一样的选择器（2026-11-17 排版）
+    const show = pins.length >= 2 && state.view !== 'itinerary';
     box.classList.toggle('hidden', !show);
     const sum = $('ql-summary');
     if (sum) {

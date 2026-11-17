@@ -66,9 +66,9 @@ body {
   background: #1677ff; color: #fff; border-radius: 10px;
   padding: 0 8px; font-size: 12px;
 }
-/* 我的选择：在右栏内常驻可见（右栏独立滚动，不被长结果列表挤走） */
+/* 我的选择：跟着右栏一起滚，不做内层滚动条 ——
+   每条现在带地址/备注/逐段耗时，卡一个 220px 的小框只能露出 1 行半，还会把行从中间切断（2026-11-17） */
 .pin-card { background: #fff; }
-.pin-card #selection-list { max-height: 220px; overflow-y: auto; }
 .current-city { font-size: 13px; color: #374151; margin-top: 8px; }
 .current-city b { color: #1677ff; }
 .hint { font-size: 12px; color: #8b8f98; line-height: 1.5; margin: 6px 0 0; }
@@ -130,7 +130,7 @@ button.primary:hover { background: #0958d9; }
 /* 来源标记（OSM 兑底结果）：跟分类标签同尺寸，但一眼看得出不是同一件事 */
 .poi-tag.src { color: #0f766e; background: #e0f2f1; font-weight: 600; }
 .poi-addr { color: #4b5563; font-size: 12px; margin-top: 4px; }
-.poi-meta { color: #1677ff; font-size: 12px; margin-top: 3px; }
+.poi-meta { color: #1677ff; font-size: 12px; margin-top: 4px; }
 .poi-item .del {
   border: none; background: none; color: #d4380d; font-size: 15px; padding: 0 4px;
 }
@@ -244,8 +244,8 @@ button.danger:hover { background: #ad2102; }
 .star:disabled { opacity: .45; }
 
 /* 我的选择面板 */
-.sel-item .sel-actions { display: flex; gap: 6px; margin-top: 6px; }
-.sel-item .sel-actions button { font-size: 12px; padding: 3px 8px; border-radius: 6px; }
+.sel-item .sel-actions { display: flex; gap: 6px; margin-top: 8px; }
+.sel-item .sel-actions button { font-size: 12px; padding: 3px 9px; border-radius: 6px; }
 .sel-item .sel-actions .del { color: #d4380d; border-color: #ffc2cb; }
 
 /* 实时耗时（P11）：选中点的序号 / 上一站到这里的耗时 / 上移下移 */
@@ -268,7 +268,7 @@ button.danger:hover { background: #ad2102; }
 }
 .sel-leg { margin-top: 4px; font-size: 11.5px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
 .sel-leg.start { color: var(--ink-3); }
-.sel-item .sel-actions .up, .sel-item .sel-actions .down { padding: 2px 7px; font-size: 12px; line-height: 1.3; }
+.sel-item .sel-actions .up, .sel-item .sel-actions .down { padding: 3px 9px; font-size: 12px; line-height: 1.3; min-width: 28px; }
 .chip.toggle.active {
   border-color: #f59e0b;
   background: #fff7e6;
@@ -286,7 +286,7 @@ button.danger:hover { background: #ad2102; }
 .itin-btns { display: inline-flex; gap: 2px; }
 .itin-btns button {
   border: 1px solid #d7d9e0; background: #fff; border-radius: 6px;
-  padding: 1px 6px; font-size: 12px;
+  padding: 2px 6px; font-size: 12px; min-width: 24px;
 }
 .itin-toolbar { margin-bottom: 6px; }
 /* 右栏只有 300px 宽：四个按钮必须保持一行，不要把「一键复制」折成「一键复/制」 */
@@ -313,9 +313,14 @@ button.danger:hover { background: #ad2102; }
   width: 100%; box-sizing: border-box; font-size: 12px; padding: 3px 6px;
   border: 1px solid #1677ff; border-radius: 6px;
 }
-/* 整条行程的备注 */
+/* 整条行程的备注：给个「备注」标签，否则深色底上看起来就像一行普通文字 */
+.trip-note-row { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
+.trip-note-label {
+  flex: none; font-size: 12px; color: #6b7280;
+  border-left: 3px solid #dbe3ee; padding-left: 6px;
+}
 .trip-note-input {
-  width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 6px 8px;
+  flex: 1; min-width: 0; width: auto; margin: 0; padding: 6px 8px;
   font-size: 12px; border: 1px solid #d7d9e0; border-radius: 8px;
 }
 
@@ -442,8 +447,7 @@ button.danger:hover { background: #ad2102; }
   border: 1px solid #e8eaed; border-radius: 10px; background: #fff;
   padding: 8px 10px; margin: 6px 0;
 }
-.route-totals .route-mode-line { font-size: 12px; color: #6b7280; }
-.route-metrics { display: flex; gap: 18px; margin: 6px 0 2px; }
+.route-metrics { display: flex; gap: 18px; margin: 0 0 2px; }
 .route-metrics .metric { display: flex; flex-direction: column; }
 .route-metrics .metric b { font-size: 17px; color: #1677ff; line-height: 1.2; }
 .route-metrics .metric small { font-size: 11px; color: #8b8f98; }
@@ -996,7 +1000,7 @@ button:disabled { opacity: .45; }
 .route-summary { background: var(--surface-2); border: 1px solid var(--line); }
 .route-chip.active { background: rgba(109, 139, 255, .18); border-color: var(--accent); color: #cfd8ff; }
 .route-metrics .metric b { color: var(--accent-2); }
-.route-metrics .metric small, .route-totals .route-mode-line, .route-progress { color: var(--ink-3); }
+.route-metrics .metric small, .route-progress { color: var(--ink-3); }
 .route-leg { border: 1px solid var(--line); }
 .route-leg-head { background: var(--surface-2); color: var(--ink); }
 .route-leg-head:hover { background: rgba(255, 255, 255, .06); }

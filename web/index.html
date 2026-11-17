@@ -115,9 +115,12 @@
               <button id="itinerary-copy" class="ghost" title="把整条行程复制成文字">复制</button>
               <button id="itinerary-download" class="ghost" title="下载成正按 Markdown 排好的 .md">下载</button>
             </div>
-            <input id="trip-note" class="trip-note-input" type="text" maxlength="200"
-                   title="整条行程的备注（回车保存，会写进分享包）" aria-label="行程备注"
-                   placeholder="行程备注：比如「周三下午到，先吃饭再逛」" />
+            <div class="trip-note-row">
+              <span class="trip-note-label">备注</span>
+              <input id="trip-note" class="trip-note-input" type="text" maxlength="200"
+                     title="整条行程的备注（回车保存，会写进分享包）" aria-label="行程备注"
+                     placeholder="比如：周三下午到，先吃饭再逛" />
+            </div>
             <div class="route-modes" id="route-modes"></div>
             <div class="route-summary">
               <div id="route-totals" class="route-totals"></div>

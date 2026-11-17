@@ -89,10 +89,9 @@
       el.innerHTML = '';
       return;
     }
-    const meta = modeMeta(mode);
     const failed = lastData.failed || [];
+    // 「出行方式」不再在这行里说一遍：上面那排 route-modes 芯片就是它，选中态一眼看得出
     el.innerHTML =
-      '<div class="route-mode-line">出行方式：<b>' + meta.icon + ' ' + esc(meta.label) + '</b></div>' +
       '<div class="route-metrics">' +
       '<span class="metric"><b>' + esc(fmtDistance(lastData.totalDistance)) + '</b><small>总里程</small></span>' +
       '<span class="metric"><b>' + esc(fmtDuration(lastData.totalDuration)) + '</b><small>总耗时</small></span>' +
