@@ -1,4 +1,4 @@
-const MODES = ['walking', 'driving', 'transit'];
+const MODES = ['walking', 'riding', 'driving', 'transit'];
 const COORD_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/;
 
 function assertMode(ctx, mode) {
@@ -39,6 +39,7 @@ async function planLeg(ctx, { mode, origin, destination, city }) {
   if (hit !== undefined) return hit;
   let data;
   if (mode === 'walking') data = await ctx.amap.planWalking(origin, destination);
+  else if (mode === 'riding') data = await ctx.amap.planRiding(origin, destination);
   else if (mode === 'driving') data = await ctx.amap.planDriving(origin, destination);
   else data = await ctx.amap.planTransit(origin, destination, city);
   ctx.cache.set(key, data);

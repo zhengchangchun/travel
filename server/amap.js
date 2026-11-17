@@ -469,8 +469,9 @@ function parseSteps(steps) {
   return list
     .map((s) => ({
       instruction: firstString(s.instruction),
-      distance: Number(s.distance) || 0,
-      duration: Number(s.duration) || 0,
+      // v3：distance / duration；v5：step_distance / cost.duration
+      distance: Number(s.distance) || Number(s.step_distance) || 0,
+      duration: Number(s.duration) || Number((s.cost && s.cost.duration) || 0) || 0,
       polyline: parsePolyline(s.polyline),
     }))
     .filter((s) => s.polyline.length > 0 || s.instruction);
@@ -589,6 +590,17 @@ async function planWalking(origin, destination) {
   return normalizePathRoute(json, 'walking');
 }
 
+// 骑行：v3 的 /direction/bicycling 对个人 key 是 SERVICE_NOT_AVAILABLE，
+// v5（返回结构同 v3 的 route.paths[0]）打得通 —— 2026-11-17 实测，别再按老笔记当它不可用。
+async function planRiding(origin, destination) {
+  const json = await amapGet('/v5/direction/bicycling', {
+    origin,
+    destination,
+    show_fields: 'cost,polyline',
+  });
+  return normalizePathRoute(json, 'riding');
+}
+
 async function planDriving(origin, destination, strategy) {
   const json = await amapGet('/v3/direction/driving', {
     origin,
@@ -636,6 +648,7 @@ module.exports = {
   classifyType,
   parsePolyline,
   planWalking,
+  planRiding,
   planDriving,
   planTransit,
   staticMap,

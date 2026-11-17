@@ -4,11 +4,12 @@
      ② 真路线（服务端 /api/itinerary/route）回来后再替换成实测值（去掉 ≈）。
    这里只放纯计算，不碰 DOM、不发请求，方便单测。 */
 (function () {
-  // 绕行系数与平均速度都按「城市内日常出行」取值，只用于估算
+  // 绕行系数与平均速度都按「城市内日常出行」取值，只用于估算；颜色与 route.js / map.js 同一套
   const MODES = [
-    { key: 'driving', label: '驾车', detour: 1.35, kmh: 26 },
-    { key: 'walking', label: '步行', detour: 1.18, kmh: 4.8 },
-    { key: 'transit', label: '公交', detour: 1.55, kmh: 16 },
+    { key: 'driving', label: '驾车', detour: 1.35, kmh: 26, color: '#1677ff' },
+    { key: 'riding', label: '骑行', detour: 1.25, kmh: 15, color: '#e8760c' },
+    { key: 'walking', label: '步行', detour: 1.18, kmh: 4.8, color: '#22a06b' },
+    { key: 'transit', label: '公交', detour: 1.55, kmh: 16, color: '#8a6cf0' },
   ];
 
   function modeMeta(key) {

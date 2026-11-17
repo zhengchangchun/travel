@@ -298,6 +298,14 @@ button.danger:hover { background: #ad2102; }
 }
 .itin-item.dragging { opacity: .45; }
 .itin-item.drop-on { border-color: #1677ff; box-shadow: inset 0 3px 0 #1677ff; }
+/* 实时耗时条的几个小芯片：图标用方式色 + 名称，选中态跟地图线同色 */
+.ql-modes .chip.mini { display: inline-flex; align-items: center; gap: 4px; }
+.ql-modes .chip.mini .mode-icon { flex: none; color: var(--mode-color, inherit); }
+.ql-modes .chip.mini.active {
+  border-color: var(--mode-color, var(--accent)); font-weight: 600;
+  background: color-mix(in srgb, var(--mode-color, #6d8bff) 20%, transparent);
+}
+
 /* 每条地点的备注（行程视图 / 我的选择共用）：空时是「＋ 备注」，写了就是一行字 + 「改」 */
 .note-row {
   margin-top: 6px; font-size: 12px; line-height: 1.6; color: #5b6472;
@@ -439,9 +447,22 @@ button.danger:hover { background: #ad2102; }
 
 /* ---------- 路线连线（T3） ---------- */
 .route-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
-.route-chip { font-size: 13px; }
-.route-chip .route-chip-icon { font-size: 14px; margin-right: 2px; }
-.route-chip.active { border-color: #1677ff; background: #e8f1ff; font-weight: 600; }
+.route-chip {
+  font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px;
+}
+/* 图标与小线段用该方式的颜色（标签文字保持中性色，四个芯片排一行不花） */
+.route-chip .mode-icon, .route-chip .route-chip-line { flex: none; color: var(--mode-color, #1677ff); }
+.route-chip .route-chip-label { font-weight: 500; }
+/* 芯片里的小线段：与地图上那条线同色同线型 ⇒ 图标/线型/路线三者对得上 */
+.route-chip .route-chip-line { width: 16px; height: 4px; border-radius: 2px; opacity: .95; }
+.route-chip .route-chip-line.solid { background: currentColor; }
+.route-chip .route-chip-line.dash-long { background: repeating-linear-gradient(90deg, currentColor 0 7px, transparent 7px 12px); }
+.route-chip .route-chip-line.dash-mid { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 10px); }
+.route-chip .route-chip-line.dot { background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 6px); }
+.route-chip.active {
+  border-color: var(--mode-color, #1677ff); font-weight: 600;
+  background: color-mix(in srgb, var(--mode-color, #1677ff) 14%, transparent);
+}
 
 .route-summary {
   border: 1px solid #e8eaed; border-radius: 10px; background: #fff;
@@ -998,7 +1019,7 @@ button:disabled { opacity: .45; }
 }
 .note-row .note-input:focus, .trip-note-input:focus { outline: none; border-color: var(--accent); }
 .route-summary { background: var(--surface-2); border: 1px solid var(--line); }
-.route-chip.active { background: rgba(109, 139, 255, .18); border-color: var(--accent); color: #cfd8ff; }
+.route-chip.active { background: color-mix(in srgb, var(--mode-color, #6d8bff) 22%, transparent); border-color: var(--mode-color, var(--accent)); color: var(--ink); }
 .route-metrics .metric b { color: var(--accent-2); }
 .route-metrics .metric small, .route-progress { color: var(--ink-3); }
 .route-leg { border: 1px solid var(--line); }

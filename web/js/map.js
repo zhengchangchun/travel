@@ -666,14 +666,16 @@
   let routeLegFailed = [];
   let routeSelected = null;
 
+  // 每种出行方式在地图上一个色 + 一种线型（与右栏芯片的图标/小线段同一套，route.js 的 MODES）
+  const MODE_STYLES = {
+    driving: { strokeColor: '#1677ff', strokeWeight: 6, strokeStyle: 'solid' },
+    riding: { strokeColor: '#e8760c', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [7, 5] },
+    walking: { strokeColor: '#22a06b', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [2, 6] },
+    transit: { strokeColor: '#8a6cf0', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [12, 8] },
+  };
+
   function routeStyle(mode) {
-    if (mode === 'walking') {
-      return { strokeColor: '#22A06B', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [2, 6] };
-    }
-    if (mode === 'transit') {
-      return { strokeColor: '#FF6B35', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [12, 8] };
-    }
-    return { strokeColor: '#1677ff', strokeWeight: 6, strokeStyle: 'solid' };
+    return Object.assign({}, MODE_STYLES[mode] || MODE_STYLES.driving);
   }
 
   const FAILED_STYLE = {

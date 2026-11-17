@@ -314,7 +314,7 @@ function routeBlockHtml(p) {
 }
 
 function modeLabelOf(m) {
-  return m === 'driving' ? '驾车' : m === 'walking' ? '步行' : String(m);
+  return m === 'driving' ? '驾车' : m === 'riding' ? '骑行' : m === 'walking' ? '步行' : String(m);
 }
 
 function buildHtml(payload) {

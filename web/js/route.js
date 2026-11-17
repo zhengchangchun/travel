@@ -3,10 +3,14 @@
   const API = window.TravelAPI;
   const MapCtl = window.TravelMap;
 
+  const ModeIcons = window.TravelModeIcons;
+
+  // 每种方式一个颜色 + 一种线型；地图上那条线就长这样（map.js 的 routeStyle 用同一套色）
   const MODES = [
-    { key: 'walking', label: '步行', icon: '🚶' },
-    { key: 'transit', label: '公交', icon: '🚌' },
-    { key: 'driving', label: '驾车', icon: '🚗' },
+    { key: 'driving', label: '驾车', color: '#1677ff', line: 'solid', lineText: '实线' },
+    { key: 'riding', label: '骑行', color: '#e8760c', line: 'dash-long', lineText: '长虚线' },
+    { key: 'walking', label: '步行', color: '#22a06b', line: 'dot', lineText: '细点线' },
+    { key: 'transit', label: '公交', color: '#8a6cf0', line: 'dash-mid', lineText: '中虚线' },
   ];
   const DEFAULT_MODE = 'driving';
 
@@ -37,7 +41,7 @@
   }
 
   function modeMeta(key) {
-    return MODES.find((m) => m.key === key) || MODES[2];
+    return MODES.find((m) => m.key === key) || MODES[0];
   }
 
   function fmtDistance(m) {
@@ -65,8 +69,13 @@
       const btn = document.createElement('button');
       btn.className = 'chip route-chip' + (m.key === mode ? ' active' : '');
       btn.dataset.key = m.key;
+      btn.style.setProperty('--mode-color', m.color);
+      btn.title = m.label + '：地图上这条线是' + m.lineText;
+      btn.setAttribute('aria-pressed', String(m.key === mode));
       btn.innerHTML =
-        '<span class="route-chip-icon">' + m.icon + '</span>' + m.label;
+        (ModeIcons ? ModeIcons.svg(m.key, 14) : '') +
+        '<span class="route-chip-label">' + esc(m.label) + '</span>' +
+        '<span class="route-chip-line ' + m.line + '"></span>';
       btn.onclick = () => {
         if (m.key === mode) return;
         mode = m.key;
@@ -277,6 +286,7 @@
     selectLeg,
     getSelectedLeg: () => selectedLeg,
     getMode: () => mode,
+    modeMeta,
     MODES,
     DEFAULT_MODE,
   };

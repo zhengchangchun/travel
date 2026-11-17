@@ -806,8 +806,11 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'chip mini' + (m.key === state.liveMode ? ' active' : '');
-      btn.textContent = m.label;
+      btn.style.setProperty('--mode-color', m.color || 'var(--accent)');
       btn.title = '按' + m.label + '算耗时';
+      btn.innerHTML =
+        (window.TravelModeIcons ? window.TravelModeIcons.svg(m.key, 13) : '') +
+        '<span class="route-chip-label">' + m.label + '</span>';
       btn.onclick = (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
         if (m.key === state.liveMode) return;
@@ -1162,6 +1165,7 @@
   const SHARE_MODES = [
     { value: 'both', label: '都带上', modes: ['driving', 'walking'] },
     { value: 'driving', label: '驾车', modes: ['driving'] },
+    { value: 'riding', label: '骑行', modes: ['riding'] },
     { value: 'walking', label: '步行', modes: ['walking'] },
   ];
   let lastShareModes = SHARE_MODES[0].modes.slice();
