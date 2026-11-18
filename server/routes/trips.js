@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const share = require('../share');
 const routemap = require('../routemap');
+const { applyPoiOrder } = require('../order');
 
 const SHARE_DIR = () => process.env.TRAVEL_SHARE_DIR || path.join(__dirname, '..', '..', 'share');
 
@@ -38,7 +39,8 @@ function sharePayload(ctx, tripId) {
   return share.buildPayload({
     trip,
     city: trip.city,
-    stops: ctx.db.getPinsByTrip(id),
+    // order（可选）：页面上「按距离」排出来的点序随请求带过来，分享包 / 静态路线图跟着它排
+    stops: applyPoiOrder(ctx.db.getPinsByTrip(id), ctx.body && ctx.body.order),
     base,
     labels,
     when: new Date().toISOString(),

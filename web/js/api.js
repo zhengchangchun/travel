@@ -107,8 +107,11 @@
     unselectPoi: ({ city, poiId }) =>
       request('/api/selection?' + qs({ city, poi_id: poiId }), { method: 'DELETE' }),
     reorderSelection: (payload) => request('/api/selection/order', put(payload)),
-    exportSelection: async (city) => {
-      const res = await fetch('/api/selection/export?' + qs({ city, format: 'md' }));
+    exportSelection: async (city, order) => {
+      const res = await fetch(
+        '/api/selection/export?' +
+          qs({ city, format: 'md', order: order && order.length ? order.join(',') : undefined })
+      );
       if (!res.ok) {
         const e = new Error('导出失败（HTTP ' + res.status + '）');
         e.status = res.status;
@@ -127,6 +130,8 @@
             city,
             mode: o.modes && o.modes.length ? undefined : o.mode,
             modes: o.modes && o.modes.length ? o.modes.join(',') : undefined,
+            // 页面上的点序（默认按距离算的那份）：不带上，服务端会按库里的顺序规划
+            order: o.order && o.order.length ? o.order.join(',') : undefined,
           })
       );
     },

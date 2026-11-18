@@ -256,10 +256,11 @@ test('前端：地图按「这一段自己的方式」上色，不再全用当�
 });
 
 test('前端：最快规划时请求 mode=auto，混合时请求 modes=…', () => {
-  const fn = ROUTE.match(/async function draw\(city, pins\)[\s\S]*?\n  \}/);
+  const fn = ROUTE.match(/async function draw\(city, pins, opts\)[\s\S]*?\n  \}/);
   assert.ok(fn, '缺 draw');
-  assert.match(fn[0], /API\.itineraryRoute\(lastCity, \{ modes: perLeg \}\)/);
-  assert.match(fn[0], /API\.itineraryRoute\(lastCity, mode\)/);
+  assert.match(fn[0], /API\.itineraryRoute\(lastCity, \{ modes: perLeg, order: orderKeys\(lastPins\) \}\)/);
+  assert.match(fn[0], /API\.itineraryRoute\(lastCity, \{ mode, order: orderKeys\(lastPins\) \}\)/);
+  assert.match(fn[0], /order: orderKeys\(lastPins\)/, '请求要带上页面上的点序（默认按距离那份）');
   assert.match(API, /modes: o\.modes && o\.modes\.length \? o\.modes\.join\(','\) : undefined/);
   assert.match(API, /mode: o\.modes && o\.modes\.length \? undefined : o\.mode/, '给 modes 时别再带上 mode');
   // 进度条要说人话

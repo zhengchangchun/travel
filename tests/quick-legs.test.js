@@ -99,10 +99,11 @@ test('结构：右侧有实时耗时条（汇总 + 步行/公交/驾车），选
   assert.match(compute[0], /state\.liveKey/, '要有签名去重，别每次渲染都打接口');
   assert.match(compute[0], /QuickRoute\.estimateLegs/, '先给直线估算，别让用户等网络');
   assert.match(compute[0], /API\.itineraryRoute/, '再拿真实路线纠正');
-  assert.match(APP, /onMove:\s*onMoveSelectionPin/, '选中面板未接上移/下移');
-  const mover = APP.match(/async function\s+onMoveSelectionPin[\s\S]*?\n  \}/);
-  assert.ok(mover, '缺 onMoveSelectionPin');
-  assert.match(mover[0], /Selection\.move\(index, delta\)/, '改顺序要走 Selection.move（落库）');
+  assert.match(APP, /onMove:\s*\(index, delta\) => onMoveDisplayed\(panelPins/, '选中面板未接上移/下移');
+  const mover = APP.match(/async function\s+onMoveDisplayed\(pins, index, delta\)[\s\S]*?\n  \}/);
+  assert.ok(mover, '缺 onMoveDisplayed');
+  assert.match(mover[0], /applyManualOrder\(ids\)/, '改顺序要落库（经 applyManualOrder）');
+  assert.match(APP, /async function applyManualOrder[\s\S]*?Selection\.reorder\(ids\)/, '落库要走 Selection.reorder');
   assert.match(APP, /state\.liveMode = m\.key/, '方式切换要能改 mode');
   assert.match(CSS, /\.quick-legs\s*\{/, '缺 .quick-legs 样式');
   assert.match(CSS, /\.sel-order\s*\{/, '缺 .sel-order 样式');

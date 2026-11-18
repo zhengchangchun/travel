@@ -146,14 +146,13 @@ test('deletePinByPoi 删除本城市匹配点，不存在返回 changes=0', () =
   db.close();
 });
 
-test('buildItineraryMarkdown 含标题/分类分组/序号/详细地址/评分人均', () => {
+test('buildItineraryMarkdown 含标题/序号/详细地址/评分人均（一条路线就是一个清单，不按类别分组）', () => {
   const db = createDb(':memory:');
   db.insertPinIfAbsent('杭州', POI_A);
   db.insertPinIfAbsent('杭州', POI_B);
   const md = db.buildItineraryMarkdown('杭州');
   assert.match(md, /^# 杭州 · 我的行程（2 个地点）/m);
-  assert.match(md, /## 美食/);
-  assert.match(md, /## 景点/);
+  assert.ok(!/^## /m.test(md), '不再按类别分组（分组标题会让「一条路线」读起来断断续续）');
   assert.match(md, /1\. 牛New寿喜烧\(来福士店\)/);
   assert.match(md, /新业路228号杭州来福士广场4楼/);
   assert.match(md, /★4\.7/);

@@ -16,6 +16,7 @@ const HTML = read('web/index.html');
 const CSS = read('web/css/style.css');
 const APP = read('web/js/app.js');
 const ROUTE = read('web/js/route.js');
+const ITIN = read('web/js/itinerary.js');
 const MAP = read('web/js/map.js');
 
 function legsOf(n, per = 3) {
@@ -47,13 +48,15 @@ test('列表侧：点分段行 = 选中（同一段再点取消），地图与�
   assert.ok(sel, '缺 selectLeg');
   assert.match(sel[0], /selectedLeg = selectedLeg === n \? null : n/, '同一段再点应取消');
   assert.match(sel[0], /MapCtl\.setRouteSelection\(selectedLeg\)/, '要同步地图高亮');
-  assert.match(sel[0], /paintSelection\(\)/, '要刷新列表高亮');
-  assert.match(ROUTE, /route-leg-head'\)\.onclick = \(\) => selectLeg\(leg\.index\)/, '点行要选中');
+  assert.match(sel[0], /handlers\.onSelectLeg\(selectedLeg\)/, '要刷新列表高亮（现在高亮的是行程列表那一行）');
+  // 列表侧的接线（原来在 route.js，现在路线就在行程清单里，所以绑定在 itinerary.js）
+  assert.match(ITIN, /handlers\.onLegSelect\(index\)/, '点到达行要选中');
   assert.match(ROUTE, /onLegClick: \(leg\) => selectLeg\(leg\.index\)/, '点地图上的线也要选中同一段');
-  assert.match(ROUTE, /li\.classList\.toggle\('sel', on\)/, '列表行要有 sel 类');
+  assert.match(ITIN, /classList\.toggle\('sel', on\)/, '列表行要有 sel 类');
   assert.match(ROUTE, /点某段在地图上高亮/, '进度行要告诉用户能点');
   assert.match(CSS, /\.route-leg\.sel\s*\{/, '缺 .route-leg.sel 样式');
-  assert.match(ROUTE, /selectLeg,\n\s+getSelectedLeg/, 'TravelRoute 要导出 selectLeg / getSelectedLeg');
+  assert.match(ROUTE, /selectLeg,/, 'TravelRoute 要导出 selectLeg');
+  assert.match(ROUTE, /getSelectedLeg: \(\) => selectedLeg/, 'TravelRoute 要导出 getSelectedLeg');
 });
 
 test('地图一动就会 refresh 重画 ⇒ 同一条路线不能重请求、不能清掉选中态', () => {

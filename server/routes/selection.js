@@ -5,6 +5,11 @@ function requireCity(ctx, city) {
   return String(city).trim();
 }
 
+const { parseOrderCsv } = require('../order');
+
+// 显式点序（「按距离」时前端算出来的那份）：逗号分隔的 poi_id；给了就按它排
+const parseOrder = parseOrderCsv;
+
 module.exports = [
   {
     method: 'GET',
@@ -93,7 +98,7 @@ module.exports = [
       (ctx.categories || []).forEach((c) => {
         labels[c.key] = { label: c.label };
       });
-      const text = ctx.db.buildItineraryMarkdown(city, labels) + '\n';
+      const text = ctx.db.buildItineraryMarkdown(city, labels, parseOrder(ctx.query.order)) + '\n';
       ctx.res.writeHead(200, {
         'Content-Type': 'text/markdown; charset=utf-8',
         'Content-Length': Buffer.byteLength(text),

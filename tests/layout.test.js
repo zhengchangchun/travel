@@ -30,7 +30,7 @@ const PIN_IDS = [
   'itinerary-list',
   'route-modes',
   'route-totals',
-  'route-legs',
+  'order-modes',
   // 个人的东西（用户 2026-11-09：住宿锚点应该放在右边，个人的都放右边）
   'base-box',
   'base-name',

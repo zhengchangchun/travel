@@ -36,6 +36,13 @@
   const CARDS_KEY = 'travel.cards';
   const RESULT_PAGE = 300; // 一次渲染多少条（其余用「显示更多」按钮放）
 
+  // 点的顺序（用户 2026-11-17）：「默认顺序先按地点之间的距离计算」
+  const ORDER_KEY = 'travel.orderMode'; // 'distance'（默认）| 'manual'
+  const ORDER_MODES = [
+    { key: 'distance', label: '按距离', tip: '默认：从住宿（没定就从第一个点）出发，每次去最近的那一站' },
+    { key: 'manual', label: '手动顺序', tip: '按你自己排的顺序走：拖行 / ↑↓ 调' },
+  ];
+
   const state = {
     config: null,
     city: null,
@@ -67,6 +74,9 @@
     liveEstimate: false, // 有没有路段是按直线估的（界面带 ≈）
     liveNote: '', // 估算/失败的一句话说明
     liveKey: '', // 上次算过的签名（城市|方式|点序列），一样就不重算
+    orderMode: 'distance', // 点的默认顺序：按地点之间的距离算（最近邻）
+    routeLegs: [], // 每段距离/耗时/方式（route.js 算完回填，写在「到达这一站」那一行）
+    routeLegSig: '', // 上面那份数据的签名（没变就不重画，防来回重算）
   };
 
   // 错误人话化（P9-②）：统一过一层，别把高德/后端的裸 code 用给用户看
@@ -765,17 +775,20 @@
       autoBtn.disabled = noPin;
       autoBtn.title = noPin ? '先在下方列表里点 ★ 挑几个点' : '按距离自动排序并连线';
     }
-    UI.renderSelectionPanel($('selection-list'), Selection.list(), {
+    // 两张清单用同一份顺序（按距离 or 手动）：否则左边一个顺序、行程里又另一个顺序
+    const panelPins = orderedPins();
+    UI.renderSelectionPanel($('selection-list'), panelPins, {
       onLocate(pin) {
         flyTo(pin.lng, pin.lat, 15);
         onPickPoi(pin);
       },
       onRemove: onRemoveSelected,
-      onMove: onMoveSelectionPin,
+      onMove: (index, delta) => onMoveDisplayed(panelPins, index, delta),
       onNote: onEditPinNote,
       onCancel: renderSelection,
       legs: state.liveLegs,
     });
+    renderOrderChips();
     renderQuickLegs();
     scheduleLiveLegs();
   }
@@ -835,8 +848,8 @@
 
   // 先用直线估一版立刻上图，再拿真实路线纠正（失败就留着估算值，标 ≈）
   async function computeLiveLegs() {
-    const pins = Selection.list();
-    const key = [state.city || '', state.liveMode, pins.map((p) => p.id).join(',')].join('|');
+    const pins = orderedPins();
+    const key = [state.city || '', state.liveMode, state.orderMode, pins.map((p) => p.id).join(',')].join('|');
     if (key === state.liveKey) return;
     state.liveKey = key;
     if (pins.length < 2) {
@@ -851,7 +864,7 @@
     state.liveNote = '';
     renderSelection();
     try {
-      const data = await API.itineraryRoute(state.city, state.liveMode);
+      const data = await API.itineraryRoute(state.city, { mode: state.liveMode, order: orderKeys(pins) });
       if (state.liveKey !== key) return; // 等结果期间又变了 ⇒ 这次作废
       const legs = Array.isArray(data && data.legs) ? data.legs : [];
       if (!legs.length) return;
@@ -874,31 +887,185 @@
     renderSelection();
   }
 
-  async function onMoveSelectionPin(index, delta) {
-    const list = Selection.list();
-    const to = index + delta;
-    if (to < 0 || to >= list.length) return;
+  // ---------- 顺序：默认「按地点之间的距离」----------
+  // 读/存到 localStorage：只需要字符串，出错（隐私模式）就当默认值
+  function readOrderMode() {
     try {
-      await Selection.move(index, delta);
+      return window.localStorage.getItem(ORDER_KEY) === 'manual' ? 'manual' : 'distance';
     } catch (err) {
-      UI.setStatus('调整顺序失败：' + human(err));
+      return 'distance';
     }
   }
 
+  function saveOrderMode(value) {
+    try {
+      window.localStorage.setItem(ORDER_KEY, value);
+    } catch (err) {
+      /* 存不了就算了，本次会话照用 */
+    }
+  }
+
+  // 页面上这条路线按什么顺序走（列表 / 连线 / 分享 / 导出全用它，免得两处不一样）：
+  // - 按距离（默认）：从住宿锚点（没定就从第一个点）出发，每次去最近的下一站（最近邻，可重入）
+  // - 手动顺序：就是库里存的那份（拖拽 / ↑↓ 排出来的），一个不动
+  // - 2 个点及以下：顺序无所谓，直接给库里那份，别让用户看到列表自己跳
+  function orderedPins() {
+    const pins = Selection.list();
+    if (state.orderMode !== 'distance' || pins.length < 3) return pins;
+    const start = baseForPlan();
+    return Planner.orderStops(pins, start ? { start } : undefined);
+  }
+
+  // 显式点序（服务端口径：poi_id 字符串，没有 poi_id 的用 pin:<行号>）
+  function orderKeys(pins) {
+    return (pins || []).map((p) => (p && p.id != null ? String(p.id) : '')).filter(Boolean);
+  }
+
+  function renderOrderChips() {
+    const box = $('order-chips');
+    const wrap = $('order-modes');
+    const note = $('order-note');
+    if (!box || !wrap) return;
+    const pins = Selection.list();
+    // 1 个点（或 0 个）时顺序没意义：这行整块收起来
+    wrap.classList.toggle('hidden', pins.length < 2);
+    box.innerHTML = '';
+    ORDER_MODES.forEach((m) => {
+      const on = m.key === state.orderMode;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip mini order-chip' + (on ? ' active' : '');
+      btn.textContent = m.label;
+      btn.title = m.tip;
+      btn.setAttribute('aria-pressed', String(on));
+      btn.onclick = () => setOrderMode(m.key);
+      box.appendChild(btn);
+    });
+    if (!note) return;
+    if (pins.length < 2) {
+      note.textContent = '';
+      note.classList.add('hidden');
+      return;
+    }
+    note.classList.remove('hidden');
+    if (state.orderMode !== 'distance') {
+      note.textContent = '按你自己排的（拖行或 ↑↓ 调）；切回「按距离」就重新按远近算';
+      return;
+    }
+    const start = baseForPlan();
+    const dist = Planner.pathDistance(orderedPins());
+    note.textContent =
+      (start ? '从「' + (start.name || '住宿') + '」出发，' : '从第 1 个点出发，') +
+      '每次去最近的一站（直线 ' +
+      Geo.humanDistance(dist.distanceM) +
+      '）';
+  }
+
+  // 换排序方式：只换「看哪一份」，不动库
+  // - 按距离：现算（最近邻），库里的顺序原样留着
+  // - 手动顺序：看库里存的那份（就是拖拽/↑↓ 排出来的，切过去就能接着改）
+  function setOrderMode(mode, opts) {
+    const next = mode === 'manual' ? 'manual' : 'distance';
+    if (next === state.orderMode) return;
+    state.orderMode = next;
+    state.routeLegSig = ''; // 顺序变了 ⇒ 段数据重算
+    saveOrderMode(next);
+    renderOrderChips();
+    renderSelection();
+    if (state.view === 'itinerary') renderItinerary();
+    if (!(opts && opts.silent)) {
+      UI.setStatus(
+        next === 'distance'
+          ? '顺序：按地点之间的距离排（每次去最近的一站）'
+          : '顺序：按库里你自己排的那份（拖行或 ↑↓ 再改）'
+      );
+    }
+  }
+
+  // 段数据回来（route.js 回填）：变了才重画，否则会和 draw() 互相调用到底
+  function onRouteLegs(legs) {
+    const next = Array.isArray(legs) ? legs : [];
+    const sig = next
+      .map((l) => [l.index, l.ok ? 1 : 0, l.distance, l.duration, l.mode].join(':'))
+      .join('|');
+    if (sig === state.routeLegSig) return;
+    state.routeLegSig = sig;
+    state.routeLegs = next;
+    if (state.view === 'itinerary') renderItinerary();
+  }
+
+  // 选中某一段：地图高亮由 route.js 管，列表这边只刷新行上的选中/展开态
+  function paintLegSel(selectedLeg) {
+    Itinerary.paintSelection($('itinerary-list'), selectedLeg);
+  }
+
+  // 拖拽调序：把第 from 行挪到第 to 行的位置，一次 PUT 落库
+  async function onReorderItinerary(from, to) {
+    const list = orderedPins();
+    const ids = list.map((p) => p.id);
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return;
+    if (from === to || from < 0 || to < 0 || from >= ids.length || to >= ids.length) return;
+    const moved = ids.splice(from, 1)[0];
+    ids.splice(to, 0, moved);
+    await applyManualOrder(ids);
+  }
+
+  // 手动调序（拖拽 / ↑↓ 共用）：先切成「手动顺序」再落库 —— 不然下一次刷新又会被按距离重排
+  async function applyManualOrder(ids) {
+    const wasDistance = state.orderMode === 'distance';
+    state.orderMode = 'manual';
+    state.routeLegSig = '';
+    saveOrderMode('manual');
+    try {
+      await Selection.reorder(ids);
+      UI.setStatus(
+        (wasDistance ? '已改成手动顺序：' : '顺序已调整：') +
+          Selection.list()
+            .map((p, i) => i + 1 + '.' + p.name)
+            .join(' → ')
+      );
+    } catch (err) {
+      UI.setStatus('调整顺序失败：' + human(err));
+    }
+    renderOrderChips();
+    renderSelection();
+    if (state.view === 'itinerary') renderItinerary();
+  }
+
+  // ↑↓ 微调（两张清单共用）：都按「眼前看到的顺序」算，不按库里那份
+  async function onMoveDisplayed(pins, index, delta) {
+    const list = pins || [];
+    const to = index + delta;
+    if (to < 0 || to >= list.length) return;
+    const ids = list.map((p) => p.id);
+    const moved = ids.splice(index, 1)[0];
+    ids.splice(to, 0, moved);
+    await applyManualOrder(ids);
+  }
+
   function renderItinerary() {
-    const list = Selection.list();
+    const list = orderedPins();
     Itinerary.render($('itinerary-list'), list, {
-      onMove: onMovePin,
+      legs: state.routeLegs,
+      selectedLeg: Route ? Route.getSelectedLeg() : null,
+      base: baseForPlan(),
+      onMove: (index, delta) => onMoveDisplayed(list, index, delta),
       onRemove: onRemoveFromItinerary,
       onNote: onEditPinNote,
       onReorder: onReorderItinerary,
       onCancel: renderItinerary,
+      onLegSelect: (index) => { if (Route) Route.selectLeg(index); },
+      onLegMode: (index, key) => { if (Route) Route.setLegMode(index, key); },
     });
     syncTripNoteInput();
+    renderOrderChips();
     if (!Route) return;
     // 「回到住宿」：把锚点当成最后一段接上（锚点已单独高亮，不写进行程点序）
     const start = baseForPlan();
-    Route.draw(state.city, state.autoReturn && start && list.length ? list.concat([start]) : list);
+    Route.draw(state.city, state.autoReturn && start && list.length ? list.concat([start]) : list, {
+      onLegs: onRouteLegs,
+      onSelectLeg: paintLegSel,
+    });
   }
 
   // 行程备注输入框：不在编辑中就把服务端的值刷进去（不抢焦点、不覆盖正在打的字）
@@ -919,21 +1086,6 @@
     }
     renderSelection();
     if (state.view === 'itinerary') renderItinerary();
-  }
-
-  // 拖拽调序：把第 from 行挪到第 to 行的位置，一次 PUT 落库
-  async function onReorderItinerary(from, to) {
-    const ids = Selection.list().map((p) => p.id);
-    if (!Number.isInteger(from) || !Number.isInteger(to)) return;
-    if (from === to || from < 0 || to < 0 || from >= ids.length || to >= ids.length) return;
-    const moved = ids.splice(from, 1)[0];
-    ids.splice(to, 0, moved);
-    try {
-      await Selection.reorder(ids);
-      UI.setStatus('顺序已调整：' + Selection.list().map((p, i) => i + 1 + '.' + p.name).join(' → '));
-    } catch (err) {
-      UI.setStatus('调整顺序失败：' + human(err));
-    }
   }
 
   // 整条行程的备注：失焦/回车保存（输入框在行程视图顶部）
@@ -1097,18 +1249,6 @@
     }
   }
 
-  async function onMovePin(index, delta) {
-    try {
-      await Selection.move(index, delta);
-      // 顺序需先落库再重算，避免用旧顺序请求路线（乐观刷新可能早于 PUT 完成）
-      if (state.view === 'itinerary' && Route) {
-        Route.draw(state.city, Selection.list());
-      }
-    } catch (err) {
-      UI.setStatus('调序失败：' + human(err));
-    }
-  }
-
   function onToggleOnlySelected() {
     state.onlySelected = !state.onlySelected;
     refresh();
@@ -1139,7 +1279,7 @@
   async function onCopyItinerary() {
     if (!state.city) return;
     try {
-      const text = await API.exportSelection(state.city);
+      const text = await API.exportSelection(state.city, orderKeys(orderedPins()));
       const ok = await Itinerary.copyText(text);
       UI.setStatus(ok ? '行程单已复制到剪贴板' : '已弹出复制框');
     } catch (err) {
@@ -1150,7 +1290,7 @@
   async function onDownloadItinerary() {
     if (!state.city) return;
     try {
-      const text = await API.exportSelection(state.city);
+      const text = await API.exportSelection(state.city, orderKeys(orderedPins()));
       Itinerary.download(state.city + '-行程.md', text);
       UI.setStatus('行程单已下载');
     } catch (err) {
@@ -1319,7 +1459,12 @@
     UI.setStatus('正在用地图生成真实路线（逐段规划 + 路线底图），稍等…');
     try {
       const trip = await ensureTrip();
-      const res = await API.exportTripShare(trip.id, { base: shareBase(), modes: lastShareModes });
+      const res = await API.exportTripShare(trip.id, {
+        base: shareBase(),
+        modes: lastShareModes,
+        // 分享包与页面上看到的顺序保持一致（默认「按距离」那份）
+        order: orderKeys(orderedPins()),
+      });
       renderShareResult(res);
       const ok = await Itinerary.copyText(res.text);
       UI.setStatus(
@@ -2555,6 +2700,7 @@
     }
 
     Cats.init(state.config.categories);
+    state.orderMode = readOrderMode(); // 点的顺序：默认「按距离」（上次选过就沿用上次的）
     // 首先是一个地图：打开就把四类都显示出来，而不是空着等用户去选（用户 2026-11-11）
     state.activeCats = new Set(Cats.all().map((c) => c.key));
     renderCatChips();

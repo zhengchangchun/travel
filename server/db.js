@@ -2,6 +2,7 @@ const { DatabaseSync } = require('node:sqlite');
 const fs = require('node:fs');
 const path = require('node:path');
 const { contentHash, setDigest } = require('./poi-hash');
+const { applyPoiOrder } = require('./order');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS trips (
@@ -285,6 +286,10 @@ function createDb(filePath) {
     ),
     setSortOrder: db.prepare(
       `UPDATE pins SET sort_order = ? WHERE poi_id = ? AND trip_id IN (SELECT id FROM trips WHERE city = ?)`
+    ),
+    // 没有 poi_id 的点（geocode 解析出来的，客户端的 key 是 pin:<行号>）只能按行号排
+    setSortOrderByPin: db.prepare(
+      `UPDATE pins SET sort_order = ? WHERE id = ? AND trip_id IN (SELECT id FROM trips WHERE city = ?)`
     ),
     updatePinNote: db.prepare('UPDATE pins SET note = ? WHERE id = ?'),
 
@@ -586,7 +591,11 @@ function createDb(filePath) {
       db.exec('BEGIN');
       try {
         poiIds.forEach((poiId, index) => {
-          stmts.setSortOrder.run(index, poiId, city);
+          const key = String(poiId);
+          // 客户端的点序口径：有 poi_id 给 poi_id，没有的给 pin:<pins.id>（见 web/js/selection.js::mapPin）
+          const synthetic = /^pin:(\d+)$/.exec(key);
+          if (synthetic) stmts.setSortOrderByPin.run(index, Number(synthetic[1]), city);
+          else stmts.setSortOrder.run(index, key, city);
         });
         db.exec('COMMIT');
       } catch (err) {
@@ -873,22 +882,15 @@ function createDb(filePath) {
       });
       return out;
     },
-    buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS) {
+    // 一条路线就是一个有序清单：不再按类别分组（页面上列表也是不分的），
+    // 有明确点序（order）时就按那条顺序排，没有就按库里的 sort_order。
+    buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS, order = null) {
       const trip = stmts.tripByCity.get(city);
-      const pins = stmts.selectionByCity.all(city);
+      const pins = applyPoiOrder(stmts.selectionByCity.all(city), order);
+      void labels; // 兼容老调用点：分组标题已取消，labels 不再参与排版
       const title = (trip && trip.title) || `${city} · 我的行程`;
       const lines = [`# ${title}（${pins.length} 个地点）`];
-      let lastCategory = null;
-      pins.forEach((pin, index) => {
-        if (pin.category !== lastCategory) {
-          const label =
-            (labels && labels[pin.category] && labels[pin.category].label) ||
-            labels[pin.category] ||
-            pin.category;
-          lines.push(`## ${label}`);
-          lastCategory = pin.category;
-        }
-        const meta = [];
+      pins.forEach((pin, index) => {        const meta = [];
         if (pin.rating) meta.push(`★${pin.rating}`);
         if (pin.cost) meta.push(`¥${pin.cost}`);
         const suffix = meta.length ? `（${meta.join(' · ')}）` : '';

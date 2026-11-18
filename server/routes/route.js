@@ -1,4 +1,5 @@
 const MODES = ['walking', 'riding', 'driving', 'transit'];
+const { applyPoiOrder, parseOrderCsv } = require('../order');
 const MODE_LABEL = { walking: '步行', riding: '骑行', driving: '驾车', transit: '公交' };
 const AUTO_MODE = 'auto';
 // 自动（取最快）时的尝试顺序：先试平时最常用的，拿不到的跳过
@@ -154,7 +155,9 @@ module.exports = [
     path: '/api/itinerary/route',
     async handler(ctx) {
       const city = requireCity(ctx, ctx.query.city);
-      const pins = ctx.db.getSelectionByCity(city);
+      // order（可选）= 页面上的点序（默认「按距离」算出来的那份）：逐段规划就按它走，
+      // 否则页面上是距离序、服务端按库里的顺序规划，两边的「第 n 段」会对不上
+      const pins = applyPoiOrder(ctx.db.getSelectionByCity(city), parseOrderCsv(ctx.query.order));
       if (pins.length < 2) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '行程点数不足 2，无法连线');
       }

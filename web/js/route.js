@@ -27,6 +27,7 @@
   let lastRouteKey = null; // 路线身份（城市|方式|点序）：变了才清选中态（地图一动就会 refresh 重画）
   let lastFitKey = null; // 上次让地图自动取景的路线身份
   let reqId = 0;
+  let handlers = {}; // draw() 传进来的回调（列表由 app.js / itinerary.js 画）
 
   function $(id) {
     return document.getElementById(id);
@@ -245,38 +246,45 @@
     return legModePicker(leg) + '<ol class="route-steps">' + parts.join('') + '</ol>';
   }
 
-  function renderLegs() {
-    const ul = $('route-legs');
-    if (!ul) return;
-    ul.innerHTML = '';
-    if (!lastData) return;
-    (lastData.legs || []).forEach((leg) => {
-      const meta = leg.ok
-        ? fmtDistance(leg.distance) + ' / ' + fmtDuration(leg.duration)
-        : '⚠ 无法规划';
-      const li = document.createElement('li');
-      li.className = 'route-leg' + (leg.ok ? '' : ' failed');
-      li.dataset.index = String(leg.index);
-      li.innerHTML =
-        '<button class="route-leg-head">' +
-        '<span class="route-leg-no">' + (leg.index + 1) + '</span>' +
-        legModeBadge(leg) +
-        '<span class="route-leg-path">' + esc(leg.from.name) + ' → ' + esc(leg.to.name) + '</span>' +
-        '<span class="route-leg-meta">' + esc(meta) + '</span>' +
-        '</button>' +
-        '<div class="route-leg-detail">' + detailHtml(leg) + '</div>';
-      li.querySelector('.route-leg-head').onclick = () => selectLeg(leg.index);
-      // 点「换这一段的方式」：只改这一段，其余段照旧
-      Array.prototype.forEach.call(li.querySelectorAll('.leg-mode-btn'), (btn) => {
-        btn.onclick = (e) => {
-          if (e && e.stopPropagation) e.stopPropagation();
-          if (btn.disabled) return;
-          setLegMode(leg.index, btn.dataset.mode);
-        };
-      });
-      ul.appendChild(li);
-    });
-    paintSelection();
+  // 每一段的「到达行」：写在「这一个点」上面，说的是从上一站过来多远/多久/怎么走。
+  // 路线不再单独开一张清单 —— 点与段写在同一个列表里（用户 2026-11-17：路线要放在一起看）。
+  function legLineHtml(leg, opts) {
+    const o = opts || {};
+    if (!leg) {
+      // 第一个点：写「起点」（定了住宿就说从哪儿出发）
+      const base = o.base || null;
+      const text = base ? '起点 · 从「' + esc(base.name || '住宿') + '」出发' : '起点';
+      return (
+        '<div class="route-leg itin-leg origin">' +
+        '<div class="route-leg-head plain"><span class="itin-leg-origin">' + text + '</span></div>' +
+        '</div>'
+      );
+    }
+    const index = Number.isFinite(Number(o.index)) ? Number(o.index) : Number(leg.index) || 0;
+    const ok = !!leg.ok;
+    const parts = [];
+    if (ok) {
+      parts.push(fmtDuration(leg.duration));
+      parts.push(fmtDistance(leg.distance));
+      if (Number.isFinite(Number(o.cum)) && Number(o.cum) > 0) {
+        parts.push('累计 ' + fmtDistance(o.cum));
+      }
+    }
+    const meta = ok ? parts.join(' · ') : '⚠ 这一段没规划出来';
+    return (
+      '<div class="route-leg itin-leg' +
+      (ok ? '' : ' failed') +
+      (o.selected ? ' sel' : '') +
+      (o.open ? ' open' : '') +
+      '" data-index="' + index + '">' +
+      '<button class="route-leg-head" type="button" title="点一下在地图上高亮这一段；展开看这一段的路书与换方式">' +
+      legModeBadge(leg) +
+      '<span class="route-leg-meta">' + esc(meta) + '</span>' +
+      '<span class="itin-leg-chev" aria-hidden="true">›</span>' +
+      '</button>' +
+      '<div class="route-leg-detail">' + detailHtml(leg) + '</div>' +
+      '</div>'
+    );
   }
 
   // 分段选中：同一段再点一下取消（传 null/undefined = 直接取消）
@@ -287,37 +295,9 @@
       const n = Number(index);
       selectedLeg = selectedLeg === n ? null : n;
     }
-    paintSelection();
     if (MapCtl.setRouteSelection) MapCtl.setRouteSelection(selectedLeg);
-    if (selectedLeg !== null) focusLeg(selectedLeg);
-    else closeAllLegs();
-  }
-
-  function paintSelection() {
-    const ul = $('route-legs');
-    if (!ul) return;
-    Array.prototype.forEach.call(ul.querySelectorAll('.route-leg'), (li) => {
-      const on = selectedLeg !== null && Number(li.dataset.index) === selectedLeg;
-      li.classList.toggle('sel', on);
-    });
-  }
-
-  function closeAllLegs() {
-    const ul = $('route-legs');
-    if (!ul) return;
-    Array.prototype.forEach.call(ul.querySelectorAll('.route-leg.open'), (x) => x.classList.remove('open'));
-  }
-
-  function focusLeg(index) {
-    const ul = $('route-legs');
-    if (!ul) return;
-    const li = ul.querySelector('.route-leg[data-index="' + index + '"]');
-    if (!li) return;
-    ul.querySelectorAll('.route-leg.open').forEach((x) => {
-      if (x !== li) x.classList.remove('open');
-    });
-    li.classList.add('open');
-    if (li.scrollIntoView) li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // 高亮/展开落在行程列表那一行上（原来是 #route-legs 自己那套）
+    if (handlers.onSelectLeg) handlers.onSelectLeg(selectedLeg);
   }
 
   function routeKey(city, pins) {
@@ -330,9 +310,16 @@
     ].join('|');
   }
 
-  async function draw(city, pins) {
+  // 页面上的点序（服务端口径：poi_id，没 poi_id 的用 pin:<行号>）——
+  // 「按距离」时页面顺序与库里那份不一样，不带上它，服务端会按库里顺序逐段规划，两边的「第 n 段」就对不上
+  function orderKeys(pins) {
+    return (pins || []).map((p) => (p && p.id != null ? String(p.id) : '')).filter(Boolean);
+  }
+
+  async function draw(city, pins, opts) {
     if (city) lastCity = city;
     if (pins) lastPins = pins || [];
+    if (opts) handlers = opts;
     const key = routeKey(lastCity, lastPins);
     const sameRoute = key === lastRouteKey;
     if (!sameRoute) {
@@ -345,7 +332,7 @@
       MapCtl.clearRoute();
       lastData = null;
       renderTotals();
-      renderLegs();
+      notifyLegs();
       renderModesNote();
       setProgress(lastPins.length ? '至少需要 2 个地点才能连线' : '');
       return;
@@ -354,6 +341,7 @@
     // 同一条路线：不重请求、不重画（地图一动就会 refresh ⇒ 否则路线会闪一下、还白花配额）
     if (sameRoute && lastData) {
       if (MapCtl.setRouteSelection) MapCtl.setRouteSelection(selectedLeg);
+      notifyLegs();
       return;
     }
 
@@ -378,12 +366,12 @@
 
     try {
       const data = perLeg
-        ? await API.itineraryRoute(lastCity, { modes: perLeg })
-        : await API.itineraryRoute(lastCity, mode);
+        ? await API.itineraryRoute(lastCity, { modes: perLeg, order: orderKeys(lastPins) })
+        : await API.itineraryRoute(lastCity, { mode, order: orderKeys(lastPins) });
       if (my !== reqId) return;
       lastData = data;
       renderTotals();
-      renderLegs();
+      notifyLegs();
       renderModesNote();
       MapCtl.drawRoute(data.legs, mode, {
         onLegClick: (leg) => selectLeg(leg.index),
@@ -400,7 +388,7 @@
       if (my !== reqId) return;
       lastData = null;
       renderTotals();
-      renderLegs();
+      notifyLegs();
       renderModesNote();
       setProgress('路线规划失败：' + human(err));
       MapCtl.clearRoute();
@@ -409,11 +397,16 @@
     }
   }
 
+  // 段数据一变就交给外面重画（列表由 itinerary.js 画，不再单独渲染一张段清单）
+  function notifyLegs() {
+    if (handlers.onLegs) handlers.onLegs((lastData && lastData.legs) || []);
+  }
+
   function clear() {
     lastData = null;
     perLeg = null;
     MapCtl.clearRoute();
-    renderLegs();
+    notifyLegs();
     renderModesNote();
     setProgress('');
   }
@@ -422,14 +415,19 @@
     draw,
     clear,
     renderChips,
-    focusLeg,
     selectLeg,
+    legLineHtml,
+    detailHtml,
+    getLegs: () => (lastData && lastData.legs) || [],
     getSelectedLeg: () => selectedLeg,
     getMode: () => mode,
     getPerLeg: () => perLeg,
     setLegMode: (index, key) => setLegMode(index, key),
     modeSummary,
     modeMeta,
+    fmtDistance,
+    fmtDuration,
+    fmtShort,
     AUTO_MODE,
     MODES,
     DEFAULT_MODE,

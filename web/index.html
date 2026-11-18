@@ -121,13 +121,19 @@
                      title="整条行程的备注（回车保存，会写进分享包）" aria-label="行程备注"
                      placeholder="比如：周三下午到，先吃饭再逛" />
             </div>
+            <!-- 顺序：默认按地点之间的距离排（最近邻），也可以切回我自己排的顺序 -->
+            <div class="order-modes" id="order-modes" role="group" aria-label="点的排序方式">
+              <span class="order-modes-label">顺序</span>
+              <span id="order-chips" class="order-chips"></span>
+            </div>
+            <span id="order-note" class="order-note"></span>
             <div class="route-modes" id="route-modes"></div>
             <div id="route-modes-note" class="route-modes-note hidden"></div>
             <div class="route-summary">
               <div id="route-totals" class="route-totals"></div>
               <div id="route-progress" class="route-progress"></div>
-              <ul id="route-legs" class="route-legs"></ul>
             </div>
+            <!-- 路线就是这一条清单：每个点自带「从上一站过来多远/多久」（不再另开一张段清单） -->
             <ol id="itinerary-list" class="poi-list itinerary"></ol>
           </div>
         </section>

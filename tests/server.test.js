@@ -396,7 +396,7 @@ test('GET /api/selection/export 返回 Markdown（P21）', async () => {
     assert.match(res.headers.get('content-type'), /text\/markdown/);
     const text = await res.text();
     assert.match(text, /# 杭州 · 我的行程/);
-    assert.match(text, /## 美食/);
+    assert.ok(!/^## /m.test(text), '不再按类别分组：一条路线就是一个清单');
     assert.match(text, /新业路228号/);
   } finally {
     await done();

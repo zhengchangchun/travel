@@ -245,7 +245,7 @@ test('备注位（notebox.js）：两处共用，自由输入、回车存、Esc 
 test('挑点阶段（我的选择）也能写备注：同一份数据，同一套入口', () => {
   assert.match(UI, /window\.TravelNoteBox\.html\(pin\.note\)/, '我的选择每行也要有备注位');
   assert.match(UI, /window\.TravelNoteBox\.wire\(li,/, '我的选择也能就地编辑');
-  const sel = APP.match(/UI\.renderSelectionPanel\(\$\('selection-list'\), Selection\.list\(\), \{[\s\S]*?\n    \}\);/);
+  const sel = APP.match(/UI\.renderSelectionPanel\(\$\('selection-list'\), panelPins, \{[\s\S]*?\n    \}\);/);
   assert.ok(sel, '缺 renderSelectionPanel 调用');
   assert.match(sel[0], /onNote: onEditPinNote/, '挑点列表要接上备注');
   assert.match(sel[0], /onCancel: renderSelection/, '收尾要重画列表');
@@ -268,7 +268,10 @@ test('app.js：备注 / 拖拽 / 行程备注三条线都接上了', () => {
   assert.ok(reorder, '缺 onReorderItinerary');
   assert.match(reorder[0], /ids\.splice\(from, 1\)\[0\]/, '要把源行摘出来');
   assert.match(reorder[0], /ids\.splice\(to, 0, moved\)/, '要插到目标行的位置');
-  assert.match(reorder[0], /Selection\.reorder\(ids\)/, '要一次落库');
+  assert.match(reorder[0], /applyManualOrder\(ids\)/, '落库走 applyManualOrder（拖一下就切成「手动顺序」）');
+  const apply = APP.match(/async function applyManualOrder\(ids\)[\s\S]*?\n  \}/);
+  assert.ok(apply, '缺 applyManualOrder');
+  assert.match(apply[0], /Selection\.reorder\(ids\)/, '要一次落库');
   const tripNote = APP.match(/async function onTripNoteChange\(\)[\s\S]*?\n  \}/);
   assert.ok(tripNote, '缺 onTripNoteChange');
   assert.match(tripNote[0], /API\.updateTrip\(trip\.id, \{ note: text \}\)/);
