@@ -217,11 +217,11 @@
       const li = document.createElement('li');
       li.className = 'poi-item sel-item';
       const leg = i > 0 ? legs[i - 1] : null;
-      const legHtml =
+      // 与行程清单同一个读法：「从上一站过来」写在点上面（别再写在行尾，两张清单看着才一致）
+      li.innerHTML =
         '<div class="sel-leg' + (leg ? '' : ' start') + '">' +
         esc(i === 0 ? '起点' : QR ? QR.legText(leg) : '') +
-        '</div>';
-      li.innerHTML =
+        '</div>' +
         '<div class="poi-head">' +
         '<span class="sel-order">' + (i + 1) + '</span>' +
         '<span class="dot" style="background:' + esc(color) + '"></span>' +
@@ -230,7 +230,6 @@
         '</div>' +
         '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
         window.TravelNoteBox.html(pin.note) +
-        legHtml +
         '<div class="sel-actions">' +
         '<button class="up" title="往前挪一位"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
         '<button class="down" title="往后挪一位"' +

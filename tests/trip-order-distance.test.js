@@ -211,12 +211,14 @@ test('两张清单、连线、分享、导出用的是同一份顺序', () => {
   const itin = APP.match(/function renderItinerary\(\)[\s\S]*?\n  \}/);
   assert.ok(itin, '缺 renderItinerary');
   assert.match(itin[0], /const list = orderedPins\(\)/, '行程视图按这份顺序');
-  assert.match(itin[0], /onLegs: onRouteLegs/, '段数据回填后重画');
+  assert.match(itin[0], /syncRoute\(\)/, '段数据回填后重画（一条路线只规划一次）');
   assert.match(APP, /const panelPins = orderedPins\(\)/, '挑点清单同一份顺序');
   assert.match(APP, /order: orderKeys\(orderedPins\(\)\)/, '分享带上这份顺序');
   assert.match(APP, /API\.exportSelection\(state\.city, orderKeys\(orderedPins\(\)\)\)/, '复制/下载带上这份顺序');
-  assert.match(APP, /API\.itineraryRoute\(state\.city, \{ mode: state\.liveMode, order: orderKeys\(pins\) \}\)/, '实时耗时也按这份顺序');
   assert.match(API, /order: o\.order && o\.order\.length \? o\.order\.join\(','\) : undefined/, 'api 层要能带 order');
+  // 实时耗时不再自己规划一遍：它读的就是 route.js 那条线（点序由 route.js 随请求带给服务端）
+  assert.ok(!/API\.itineraryRoute/.test(APP), 'app.js 不得再各自发一遍逐段规划');
+  assert.match(ROUTE, /order: orderKeys\(lastPins\)/, '点序由 route.js 带给服务端');
   assert.match(APP, /function orderKeys\(pins\)/, '要有统一的 key 口径');
 });
 
@@ -246,9 +248,19 @@ test('段数据回来才画：变了才重画（否则拉着一张没距离的�
   assert.ok(hook, '缺 onRouteLegs');
   assert.match(hook[0], /state\.routeLegSig/, '要有签名去重');
   assert.match(hook[0], /state\.routeLegs = next/, '存下来给清单用');
-  assert.match(hook[0], /renderItinerary\(\)/, '变了就重画');
+  assert.match(hook[0], /renderItinerary\(\)/, '行程视图变了就重画');
+  assert.match(hook[0], /else renderSelection\(\)/, '挑点视图也要把估算换成实测');
   assert.match(ROUTE, /function notifyLegs\(\)[\s\S]*?\n  \}/, 'route.js 要主动通知');
   assert.match(ROUTE, /handlers\.onLegs\(\(lastData && lastData\.legs\) \|\| \[\]\)/, '把段数据交出去');
+});
+
+test('同一条路线只规划一次：在飞的不重复打，换了身份就重规划', () => {
+  const draw = ROUTE.match(/async function draw\(city, pins, opts\)[\s\S]*?\n  \}/);
+  assert.ok(draw, '缺 draw');
+  assert.match(draw[0], /if \(key === pendingKey\) return/, '同一条路线还在规划中时不得再发一遍（挑点视图 refresh 很频繁）');
+  assert.match(draw[0], /pendingKey = key/, '记下在飞的那条');
+  assert.match(draw[0], /if \(pendingKey === key\) pendingKey = null/, '收工要清掉');
+  assert.match(ROUTE, /const fit = handlers\.fit !== false && key !== lastFitKey/, '取景要听调用方（挑点视图不抢镜头）');
 });
 
 test('选中某一段：行高亮 + 展开路书，地图那一段同时高亮', () => {

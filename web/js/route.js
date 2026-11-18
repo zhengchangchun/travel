@@ -28,6 +28,8 @@
   let lastFitKey = null; // 上次让地图自动取景的路线身份
   let reqId = 0;
   let handlers = {}; // draw() 传进来的回调（列表由 app.js / itinerary.js 画）
+  let lastDataKey = null; // lastData 对应的路线身份（对不上就不能当"眼前这条线"用）
+  let pendingKey = null; // 正在规划的那条路线（同一条别再打一遍高德：挑点视图 refresh 很频繁）
 
   function $(id) {
     return document.getElementById(id);
@@ -331,6 +333,7 @@
     if (!lastCity || lastPins.length < 2) {
       MapCtl.clearRoute();
       lastData = null;
+      lastDataKey = null;
       renderTotals();
       notifyLegs();
       renderModesNote();
@@ -347,6 +350,8 @@
 
     MapCtl.clearRoute();
     const n = lastPins.length - 1;
+    if (key === pendingKey) return; // 同一条还在规划中：别重复打高德
+    pendingKey = key;
     const my = (reqId += 1);
     setProgress(
       perLeg
@@ -370,15 +375,17 @@
         : await API.itineraryRoute(lastCity, { mode, order: orderKeys(lastPins) });
       if (my !== reqId) return;
       lastData = data;
+      lastDataKey = key;
       renderTotals();
       notifyLegs();
       renderModesNote();
+      // 挑点视图里只想看这条线，别把用户的镜头拽走（fit=false 时 lastFitKey 不动，进行程视图还会自动取景）
+      const fit = handlers.fit !== false && key !== lastFitKey;
       MapCtl.drawRoute(data.legs, mode, {
         onLegClick: (leg) => selectLeg(leg.index),
-        // 同一条路线只是重画（地图动一下就会 refresh 重画）⇒ 别再 setFitView 抢镜头
-        fit: key !== lastFitKey,
+        fit,
       });
-      lastFitKey = key;
+      if (fit) lastFitKey = key;
       // 重画后把选中态补回去（clearRoute 会把地图那边清掉）
       if (MapCtl.setRouteSelection) MapCtl.setRouteSelection(selectedLeg);
       const okCount = data.legs.filter((l) => l.ok).length;
@@ -387,12 +394,14 @@
     } catch (err) {
       if (my !== reqId) return;
       lastData = null;
+      lastDataKey = null;
       renderTotals();
       notifyLegs();
       renderModesNote();
       setProgress('路线规划失败：' + human(err));
       MapCtl.clearRoute();
     } finally {
+      if (pendingKey === key) pendingKey = null; // 收工：同一条路线下次真的变了才重规划
       clearInterval(timer);
     }
   }
@@ -402,8 +411,20 @@
     if (handlers.onLegs) handlers.onLegs((lastData && lastData.legs) || []);
   }
 
+  // 换全局方式（挑点清单里的芯片与行程视图那排共用这一份状态）
+  function setMode(key) {
+    if (!key) return;
+    if (!perLeg && key === mode) return;
+    perLeg = null;
+    mode = key;
+    renderChips();
+    draw(lastCity, lastPins);
+  }
+
   function clear() {
     lastData = null;
+    lastDataKey = null;
+    pendingKey = null;
     perLeg = null;
     MapCtl.clearRoute();
     notifyLegs();
@@ -416,9 +437,12 @@
     clear,
     renderChips,
     selectLeg,
+    setMode,
     legLineHtml,
     detailHtml,
-    getLegs: () => (lastData && lastData.legs) || [],
+    // 只有"眼前这条路线"的段数据才算（换了城市/方式/点序但还没拿到新结果时给空，别拿旧数字充数）
+    getLegs: () => (lastData && lastDataKey === lastRouteKey ? lastData.legs : []) || [],
+    isPlanning: () => lastPins.length > 1 && !(lastData && lastDataKey === lastRouteKey),
     getSelectedLeg: () => selectedLeg,
     getMode: () => mode,
     getPerLeg: () => perLeg,

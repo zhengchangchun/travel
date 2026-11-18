@@ -20,10 +20,10 @@ test('#selection-list 不再卡内层高度/内层滚动条（右栏自己滚）
 });
 
 test('行程视图里不再重复一套出行方式（quick-legs 只在挑点阶段出现）', () => {
-  const fn = APP.match(/function renderQuickLegs\(\)[\s\S]*?\n  \}/);
+  const fn = APP.match(/function renderQuickLegs\(pins, pick\)[\s\S]*?\n  \}/);
   assert.ok(fn, '缺 renderQuickLegs');
   assert.match(fn[0], /state\.view !== 'itinerary'/, '行程视图要藏掉实时耗时条');
-  assert.match(fn[0], /pins\.length >= 2/, '两个点以上才显示');
+  assert.match(fn[0], /list\.length >= 2/, '两个点以上才显示');
   // 行程视图自己那套选择器还在（route.js 往 #route-modes 里画芯片）
   assert.match(HTML, /id="route-modes"/, '行程视图得有 route-modes');
   assert.match(ROUTE, /\$\('route-modes'\)/, 'route.js 要把出行方式芯片画进 #route-modes');

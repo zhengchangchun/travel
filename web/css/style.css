@@ -266,8 +266,8 @@ button.danger:hover { background: #ad2102; }
   background: rgba(109, 139, 255, .18); border: 1px solid rgba(109, 139, 255, .45);
   color: var(--accent); font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
-.sel-leg { margin-top: 4px; font-size: 11.5px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
-.sel-leg.start { color: var(--ink-3); }
+.sel-leg { margin: 0 0 4px; padding-bottom: 3px; border-bottom: 1px dashed var(--line); font-size: 11.5px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
+.sel-leg.start { color: var(--ink-3); border-bottom-color: transparent; }
 .sel-item .sel-actions .up, .sel-item .sel-actions .down { padding: 3px 9px; font-size: 12px; line-height: 1.3; min-width: 28px; }
 .chip.toggle.active {
   border-color: #f59e0b;

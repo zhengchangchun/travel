@@ -30,14 +30,15 @@ test('自动成线流程：planStops 排序 → Selection.reorder 落库 → 切
   assert.match(APP, /state\.autoReturn = !!autoReturn\.checked/, '勾选未生效');
 });
 
-test('闭环回到住宿：行程视图画线时把住宿拼在最后一段（行程点序不重复）', () => {
-  const m = APP.match(/function renderItinerary[\s\S]*?\n  \}/);
-  assert.ok(m, '缺 renderItinerary');
+test('闭环回到住宿：画线时把住宿拼在最后一段（行程点序不重复）', () => {
+  const m = APP.match(/function syncRoute\(\)[\s\S]*?\n  \}/);
+  assert.ok(m, '缺 syncRoute（挑点/行程两个视图共用的一条路线）');
   assert.match(
     m[0],
-    /state\.autoReturn && start && list\.length \? list\.concat\(\[start\]\) : list/,
+    /state\.autoReturn && start && pins\.length \? pins\.concat\(\[start\]\) : pins/,
     '未按开关拼闭环段'
   );
+  assert.match(APP, /function renderItinerary[\s\S]*?syncRoute\(\)/, '行程视图要走同一条路线');
   assert.match(APP, /function baseForPlan/, '缺 baseForPlan');
   assert.match(APP, /b\.city !== state\.city\) return null/, '跨城市的锚点不该当起点');
 });

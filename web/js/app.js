@@ -69,11 +69,6 @@
     markerInfo: null, // 上一次落旗回执（{shown,dropped}）：超上限时要在结果条里说明
     outline: null, // 当前城市的行政轮廓（P21）：整城视野时只画边框不落点
     overviewPicks: false, // 列表里装的是「全城高分精选」（轮廓屏）还是本视野的点（P22）
-    liveMode: 'driving', // 实时耗时用哪种出行方式
-    liveLegs: [], // 相邻两点的耗时（[i] = 第 i+1 → 第 i+2 段）
-    liveEstimate: false, // 有没有路段是按直线估的（界面带 ≈）
-    liveNote: '', // 估算/失败的一句话说明
-    liveKey: '', // 上次算过的签名（城市|方式|点序列），一样就不重算
     orderMode: 'distance', // 点的默认顺序：按地点之间的距离算（最近邻）
     routeLegs: [], // 每段距离/耗时/方式（route.js 算完回填，写在「到达这一站」那一行）
     routeLegSig: '', // 上面那份数据的签名（没变就不重画，防来回重算）
@@ -90,9 +85,8 @@
   const Rating = window.TravelRating;
   let ratingTimer = null; // 拖动时先看徒标，停下来再重算列表
 
-  // 实时耗时（P11）：选中点的顺序一变就重算，不用先点「规划行程」
+  // 实时耗时行、顺序行都在 renderSelection 里重画（与行程视图共用同一条路线）
   const QuickRoute = window.TravelQuickRoute;
-  let liveTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -777,6 +771,7 @@
     }
     // 两张清单用同一份顺序（按距离 or 手动）：否则左边一个顺序、行程里又另一个顺序
     const panelPins = orderedPins();
+    const pick = pickLegsFor(panelPins);
     UI.renderSelectionPanel($('selection-list'), panelPins, {
       onLocate(pin) {
         flyTo(pin.lng, pin.lat, 15);
@@ -786,105 +781,105 @@
       onMove: (index, delta) => onMoveDisplayed(panelPins, index, delta),
       onNote: onEditPinNote,
       onCancel: renderSelection,
-      legs: state.liveLegs,
+      legs: pick.legs,
     });
     renderOrderChips();
-    renderQuickLegs();
-    scheduleLiveLegs();
+    renderQuickLegs(panelPins, pick);
+    // 挑点阶段就把这条线画在地图上（用户 2026-11-18：看不到点和点之间的路线）
+    syncRoute();
   }
 
-  // ---------- 实时耗时：选中/排序一变就重算（不用先点「规划行程」） ----------
-  function renderQuickLegs() {
+  function modeLabelOf(key) {
+    if (key === 'auto') return Route && Route.AUTO_MODE ? Route.AUTO_MODE.label : '最快';
+    return Route ? Route.modeMeta(key).label : QuickRoute.modeMeta(key).label;
+  }
+
+  // 换出行方式：挑点清单里的芯片与行程视图那排是同一份状态（Route 自己那排也一起重画）
+  function setRouteMode(key) {
+    if (!Route) return;
+    Route.setMode(key);
+    renderSelection();
+    if (state.view === 'itinerary') renderItinerary();
+  }
+
+  // ---------- 实时耗时：与行程视图共用同一条路线（不再各自规划一遍） ----------
+  function pickLegsFor(pins) {
+    const list = Array.isArray(pins) ? pins : [];
+    const real = Route ? Route.getLegs() : [];
+    if (real.length && real.length === Math.max(0, list.length - 1)) {
+      return {
+        legs: real.map((l) => ({
+          ok: !!l.ok,
+          estimate: false,
+          distance: l.distance,
+          duration: l.duration,
+        })),
+        estimate: false,
+      };
+    }
+    if (list.length < 2) return { legs: [], estimate: false };
+    // 真路线还没回来：先用直线估一版顶着（带 ≈），不发第二遍请求（高德逐段规划是要花配额的）
+    const mode = Route ? Route.getMode() : 'driving';
+    return { legs: QuickRoute.estimateLegs(list, mode), estimate: true };
+  }
+
+  function renderQuickLegs(pins, pick) {
     const box = $('quick-legs');
     if (!box) return;
-    const pins = Selection.list();
+    const list = Array.isArray(pins) ? pins : orderedPins();
+    const data = pick || pickLegsFor(list);
     // 行程视图里已经有自己那套「出行方式 + 总里程/耗时」了（route-modes + route-summary），
     // 这里再摆一遍就是上下两个一样的选择器（2026-11-17 排版）
-    const show = pins.length >= 2 && state.view !== 'itinerary';
+    const show = list.length >= 2 && state.view !== 'itinerary';
     box.classList.toggle('hidden', !show);
+    const modeKey = Route ? Route.getMode() : 'driving';
     const sum = $('ql-summary');
     if (sum) {
       sum.textContent = show
-        ? QuickRoute.summarize(state.liveLegs, state.liveMode, {
-            estimate: state.liveEstimate,
-            note: state.liveNote,
+        ? QuickRoute.summarize(data.legs, modeKey, {
+            estimate: data.estimate,
+            label: modeLabelOf(modeKey),
           })
         : '';
-      sum.title = state.liveNote || '选中点的先后顺序一变，这里就重算相邻两地要多久';
+      sum.title = show
+        ? '选中点的先后顺序一变，这里就跟着重算；地图上那条线就是这条路线'
+        : '';
     }
     const modes = $('ql-modes');
     if (!modes) return;
     modes.innerHTML = '';
-    QuickRoute.MODES.forEach((m) => {
+    const chips = Route ? [Route.AUTO_MODE].concat(Route.MODES) : QuickRoute.MODES;
+    chips.forEach((m) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'chip mini' + (m.key === state.liveMode ? ' active' : '');
+      btn.className = 'chip mini' + (m.key === modeKey ? ' active' : '');
       btn.style.setProperty('--mode-color', m.color || 'var(--accent)');
-      btn.title = '按' + m.label + '算耗时';
+      btn.title = m.key === 'auto' ? '最快：每段各自挑用时最短的方式' : '按' + m.label + '算';
       btn.innerHTML =
         (window.TravelModeIcons ? window.TravelModeIcons.svg(m.key, 13) : '') +
         '<span class="route-chip-label">' + m.label + '</span>';
       btn.onclick = (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
-        if (m.key === state.liveMode) return;
-        state.liveMode = m.key;
-        state.liveKey = '';
-        scheduleLiveLegs(0);
+        setRouteMode(m.key);
       };
       modes.appendChild(btn);
     });
   }
 
-  function scheduleLiveLegs(delay) {
-    if (liveTimer) clearTimeout(liveTimer);
-    liveTimer = setTimeout(
-      () => {
-        liveTimer = null;
-        computeLiveLegs();
-      },
-      delay == null ? 700 : delay
-    );
-  }
-
-  // 先用直线估一版立刻上图，再拿真实路线纠正（失败就留着估算值，标 ≈）
-  async function computeLiveLegs() {
+  // ---------- 一条路线只规划一次 ----------
+  // 挑点视图与行程视图都调它（地图上那条线、两张清单的逐段数字、分享包全用同一份数据）；
+  // 路线身份没变时 Route.draw 直接返回，不重请求（高德逐段规划要花配额）
+  function syncRoute() {
+    if (!Route) return;
     const pins = orderedPins();
-    const key = [state.city || '', state.liveMode, state.orderMode, pins.map((p) => p.id).join(',')].join('|');
-    if (key === state.liveKey) return;
-    state.liveKey = key;
-    if (pins.length < 2) {
-      state.liveLegs = [];
-      state.liveEstimate = false;
-      state.liveNote = '';
-      renderSelection();
-      return;
-    }
-    state.liveLegs = QuickRoute.estimateLegs(pins, state.liveMode);
-    state.liveEstimate = true;
-    state.liveNote = '';
-    renderSelection();
-    try {
-      const data = await API.itineraryRoute(state.city, { mode: state.liveMode, order: orderKeys(pins) });
-      if (state.liveKey !== key) return; // 等结果期间又变了 ⇒ 这次作废
-      const legs = Array.isArray(data && data.legs) ? data.legs : [];
-      if (!legs.length) return;
-      const est = QuickRoute.estimateLegs(pins, state.liveMode);
-      state.liveLegs = legs.map((leg, i) => {
-        if (leg && leg.ok) {
-          return { ok: true, estimate: false, distance: leg.distance, duration: leg.duration };
-        }
-        const e = est[i] || { distance: 0, duration: 0 };
-        return { ok: false, estimate: true, distance: e.distance, duration: e.duration };
-      });
-      state.liveEstimate = state.liveLegs.some((l) => l.estimate);
-      const bad = state.liveLegs.filter((l) => !l.ok).length;
-      state.liveNote = bad ? bad + ' 段没拿到真实路线，按直线估算' : '';
-    } catch (err) {
-      if (state.liveKey !== key) return;
-      state.liveEstimate = true;
-      state.liveNote = '真实路线拿不到（' + human(err) + '）· 先按直线估算';
-    }
-    renderSelection();
+    const start = baseForPlan();
+    const stops = state.autoReturn && start && pins.length ? pins.concat([start]) : pins;
+    Route.draw(state.city, stops, {
+      onLegs: onRouteLegs,
+      onSelectLeg: paintLegSel,
+      // 只在行程视图里让镜头去追这条线：挑点时别把用户的视野拽走
+      fit: state.view === 'itinerary',
+    });
   }
 
   // ---------- 顺序：默认「按地点之间的距离」----------
@@ -991,7 +986,9 @@
     if (sig === state.routeLegSig) return;
     state.routeLegSig = sig;
     state.routeLegs = next;
+    // 段数据一到，两张清单都要把「直线估算」换成实测值
     if (state.view === 'itinerary') renderItinerary();
+    else renderSelection();
   }
 
   // 选中某一段：地图高亮由 route.js 管，列表这边只刷新行上的选中/展开态
@@ -1059,13 +1056,7 @@
     });
     syncTripNoteInput();
     renderOrderChips();
-    if (!Route) return;
-    // 「回到住宿」：把锚点当成最后一段接上（锚点已单独高亮，不写进行程点序）
-    const start = baseForPlan();
-    Route.draw(state.city, state.autoReturn && start && list.length ? list.concat([start]) : list, {
-      onLegs: onRouteLegs,
-      onSelectLeg: paintLegSel,
-    });
+    syncRoute();
   }
 
   // 行程备注输入框：不在编辑中就把服务端的值刷进去（不抢焦点、不覆盖正在打的字）
@@ -1204,7 +1195,7 @@
     if (inItinerary) {
       reloadSelection().then(renderItinerary);
     } else {
-      if (Route) Route.clear();
+      // 线不撤：挑点阶段照样要看得到「点和点之间的路线」（用户 2026-11-18）
       renderSelection();
     }
   }

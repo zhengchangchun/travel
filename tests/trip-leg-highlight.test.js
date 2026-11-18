@@ -62,7 +62,7 @@ test('列表侧：点分段行 = 选中（同一段再点取消），地图与�
 test('地图一动就会 refresh 重画 ⇒ 同一条路线不能重请求、不能清掉选中态', () => {
   assert.match(ROUTE, /const sameRoute = key === lastRouteKey/, '要按路线身份判断是否同一条');
   assert.match(ROUTE, /if \(sameRoute && lastData\) \{/, '同一条路线直接返回，不要重画/重请求');
-  assert.match(ROUTE, /fit: key !== lastFitKey/, '只有换了路线才 setFitView');
+  assert.match(ROUTE, /const fit = handlers\.fit !== false && key !== lastFitKey/, '只有换了路线（且这个视图允许取景）才 setFitView');
 });
 
 // ---------- ② 分享页：分段 ----------

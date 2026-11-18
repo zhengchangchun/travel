@@ -61,7 +61,7 @@
     return (leg.estimate ? '≈ ' : '') + mins + ' 分 · ' + fmtDistance(leg.distance);
   }
 
-  // 汇总文案：「驾车 ≈ 38 分 · 15.4 km · 5 段」
+  // 汇总文案：「驾车 ≈ 38 分 · 15.4 km · 5 段」（o.label 可覆盖方式名，如「最快」）
   function summarize(legs, mode, opts) {
     const list = Array.isArray(legs) ? legs : [];
     const o = opts || {};
@@ -78,7 +78,7 @@
       if (!leg.duration) unknown += 1;
       if (leg.estimate) estimated = true;
     });
-    const bits = [meta.label];
+    const bits = [o.label || meta.label];
     if (estimated || o.estimate) bits.push('≈');
     bits.push(minutes(dur) ? minutes(dur) + ' 分' : '耗时未知');
     if (dist > 0) bits.push(fmtDistance(dist));
