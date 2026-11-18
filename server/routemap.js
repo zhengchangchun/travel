@@ -250,7 +250,8 @@ function staticMapParams({ stops, points, groups, size = '760*430', scale = 1, v
 }
 
 // 逐段规划（与 /api/itinerary/route 同一套口径：串行 + 间隔 + 缓存），拼成一条完整折线
-async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city }) {
+// perLegModes（可选）：每一段用自己的方式（页面上「最快 / 按我的安排」那条线就是这个）
+async function routeForStops({ amap, cache, intervalMs = 300, mode, perLegModes, stops, city }) {
   const list = (stops || []).filter((s) => Number.isFinite(Number(s.lng)) && Number.isFinite(Number(s.lat)));
   if (list.length < 2) throw new Error('点数不足 2，无法规划路线');
   const legs = [];
@@ -261,17 +262,18 @@ async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city 
 
   for (let i = 0; i < list.length - 1; i += 1) {
     if (i > 0 && intervalMs > 0) await sleep(intervalMs);
+    const legMode = perLegModes && perLegModes[i] ? perLegModes[i] : mode;
     const a = list[i];
     const b = list[i + 1];
     const origin = `${a.lng},${a.lat}`;
     const destination = `${b.lng},${b.lat}`;
-    const key = `route:${mode}:${origin}:${destination}`;
+    const key = `route:${legMode}:${origin}:${destination}`;
     let data = cache && cache.get ? cache.get(key) : undefined;
     try {
       if (data === undefined) {
-        if (mode === 'walking') data = await amap.planWalking(origin, destination);
-        else if (mode === 'riding') data = await amap.planRiding(origin, destination);
-        else if (mode === 'transit') {
+        if (legMode === 'walking') data = await amap.planWalking(origin, destination);
+        else if (legMode === 'riding') data = await amap.planRiding(origin, destination);
+        else if (legMode === 'transit') {
           // 公交必须给城市名（高德的口径），没给就没法规划
           if (!city) throw new Error('公交路线需要城市名');
           data = await amap.planTransit(origin, destination, city);
@@ -293,6 +295,8 @@ async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city 
         distance: Number(data.distance) || 0,
         duration: Number(data.duration) || 0,
         color: legColor(i),
+        mode: legMode,
+        modeLabel: modeLabel(legMode),
         polyline: poly,
         ok: true,
       });
@@ -306,6 +310,8 @@ async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city 
         distance: 0,
         duration: 0,
         color: legColor(i),
+        mode: legMode,
+        modeLabel: modeLabel(legMode),
         polyline: [],
         ok: false,
         reason,
@@ -315,7 +321,18 @@ async function routeForStops({ amap, cache, intervalMs = 300, mode, stops, city 
 
   if (!legs.some((l) => l.ok)) throw new Error('所有路段均规划失败：' + (failed[0] ? failed[0].reason : '未知原因'));
   const groups = groupLegs(legs);
-  return { mode, modeLabel: modeLabel(mode), distance, duration, legs, groups, failed, points };
+  // 每段都用同一种方式时，标题就用那个方式；混着来就是「按我的安排」
+  const oneMode = new Set(legs.map((l) => l.mode)).size === 1;
+  return {
+    mode,
+    modeLabel: oneMode ? modeLabel(legs[0].mode) : '按我的安排',
+    distance,
+    duration,
+    legs,
+    groups,
+    failed,
+    points,
+  };
 }
 
 // 路线 → 静态地图 PNG（Buffer）。失败就往抛（由调用方决定降级）
@@ -361,47 +378,76 @@ async function buildShareMaps({
         withMarkers: false,
         sleepMs: first ? 0 : mapGapMs,
       });
-      maps[mode] = {
-        mode,
-        modeLabel: modeLabel(mode),
-        distance: route.distance,
-        duration: route.duration,
-        legs: route.legs.map((l) => ({
-          index: l.index,
-          from: l.from,
-          to: l.to,
-          fromSeq: l.index + 1,
-          toSeq: l.index + 2,
-          distance: l.distance,
-          duration: l.duration,
-          color: l.color,
-          ok: l.ok,
-          reason: l.reason,
-        })),
-        groupCount: (route.groups || []).length,
-        view,
-        // 图上每个点的百分比坐标 ⇒ 分享页能把序号做成可点热区（点一下看名字 / 跳高德）
-        pins: stops.map((s, i) => {
-          const pct = pointPercent(s.lng, s.lat, view);
-          return {
-            seq: i + 1,
-            name: s.name || '地点' + (i + 1),
-            url: s.url || '',
-            left: pct ? Number(pct.left.toFixed(2)) : null,
-            top: pct ? Number(pct.top.toFixed(2)) : null,
-          };
-        }),
-        failedLegs: route.failed,
-        points: route.points.length,
-        image: `data:${map.contentType};base64,${map.buffer.toString('base64')}`,
-        imageBytes: map.buffer.length,
-      };
+      maps[mode] = routeMapEntry({ route, stops, view, map });
     } catch (err) {
       errors[mode] = (err && err.message) || '路线图生成失败';
     }
     first = false;
   }
   return { maps, errors };
+}
+
+// 一张路线图的载荷（每个方式一屏都是这个形状；plan 也用同一形状）
+function routeMapEntry({ route, stops, view, map }) {
+  return {
+    mode: route.mode || undefined,
+    modeLabel: route.modeLabel,
+    distance: route.distance,
+    duration: route.duration,
+    legs: route.legs.map((l) => ({
+      index: l.index,
+      from: l.from,
+      to: l.to,
+      fromSeq: l.index + 1,
+      toSeq: l.index + 2,
+      distance: l.distance,
+      duration: l.duration,
+      color: l.color,
+      mode: l.mode,
+      modeLabel: l.modeLabel,
+      ok: l.ok,
+      reason: l.reason,
+    })),
+    groupCount: (route.groups || []).length,
+    view,
+    // 图上每个点的百分比坐标 ⇒ 分享页能把序号做成可点热区（点一下看名字 / 跳高德）
+    pins: (stops || []).map((s, i) => {
+      const pct = pointPercent(s.lng, s.lat, view);
+      return {
+        seq: i + 1,
+        name: s.name || '地点' + (i + 1),
+        url: s.url || '',
+        left: pct ? Number(pct.left.toFixed(2)) : null,
+        top: pct ? Number(pct.top.toFixed(2)) : null,
+      };
+    }),
+    failedLegs: route.failed,
+    points: route.points.length,
+    image: `data:${map.contentType};base64,${map.buffer.toString('base64')}`,
+    imageBytes: map.buffer.length,
+  };
+}
+
+// 「按我的安排」：一条线、每段各自的出行方式（页面上看到的就这一条）。
+// 段结果有缓存 ⇒ 刚在页面上看过这条线时，这里不再打高德。
+async function buildPlanMap({
+  amap,
+  cache,
+  intervalMs,
+  stops,
+  perLegModes,
+  city,
+  size,
+  scale,
+  width = 760,
+  height = 430,
+  pad = 44,
+}) {
+  const route = await routeForStops({ amap, cache, intervalMs, perLegModes, stops, city });
+  route.mode = 'plan';
+  const view = fitViewForStopsAndPoints(stops, route.points, { width, height, pad });
+  const map = await mapForRoute({ amap, stops, points: route.points, groups: route.groups, view, size, scale, withMarkers: false });
+  return routeMapEntry({ route, stops, view, map });
 }
 
 module.exports = {
@@ -428,4 +474,6 @@ module.exports = {
   routeForStops,
   mapForRoute,
   buildShareMaps,
+  buildPlanMap,
+  routeMapEntry,
 };

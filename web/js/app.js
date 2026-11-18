@@ -866,6 +866,15 @@
     });
   }
 
+  // 分享时带上「页面上那条线」的每段方式：长度对不上就不带（宁可不画，也不能在分享里画错）
+  function planModesForShare() {
+    const pins = orderedPins();
+    const legs = (Route && Route.getLegs()) || [];
+    if (pins.length < 2 || legs.length !== pins.length - 1) return undefined;
+    const modes = legs.map((l) => l.mode).filter(Boolean);
+    return modes.length === legs.length ? modes : undefined;
+  }
+
   // ---------- 一条路线只规划一次 ----------
   // 挑点视图与行程视图都调它（地图上那条线、两张清单的逐段数字、分享包全用同一份数据）；
   // 路线身份没变时 Route.draw 直接返回，不重请求（高德逐段规划要花配额）
@@ -1455,6 +1464,8 @@
         modes: lastShareModes,
         // 分享包与页面上看到的顺序保持一致（默认「按距离」那份）
         order: orderKeys(orderedPins()),
+        // 页面上那条线（每段自己的方式）：分享页第一屏就是它
+        planModes: planModesForShare(),
       });
       renderShareResult(res);
       const ok = await Itinerary.copyText(res.text);

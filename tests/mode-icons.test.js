@@ -230,8 +230,9 @@ test('分享包的静态路线图四种都支持（骑行与公交别再被当�
   assert.equal(routemap.MODE_LABEL.riding, '骑行');
   assert.equal(routemap.MODE_LABEL.transit, '公交');
   const src = read('server/routemap.js');
-  assert.match(src, /mode === 'riding'.*amap\.planRiding/s, '静态图要调骑行规划');
-  assert.match(src, /mode === 'transit'.*planTransit/s, '静态图要调公交规划');
+  // 现在是「每段自己的方式」（legMode）：全局方式与逐段方式走的是同一个分支
+  assert.match(src, /legMode === 'riding'.*amap\.planRiding/s, '静态图要调骑行规划');
+  assert.match(src, /legMode === 'transit'.*planTransit/s, '静态图要调公交规划');
 });
 
 test('分享页里骑行的名字是「骑行」（某一路线图没生成时点名也是中文）', () => {

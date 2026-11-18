@@ -5,6 +5,18 @@ const share = require('../share');
 const routemap = require('../routemap');
 const { applyPoiOrder } = require('../order');
 
+const MODE_KEYS = ['driving', 'riding', 'walking', 'transit'];
+
+// 页面上那条「按我的安排」：每段自己的方式（客户端把段方式随请求带过来）
+// 段数对不上、或出现认不出的方式，就当没给（宁可不画，也不能画错）
+function parsePlanModes(raw, legCount) {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const list = raw.map((m) => String(m || '').trim());
+  if (list.length !== legCount) return null;
+  if (!list.every((m) => MODE_KEYS.includes(m))) return null;
+  return list;
+}
+
 const SHARE_DIR = () => process.env.TRAVEL_SHARE_DIR || path.join(__dirname, '..', '..', 'share');
 
 // 在系统的文件管理器里把这个文件「选中」显示出来 —— 生成的分享文件落在仓库目录里，
@@ -68,8 +80,24 @@ module.exports = [
       const modes = Array.isArray(ctx.body && ctx.body.modes) ? ctx.body.modes : undefined;
       let built = { maps: {}, errors: {} };
       if (payload.stops.length >= 2) {
+        // 先画页面上那条「按我的安排」（每段自己的方式）—— 它才是他正在看的那条线
+        const planModes = parsePlanModes(ctx.body && ctx.body.planModes, payload.stops.length - 1);
+        if (planModes) {
+          try {
+            built.maps.plan = await routemap.buildPlanMap({
+              amap: ctx.amap,
+              cache: ctx.cache,
+              intervalMs: Number(ctx.routeIntervalMs) || 0,
+              stops: payload.stops,
+              perLegModes: planModes,
+              city: payload.city,
+            });
+          } catch (err) {
+            built.errors.plan = (err && err.message) || '路线图生成失败';
+          }
+        }
         try {
-          built = await routemap.buildShareMaps({
+          const perMode = await routemap.buildShareMaps({
             amap: ctx.amap,
             cache: ctx.cache,
             intervalMs: Number(ctx.routeIntervalMs) || 0,
@@ -78,8 +106,14 @@ module.exports = [
             // 公交路线要高德的城市名
             city: payload.city,
           });
+          Object.keys(perMode.maps).forEach((k) => {
+            built.maps[k] = perMode.maps[k];
+          });
+          Object.keys(perMode.errors).forEach((k) => {
+            built.errors[k] = perMode.errors[k];
+          });
         } catch (err) {
-          built = { maps: {}, errors: { all: (err && err.message) || '路线图生成失败' } };
+          built.errors.all = (err && err.message) || '路线图生成失败';
         }
       }
       payload.maps = built.maps;

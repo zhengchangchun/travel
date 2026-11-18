@@ -190,6 +190,9 @@ function buildText(payload) {
       lines.push(`${r.modeLabel || m}全程：${(r.distance / 1000).toFixed(1)} km · ${fmtDuration(r.duration)}`);
     });
   }
+  // 每段一行：分享出去的文案里也看得到「点和点之间怎么走」（与页面上每个点上面那条一致）
+  const route = p.maps && (p.maps.plan || p.maps.driving || (modes.length ? p.maps[modes[0]] : null));
+  const legOf = (i) => ((route && route.legs) || []).find((l) => Number(l.index) === i) || null;
   lines.push('');
   if (p.base) lines.push(`住宿：${p.base.name}（${fmt(p.base.lng, 5)}, ${fmt(p.base.lat, 5)}）\n`);
   p.stops.forEach((s) => {
@@ -197,6 +200,14 @@ function buildText(payload) {
     if (s.categoryLabel) meta.push(s.categoryLabel);
     if (s.rating) meta.push('★' + s.rating);
     if (s.cost) meta.push('¥' + s.cost);
+    // 从上一站过来那一段（写在点上面，跟页面上一个读法）
+    if (s.seq > 1) {
+      const leg = legOf(s.seq - 2);
+      if (leg && leg.ok !== false) {
+        const how = leg.modeLabel ? leg.modeLabel + ' ' : '';
+        lines.push(`   ↑ 从第 ${s.seq - 1} 站：${how}${(Number(leg.distance) / 1000).toFixed(1)} km · ${fmtDuration(leg.duration)}`);
+      }
+    }
     lines.push(`${s.seq}. ${s.name}${meta.length ? '（' + meta.join(' · ') + '）' : ''}`);
     if (s.address) lines.push(`   ${s.address}`);
     if (s.tel) lines.push(`   ☎ ${s.tel}`);
@@ -248,10 +259,13 @@ function legRowsHtml(route) {
     .map((l) => {
       const meta = `${(Number(l.distance) / 1000).toFixed(1)} km · ${fmtDuration(l.duration)}`;
       const seq = (l.fromSeq || Number(l.index) + 1) + '→' + (l.toSeq || Number(l.index) + 2);
+      // 「按我的安排」那一屏：每段自己的方式写出来（与页面上的小标一致）
+      const mode = l.modeLabel ? `<span class="leg-mode">${escHtml(l.modeLabel)}</span>` : '';
       return (
         `<li class="leg" data-leg="${Number(l.index) + 1}">` +
         `<span class="leg-dot" style="background:${escHtml(l.color || '#1677ff')}"></span>` +
         `<span class="leg-no">${escHtml(seq)}</span>` +
+        mode +
         `<span class="leg-path">${escHtml((l.from && l.from.name) || '起点')} → ${escHtml((l.to && l.to.name) || '终点')}</span>` +
         `<span class="leg-meta">${escHtml(meta)}</span>` +
         `</li>`
@@ -314,7 +328,8 @@ function routeBlockHtml(p) {
 }
 
 function modeLabelOf(m) {
-  return m === 'driving' ? '驾车' : m === 'riding' ? '骑行' : m === 'walking' ? '步行' : String(m);
+  if (m === 'plan') return '按我的安排';
+  return m === 'driving' ? '驾车' : m === 'riding' ? '骑行' : m === 'walking' ? '步行' : m === 'transit' ? '公交' : String(m);
 }
 
 function buildHtml(payload) {
@@ -405,6 +420,8 @@ function buildHtml(payload) {
   .leg.on { border-color:var(--accent); background:rgba(22,119,255,.08); }
   .leg-dot { width:10px; height:10px; border-radius:50%; flex:none; }
   .leg-no { flex:none; min-width:14px; color:var(--ink3); font-variant-numeric:tabular-nums; }
+  .leg-mode { flex:none; font-size:11px; color:var(--accent); background:rgba(22,119,255,.10);
+              border-radius:6px; padding:1px 5px; }
   .leg-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .leg-meta { flex:none; color:var(--ink2); font-variant-numeric:tabular-nums; }
   .leg.on .leg-meta { color:var(--accent); font-weight:600; }
