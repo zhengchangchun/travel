@@ -18,14 +18,15 @@
       ? '已收录 ' + r.collected.toLocaleString('zh-CN') + ' 个点'
       : '还没收录地点';
     const actions = r.collected
-      ? '<button class="btn small primary" type="button" data-act="plan" data-city="' + Site.esc(r.city) + '">用这个城市规划</button>'
-      : '<button class="btn small" type="button" data-act="collect" data-city="' + Site.esc(r.city) + '">现在收录这一带</button>';
+      ? '<button class="btn small primary" type="button" data-act="plan" data-city="' + Site.esc(r.city) + '">去规划</button>'
+      : '<button class="btn small" type="button" data-act="collect" data-city="' + Site.esc(r.city) + '">收录这一带</button>';
     return (
       '<div class="region' + (r.current ? ' current' : '') + '" data-city="' + Site.esc(r.city) + '">' +
       '<div class="name">' + Site.esc(r.city) + (r.current ? '<span class="here">当前</span>' : '') + '</div>' +
       '<div class="tag">' + Site.esc(r.tagline || '') + '</div>' +
       '<div class="tags">' + tags + '</div>' +
-      '<div class="foot">' + actions + '<span class="count">' + count + '</span></div>' +
+      '<div class="count">' + count + '</div>' +
+      '<div class="foot">' + actions + '</div>' +
       '</div>'
     );
   }
@@ -34,21 +35,17 @@
     const path = (rt.stops || [])
       .map((s) => s.name)
       .join(' → ');
-    const meta = [
-      rt.days + ' 天',
-      rt.stopCount + ' 个点',
-      rt.theme || '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
+    const meta = [rt.days + ' 天', rt.stopCount + ' 个点'].join(' · ');
     return (
       '<button class="route-card" type="button" data-route="' + Site.esc(rt.id) + '">' +
       '<div class="top">' +
       '<span class="title">' + Site.esc(rt.title) + '</span>' +
-      (rt.theme ? '<span class="theme">' + Site.esc(rt.theme) + '</span>' : '') +
       '<span class="city">' + Site.esc(rt.city) + (rt.current ? ' · 当前' : '') + '</span>' +
       '</div>' +
-      '<div class="meta">' + Site.esc(meta) + '</div>' +
+      '<div class="meta">' +
+      (rt.theme ? '<span class="theme">' + Site.esc(rt.theme) + '</span>' : '') +
+      Site.esc(meta) +
+      '</div>' +
       '<div class="path">' + Site.esc(path) + '</div>' +
       '<div class="note">' + Site.esc(rt.note || '') + '</div>' +
       '</button>'
@@ -206,14 +203,17 @@
     if (!el) return;
     const d = state.data || {};
     const cur = (d.current && d.current.city) || state.city || '—';
-    const src = (d.current && d.current.source) || '';
+    // 怎么认出来的：优先听头部的口径（它才是真去定位的那个人）
+    const src = (Head && Head.citySource) || (d.current && d.current.source) || '';
     const how =
       src === 'browser' ? '浏览器定位'
         : src === 'ip' ? '按网络大致判断'
-          : src === 'default' ? '没认出来，先用默认城市'
+          : src === 'default' || src === 'fallback' ? '没认出来，先用默认城市'
             : src === 'saved' ? '上次你选的城市'
-              : src === 'pick' || src === 'query' ? '你选的城市'
-                : '本机默认';
+              : src === 'cached' ? '上次认出来的城市'
+                : src === 'pick' || src === 'input' || src === 'query' ? '你选的城市'
+                  : src === 'app' ? '规划页当前城市'
+                    : '本机默认';
     el.textContent = '当前地区：' + cur + '（' + how + '）· 换城市点右上角';
   }
 
