@@ -1416,3 +1416,10 @@ button:disabled { cursor: not-allowed; }
 .itin-day-meta { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .itin-btns .day-prev, .itin-btns .day-next { font-size: 11px; padding: 2px 5px; min-width: 26px; }
 .itin-btns .day-prev[disabled] { opacity: .45; }
+
+/* ⑩ 行程清单一行要塞：把手 + 序号 + 缩略图 + 圆点 + 名字 + 分类 + D-/D+/↑/↓/×
+   窄栏（340px）塞不下时让按钮换到第二行，名字不许被挤成竖排 */
+.itin-item .poi-head { flex-wrap: wrap; row-gap: 4px; }
+.itin-item .poi-name { flex: 1 1 auto; min-width: 88px; }
+.itin-item .poi-tag { flex: none; }
+.itin-item .itin-btns { margin-left: auto; }
