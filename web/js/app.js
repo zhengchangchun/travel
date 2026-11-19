@@ -925,9 +925,20 @@
   // - 2 个点及以下：顺序无所谓，直接给库里那份，别让用户看到列表自己跳
   function orderedPins() {
     const pins = Selection.list();
-    if (state.orderMode !== 'distance' || pins.length < 3) return pins;
-    const start = baseForPlan();
-    return Planner.orderStops(pins, start ? { start } : undefined);
+    let ordered = pins;
+    if (state.orderMode === 'distance' && pins.length >= 3) {
+      const start = baseForPlan();
+      ordered = Planner.orderStops(pins, start ? { start } : undefined);
+    }
+    return groupByDay(ordered);
+  }
+
+  // 按天分段：先按第几天分组，组内保留原来的顺序（Array.sort 是稳定的）
+  function groupByDay(list) {
+    const arr = (list || []).slice();
+    const multi = arr.some((p) => (Number(p.day) || 1) > 1);
+    if (!multi) return arr;
+    return arr.sort((a, b) => (Number(a.day) || 1) - (Number(b.day) || 1));
   }
 
   // 实景图：优先用点自己的照片（高德 POI 图），没有就按名字查该城的实景图索引

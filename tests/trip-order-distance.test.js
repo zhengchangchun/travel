@@ -190,7 +190,9 @@ test('顺序默认「按距离」，切「手动顺序」＝看库里那份（�
   const ordered = APP.match(/function orderedPins\(\)[\s\S]*?\n  \}/);
   assert.ok(ordered, '缺 orderedPins');
   assert.match(ordered[0], /Planner\.orderStops\(pins, start \? \{ start \} : undefined\)/, '按距离要真算（最近邻）');
-  assert.match(ordered[0], /pins\.length < 3/, '1~2 个点别重排（顺序没意义，列表还会自己跳）');
+  assert.match(ordered[0], /pins\.length >= 3/, '1~2 个点别重排（顺序没意义，列表还会自己跳）');
+  // 2026-11-19 按天分段：算完再按「第几天」分组，组内保留原顺序
+  assert.match(ordered[0], /groupByDay\(ordered\)/, '要按天分组');
   assert.match(PLANNER, /function orderStops\(stops, opts\)/, 'planner 得提供最近邻排序');
 });
 
