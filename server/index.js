@@ -301,7 +301,8 @@ function createApp(opts = {}) {
       res.writeHead(200, {
         'Content-Type': 'image/png',
         'Content-Length': buf.length,
-        'Cache-Control': 'public, max-age=86400',
+        // 不做强缓存：这些图会随精选库/坐标重生成，本地读一次文件几乎不花钱
+        'Cache-Control': 'no-cache, must-revalidate',
       });
       res.end(buf);
     } catch (err) {
