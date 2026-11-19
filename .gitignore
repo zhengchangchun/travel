@@ -5,6 +5,7 @@ data/*.db-wal
 data/*.db-shm
 data/backups/
 data/notes-img/
+data/home-img/
 *.log
 .DS_Store
 

@@ -377,3 +377,82 @@ test('分享列表：share/ 里当年生成的老包会被补进列表（不用�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('首页配图：静态地图缩略图（地区俯瞰 / 路线图）会生成并缓存，地图不可用时给 404', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-home-img-'));
+  process.env.TRAVEL_HOME_IMG_DIR = dir;
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex'); // 只要是个二进制就行
+  const params = [];
+  const amap = {
+    async amapGet() {
+      return { status: '1' };
+    },
+    async staticMap(p) {
+      params.push(p);
+      return { buffer: PNG, contentType: 'image/png' };
+    },
+  };
+  const s = await start({ amap });
+  try {
+    // ① 地区俯瞰图
+    const region = await fetch(s.base + '/home-img/region-%E6%9D%AD%E5%B7%9E.png');
+    assert.equal(region.status, 200);
+    assert.equal(region.headers.get('content-type'), 'image/png');
+    assert.equal((await region.arrayBuffer()).byteLength, PNG.length);
+    assert.ok(params.some((p) => p.zoom && p.location), '地区图要指定中心与缩放');
+    assert.ok(fs.readdirSync(dir).some((n) => n.startsWith('region-')), '图要落盘缓存');
+
+    // ② 路线图：带 marker 与折线，且不带 zoom（让高德自己取景）
+    const route = await fetch(s.base + '/home-img/route-sy-4d.png');
+    assert.equal(route.status, 200);
+    const routeParams = params[params.length - 1];
+    assert.ok(routeParams.markers && routeParams.paths, '路线图要有 marker 和折线');
+    assert.ok(!routeParams.zoom, '路线图不要写死缩放，交给高德取景');
+
+    // ③ 第二次请求走缓存：不再打地图服务
+    const before = params.length;
+    await fetch(s.base + '/home-img/region-%E6%9D%AD%E5%B7%9E.png');
+    assert.equal(params.length, before, '第二次应该直接读文件');
+
+    // ④ 没有坐标的 key / 地图服务挂了 ⇒ 404（页面自己退化成渐变底）
+    const none = await fetch(s.base + '/home-img/route-nope.png');
+    assert.equal(none.status, 404);
+    const boom = await start({
+      amap: {
+        async amapGet() {
+          return { status: '1' };
+        },
+        async staticMap() {
+          throw new Error('quota');
+        },
+      },
+    });
+    try {
+      fs.rmSync(path.join(dir, 'region-三亚.png'), { force: true });
+      const failed = await fetch(boom.base + '/home-img/region-%E4%B8%89%E4%BA%9A.png');
+      assert.equal(failed.status, 404, '生成不了就 404，不要 500');
+    } finally {
+      await boom.close();
+    }
+  } finally {
+    await s.close();
+    delete process.env.TRAVEL_HOME_IMG_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('推荐载荷带封面地址；坐标底稿只在服务端（接口里仍然没有坐标）', async () => {
+  const s = await start();
+  try {
+    const r = await call(s.base, 'GET', '/api/featured?city=三亚');
+    const d = r.body.data;
+    assert.match(d.regions[0].cover, /^\/home-img\/region-/);
+    assert.match(d.routes[0].cover, /^\/home-img\/route-/);
+    assert.ok(!/"lng"|"lat"/.test(JSON.stringify(d)), '推荐载荷里不该出现坐标');
+    const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/featured-geo.json'), 'utf8'));
+    assert.ok(Object.keys(geo.cities || {}).length >= 5, '坐标底稿要有城市中心');
+    assert.ok(Object.keys(geo.routes || {}).length >= 4, '坐标底稿要有路线站点');
+  } finally {
+    await s.close();
+  }
+});

@@ -40,6 +40,11 @@ function loadFeatured(root) {
   }
 }
 
+// 首页缩略图（静态地图，服务端生成缓存）：推荐地区一张城市俯瞰图，推荐路线一张路线图
+function coverFor(kind, key) {
+  return '/home-img/' + kind + '-' + encodeURIComponent(String(key)) + '.png';
+}
+
 // 一条路线给前端的形状（列表/详情共用；不吐坐标，详情里的点靠高德搜索链接）
 function routeCard(route, extra) {
   return {
@@ -52,6 +57,7 @@ function routeCard(route, extra) {
     highlights: route.highlights,
     stops: route.stops.map((s) => ({ day: Number(s.day) || 1, name: s.name, note: s.note || '' })),
     stopCount: route.stops.length,
+    cover: coverFor('route', route.id),
     ...(extra || {}),
   };
 }
@@ -75,6 +81,7 @@ function buildFeatured({ featured, db, city, current }) {
       featured: !!r.featured,
       collected,
       trips,
+      cover: coverFor('region', r.city),
       current: !!cur && r.city === cur,
     };
   });
@@ -101,4 +108,4 @@ function buildFeatured({ featured, db, city, current }) {
   };
 }
 
-module.exports = { loadFeatured, buildFeatured, routeCard, emptyFeatured };
+module.exports = { loadFeatured, buildFeatured, routeCard, coverFor, emptyFeatured };

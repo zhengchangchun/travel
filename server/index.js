@@ -24,6 +24,7 @@ const routeRoutes = require('./routes/route');
 const authRoutes = require('./routes/auth');
 const homeRoutes = require('./routes/home');
 const sharesRoutes = require('./routes/shares');
+const homeImg = require('./home-img');
 
 class HttpError extends Error {
   constructor(status, code, msg) {
@@ -273,6 +274,41 @@ function createApp(opts = {}) {
     sendErr(res, 500, 'INTERNAL_ERROR', '服务器内部错误');
   }
 
+  // 首页配图（静态地图缩略图）：文件在就直接发，不在就现生成一张（高德不可用就 404，页面自己退化成渐变底）
+  async function serveHomeImg(res, pathname) {
+    const rel = decodeURIComponent(pathname.slice('/home-img/'.length));
+    const m = rel.match(/^(region|route)-(.+)\.png$/);
+    if (!m) {
+      sendErr(res, 404, 'NOT_FOUND', '图片不存在');
+      return;
+    }
+    const [, kind, key] = m;
+    let built = null;
+    try {
+      built =
+        kind === 'region'
+          ? await homeImg.ensureRegion({ amap, city: key })
+          : await homeImg.ensureRoute({ amap, id: key });
+    } catch (err) {
+      built = null;
+    }
+    if (!built || !built.file) {
+      sendErr(res, 404, 'NOT_FOUND', '这张图还没有（地图服务不可用或没有坐标）');
+      return;
+    }
+    try {
+      const buf = fs.readFileSync(built.file);
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': buf.length,
+        'Cache-Control': 'public, max-age=86400',
+      });
+      res.end(buf);
+    } catch (err) {
+      sendErr(res, 404, 'NOT_FOUND', '图片读取失败');
+    }
+  }
+
   async function requestHandler(req, res) {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -280,6 +316,12 @@ function createApp(opts = {}) {
       const query = Object.fromEntries(u.searchParams.entries());
       if (pathname.startsWith('/api/')) {
         await handleApi(req, res, baseCtx, req.method, pathname, query);
+      } else if (pathname.startsWith('/home-img/')) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          sendErr(res, 405, 'METHOD_NOT_ALLOWED', '图片仅支持 GET/HEAD');
+          return;
+        }
+        await serveHomeImg(res, pathname);
       } else if (pathname.startsWith('/share/')) {
         // 行程分享包（P13）：生成出来的自包含 HTML，同一个服务里就能打开预览
         serveStatic(
