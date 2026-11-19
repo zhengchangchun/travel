@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-19T08:03:52.947Z",
+  "generatedAt": "2026-11-19T11:31:25.400Z",
   "source": "Wikimedia Commons / 中文维基百科",
   "note": "推荐路程与行程的实景图：自由许可（CC / 公有领域），作者与许可逐条记在 entries 里；页面上会标出处。",
   "credits": "实景图来自 Wikimedia Commons（CC 授权）",
@@ -27,6 +27,18 @@
       "author": "钉钉",
       "license": "CC BY-SA 4.0",
       "pickedBy": "维基条目首图（白堤）"
+    },
+    {
+      "city": "杭州",
+      "name": "孤山 · 西泠印社",
+      "routeId": "hz-westlake-1d",
+      "file": "hz-westlake-1d-孤山-西泠印社.jpg",
+      "bytes": 43376,
+      "source": "https://commons.wikimedia.org/wiki/File:West_Lake_on_9_Feb_2017.jpg",
+      "filePage": "https://commons.wikimedia.org/wiki/File:West_Lake_on_9_Feb_2017.jpg",
+      "author": "Phenolla",
+      "license": "CC BY-SA 4.0",
+      "pickedBy": "Commons 指名搜索（Xiling Seal Art Society）"
     },
     {
       "city": "杭州",
@@ -174,6 +186,18 @@
     },
     {
       "city": "三亚",
+      "name": "三亚湾",
+      "routeId": "sy-4d",
+      "file": "sy-4d-三亚湾.jpg",
+      "bytes": 198053,
+      "source": "https://commons.wikimedia.org/wiki/File:Sanya_Bay_%E4%B8%89%E4%BA%9E%E6%B9%BE_-_panoramio.jpg",
+      "filePage": "https://commons.wikimedia.org/wiki/File:Sanya_Bay_%E4%B8%89%E4%BA%9E%E6%B9%BE_-_panoramio.jpg",
+      "author": "lienyuan lee",
+      "license": "CC BY 3.0",
+      "pickedBy": "Commons 指名搜索（Sanya Bay beach）"
+    },
+    {
+      "city": "三亚",
       "name": "天涯海角",
       "routeId": "sy-4d",
       "file": "sy-4d-天涯海角.jpg",
@@ -231,6 +255,18 @@
       "author": "fading",
       "license": "CC BY-SA 3.0",
       "pickedBy": "Commons 指名搜索（Yalong Bay beach）"
+    },
+    {
+      "city": "三亚",
+      "name": "亚龙湾热带天堂森林公园",
+      "routeId": "sy-4d",
+      "file": "sy-4d-亚龙湾热带天堂森林公园.jpg",
+      "bytes": 222191,
+      "source": "https://commons.wikimedia.org/wiki/File:Yalong_Bay_Park_05.jpg",
+      "filePage": "https://commons.wikimedia.org/wiki/File:Yalong_Bay_Park_05.jpg",
+      "author": "STW932",
+      "license": "CC BY-SA 4.0",
+      "pickedBy": "Commons 指名搜索（Yalong Bay forest park）"
     },
     {
       "city": "三亚",
@@ -327,6 +363,18 @@
       "author": "User:唐戈",
       "license": "CC BY-SA 3.0",
       "pickedBy": "维基条目首图（杜甫草堂）"
+    },
+    {
+      "city": "成都",
+      "name": "建设路小吃街",
+      "routeId": "cd-2d",
+      "file": "cd-2d-建设路小吃街.jpg",
+      "bytes": 171065,
+      "source": "https://commons.wikimedia.org/wiki/File:%E6%88%90%E9%83%BD%E5%AE%BD%E7%AA%84%E5%B7%B7%E5%B0%8F%E5%90%83%E5%BA%97,_Snack_Shop_at_Wide_and_Narrow_Alley,_Chengdu,_China_-_panoramio.jpg",
+      "filePage": "https://commons.wikimedia.org/wiki/File:%E6%88%90%E9%83%BD%E5%AE%BD%E7%AA%84%E5%B7%B7%E5%B0%8F%E5%90%83%E5%BA%97,_Snack_Shop_at_Wide_and_Narrow_Alley,_Chengdu,_China_-_panoramio.jpg",
+      "author": "Aaron Zhu",
+      "license": "CC BY-SA 3.0",
+      "pickedBy": "Commons 指名搜索（Chengdu street food）"
     }
   ]
 }

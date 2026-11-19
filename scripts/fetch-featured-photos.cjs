@@ -33,6 +33,11 @@ const RASTER = /\.(jpe?g|png|webp)$/i;
 const BAD = /metro|station|airport|subway|map|plan|planning|book|magazine|newspaper|scan|djvu|pdf|logo|diagram|chart|poster|stamp|painting|drawing|sketch|banknote|ticket|monument|statue|entrance|einstieg|eingang|satellite|from the air|[站口碑牌坊电梯]/i;
 // 人工判定过「维基首图不对题、得靠指名搜索」的站点：先用这些词搜 Commons
 const EXTRA = {
+  '杭州|孤山 · 西泠印社': ['Xiling Seal Art Society', '西泠印社', 'Gushan West Lake'],
+  '三亚|三亚湾': ['Sanya Bay beach', 'Sanya Bay sunset', '三亚湾 海滩'],
+  '三亚|第一市场': ['Sanya seafood market', '三亚 第一市场', 'Sanya Tianya market'],
+  '三亚|亚龙湾热带天堂森林公园': ['Yalong Bay forest park', '亚龙湾热带天堂森林公园', 'Yalong Bay national park'],
+  '成都|建设路小吃街': ['Chengdu street food', 'Chengdu snack street', '建设路 成都'],
   '三亚|蜈支洲岛': ['Wuzhizhou Island', 'Wuzhizhou'],
   '三亚|亚龙湾': ['Yalong Bay beach', 'Yalong Bay Sanya'],
   '三亚|南山文化旅游区': ['Nanshan Temple Sanya', 'Nanshan Buddhism Park'],
@@ -44,9 +49,6 @@ const EXTRA = {
 
 // 人工判定过「宁可不放图」的站点（搜出来都是错的，或全是不相关的）
 const REJECT = new Set([
-  '杭州|孤山 · 西泠印社',
-  '三亚|三亚湾',
-  '三亚|第一市场',
   '杭州|武林门码头',
 ]);
 
