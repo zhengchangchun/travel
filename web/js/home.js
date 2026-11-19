@@ -10,6 +10,15 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // 卡片头图：静态地图缩略图（服务端生成）；拿不到就让它自己消失，露出渐变底
+  function coverHtml(src, alt) {
+    if (!src) return '';
+    return (
+      '<img src="' + Site.esc(src) + '" alt="' + Site.esc(alt || '') + '" loading="lazy" ' +
+      'onerror="this.remove()" />'
+    );
+  }
+
   function regionCard(r) {
     const tags = (r.highlights || [])
       .map((h) => '<span class="tag-pill">' + Site.esc(h) + '</span>')
@@ -22,11 +31,15 @@
       : '<button class="btn small" type="button" data-act="collect" data-city="' + Site.esc(r.city) + '">收录这一带</button>';
     return (
       '<div class="region' + (r.current ? ' current' : '') + '" data-city="' + Site.esc(r.city) + '">' +
+      '<div class="cover">' + coverHtml(r.cover, r.city + ' 地图') +
       '<div class="name">' + Site.esc(r.city) + (r.current ? '<span class="here">当前</span>' : '') + '</div>' +
+      '</div>' +
+      '<div class="body">' +
       '<div class="tag">' + Site.esc(r.tagline || '') + '</div>' +
       '<div class="tags">' + tags + '</div>' +
       '<div class="count">' + count + '</div>' +
       '<div class="foot">' + actions + '</div>' +
+      '</div>' +
       '</div>'
     );
   }
@@ -35,19 +48,18 @@
     const path = (rt.stops || [])
       .map((s) => s.name)
       .join(' → ');
-    const meta = [rt.days + ' 天', rt.stopCount + ' 个点'].join(' · ');
     return (
       '<button class="route-card" type="button" data-route="' + Site.esc(rt.id) + '">' +
-      '<div class="top">' +
-      '<span class="title">' + Site.esc(rt.title) + '</span>' +
+      '<div class="cover">' + coverHtml(rt.cover, rt.title + ' 路线图') +
       '<span class="city">' + Site.esc(rt.city) + (rt.current ? ' · 当前' : '') + '</span>' +
-      '</div>' +
-      '<div class="meta">' +
       (rt.theme ? '<span class="theme">' + Site.esc(rt.theme) + '</span>' : '') +
-      Site.esc(meta) +
       '</div>' +
+      '<div class="body">' +
+      '<span class="title">' + Site.esc(rt.title) + '</span>' +
+      '<div class="meta">' + rt.days + ' 天 · ' + rt.stopCount + ' 个点</div>' +
       '<div class="path">' + Site.esc(path) + '</div>' +
       '<div class="note">' + Site.esc(rt.note || '') + '</div>' +
+      '</div>' +
       '</button>'
     );
   }

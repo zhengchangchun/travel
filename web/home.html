@@ -12,35 +12,86 @@
 
   <main class="wrap">
     <section class="hero">
-      <h1>按笔记找地方，一屏把行程排出来</h1>
-      <p>
-        把小红书、抖音里刷到的店和景点丢进来，在地图上挑点、看实时耗时与路线，
-        自动按里程排成一条不折返的行程，最后生成一个能直接发给别人的网页。
-      </p>
-      <div class="row">
-        <a class="btn primary" href="/app" id="start-btn">开始规划</a>
-        <a class="btn ghost" href="#routes">看看推荐路程</a>
+      <div class="hero-copy">
+        <span class="kick">本机自用 · 数据都留在这台机器</span>
+        <h1>按笔记找地方<br />一屏把行程排出来</h1>
+        <p>
+          把小红书、抖音里刷到的店和景点丢进来，在地图上挑点、看实时耗时，
+          自动按里程排成一条不折返的路线，最后生成一个能直接发给别人的网页。
+        </p>
+        <div class="row hero-cta">
+          <a class="btn primary big" href="/app" id="start-btn">开始规划</a>
+          <a class="btn ghost big" href="#routes">看看推荐路程</a>
+        </div>
+        <div class="where" id="where-line">正在认你所在的城市…</div>
       </div>
-      <div class="where" id="where-line">正在认你所在的城市…</div>
+      <figure class="hero-shot">
+        <img src="/img/home-hero.png" alt="旅迹的规划页：地图上带序号的站点与连线，右侧是行程清单与实时耗时" />
+        <figcaption>地图上带序号的路线 · 每站写清多久、多远、累计</figcaption>
+      </figure>
     </section>
 
-    <section class="card" style="padding:16px 16px 6px">
-      <h2>推荐地区 <span class="note" id="regions-note">按你所在地区排</span></h2>
+    <section class="block" id="regions-block">
+      <div class="section-head">
+        <h2>推荐地区</h2>
+        <span class="note" id="regions-note">按你所在地区排</span>
+      </div>
       <div class="grid region-grid" id="regions"></div>
     </section>
 
-    <section class="card" id="routes" style="padding:16px 16px 6px">
-      <h2>推荐路程 <span class="note">精选路线，点开看每一站（只浏览，不会动你的行程）</span></h2>
+    <section class="block" id="routes">
+      <div class="section-head">
+        <h2>推荐路程</h2>
+        <span class="note">精选路线，点开看每一站（只浏览，不动你的行程）</span>
+      </div>
       <div class="grid route-grid" id="route-list"></div>
     </section>
 
-    <section class="card" style="padding:16px 16px 6px">
-      <h2>它能帮你做什么</h2>
+    <section class="block">
+      <div class="section-head">
+        <h2>它能帮你做什么</h2>
+        <span class="note">四步：从刷到的笔记，到能发给朋友的行程</span>
+      </div>
       <div class="grid features">
-        <div class="feature"><b>按笔记搜地方</b><span>贴一条小红书/抖音链接，自动抓下标题正文与图，从正文里提出地名并落到地图上。</span></div>
-        <div class="feature"><b>地图上挑点</b><span>按分类与评分挑，选中就看实时耗时与距离，先知道「这几个点顺不顺」。</span></div>
-        <div class="feature"><b>自动成线</b><span>从住宿出发按整体里程最短排序，少走回头路；每站带「从上一站过来多久、多远、累计多少」。</span></div>
-        <div class="feature"><b>一键分享</b><span>生成自包含的网页分享包，发给别人在浏览器里直接能打开，带逐段路线与地图链接。</span></div>
+        <div class="feature">
+          <span class="feat-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H14l6 6v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />
+              <path d="M14 4v6h6" /><path d="M8 14l2.5 2.5L16 11" />
+            </svg>
+          </span>
+          <b>按笔记搜地方</b>
+          <span>贴一条小红书 / 抖音链接，自动抓下标题正文与图，从正文里提出地名并落到地图上。</span>
+        </div>
+        <div class="feature">
+          <span class="feat-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" />
+            </svg>
+          </span>
+          <b>地图上挑点</b>
+          <span>按分类与评分挑，选中就看实时耗时与距离，先知道「这几个点顺不顺」。</span>
+        </div>
+        <div class="feature">
+          <span class="feat-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="18" r="2.4" /><circle cx="18" cy="6" r="2.4" />
+              <path d="M8 16.2c3.6-1.2 4.4-4.6 6.4-7.4" stroke-dasharray="3 3" />
+            </svg>
+          </span>
+          <b>自动成线</b>
+          <span>从住宿出发按整体里程最短排序，少走回头路；每站写明从上一站过来多久、多远、累计多少。</span>
+        </div>
+        <div class="feature">
+          <span class="feat-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" />
+              <path d="M8.2 10.8 15.8 6.4M8.2 13.2l7.6 4.4" />
+            </svg>
+          </span>
+          <b>一键分享</b>
+          <span>生成自包含的网页分享包，发给别人在浏览器里直接能打开，带逐段路线与地图链接。</span>
+        </div>
       </div>
     </section>
   </main>
