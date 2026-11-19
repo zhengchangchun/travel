@@ -789,6 +789,7 @@
       legs: pick.legs,
       photoOf: photoOfPin,
       photoCreditOf: photoCreditOfPin,
+      onPinDay: onPinDay,
     });
     renderOrderChips();
     renderQuickLegs(panelPins, pick);
@@ -1102,6 +1103,23 @@
     await applyManualOrder(ids);
   }
 
+  // 把某一站挪到第 N 天（按天分段）：落库后重拉这一趟的点，清单/路线跟着刷新
+  async function onPinDay(pin, day) {
+    const next = Math.max(1, Math.min(30, Number(day) || 1));
+    if (!pin || !pin.pinId && !pin.id) return;
+    const pinId = pin.pinId != null ? pin.pinId : Number(String(pin.id || '').replace(/^pin:/, ''));
+    if (!Number.isFinite(pinId)) return;
+    try {
+      await API.updatePinDay(pinId, next);
+      await reloadSelection();
+      await refreshTrips();
+      if (state.view === 'itinerary') renderItinerary();
+      UI.setStatus('「' + pin.name + '」挪到第 ' + next + ' 天');
+    } catch (err) {
+      UI.setStatus('挪天失败：' + human(err));
+    }
+  }
+
   function renderItinerary() {
     const list = orderedPins();
     syncOrderToMap();
@@ -1114,6 +1132,7 @@
       onMove: (index, delta) => onMoveDisplayed(list, index, delta),
       onRemove: onRemoveFromItinerary,
       onNote: onEditPinNote,
+      onPinDay: onPinDay,
       onReorder: onReorderItinerary,
       onCancel: renderItinerary,
       onLegSelect: (index) => { if (Route) Route.selectLeg(index); },

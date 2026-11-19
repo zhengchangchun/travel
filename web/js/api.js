@@ -112,6 +112,7 @@
     cancelNoteJob: (id) => request('/api/notes/jobs/' + id + '/cancel', post({})),
     refreshNote: (id) => request('/api/notes/' + id + '/refresh', post({})),
     updatePinNote: (id, note) => request('/api/pins/' + id, patch({ note })),
+    updatePinDay: (id, day) => request('/api/pins/' + id, patch({ day })),
 
     // 选中（T2）：一次只针对「某一趟」（一城多趟）；不给 tripId 就由服务端取该城第一趟
     getSelection: (city, tripId) => request('/api/selection?' + qs({ city, tripId })),

@@ -73,7 +73,8 @@ function sharePayload(ctx, tripId) {
     trip,
     city: trip.city,
     // order（可选）：页面上「按距离」排出来的点序随请求带过来，分享包 / 静态路线图跟着它排
-    stops: applyPoiOrder(ctx.db.getPinsByTrip(id), ctx.body && ctx.body.order),
+    // 按天分段：分享包也按「天 → 顺序」排
+    stops: applyPoiOrder(ctx.db.getTripPinsOrdered(id), ctx.body && ctx.body.order),
     base,
     labels,
     when: new Date().toISOString(),
@@ -317,8 +318,16 @@ module.exports = [
     path: '/api/pins/:id',
     handler(ctx) {
       const pin = pinOfUser(ctx, ctx.params.id);
-      const { note } = ctx.body || {};
-      return ctx.db.updatePinNote(pin.id, note === undefined ? null : note).pin;
+      const b = ctx.body || {};
+      let out = null;
+      if (b.note !== undefined) {
+        out = ctx.db.updatePinNote(pin.id, b.note).pin;
+      }
+      // 按天分段：把这一站挪到第 N 天
+      if (b.day !== undefined) {
+        out = ctx.db.updatePinDay(pin.id, b.day).pin;
+      }
+      return out || ctx.db.getPin(pin.id);
     },
   },
   {

@@ -263,6 +263,9 @@ function createDb(filePath) {
   // 地点来源（amap / osm）：兜底源要能一眼看出，不与高德结果混为一谈
   ensureColumn(db, 'note_places', 'source', 'source TEXT');
 
+  // 按天分段：每个点属于第几天（默认 1）——要多天就得先有这个列，再建下面那些语句
+  ensureColumn(db, 'pins', 'day', 'day INTEGER NOT NULL DEFAULT 1');
+
   const stmts = {
     insertTrip: db.prepare('INSERT INTO trips (city, title, theme, user_id) VALUES (?, ?, ?, ?)'),
     getTrip: db.prepare('SELECT * FROM trips WHERE id = ?'),
@@ -334,7 +337,7 @@ function createDb(filePath) {
        WHERE t.city = ? AND t.user_id = ? ORDER BY p.sort_order, p.id`
     ),
     // 按「某一趟」看点的序（一城多趟之后，规划页一次只改一趟）
-    pinsByTripOrdered: db.prepare('SELECT * FROM pins WHERE trip_id = ? ORDER BY sort_order, id'),
+    pinsByTripOrdered: db.prepare('SELECT * FROM pins WHERE trip_id = ? ORDER BY day, sort_order, id'),
     pinInTripByPoi: db.prepare(
       'SELECT * FROM pins WHERE trip_id = ? AND poi_id = ? ORDER BY id LIMIT 1'
     ),
@@ -342,8 +345,8 @@ function createDb(filePath) {
       'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM pins WHERE trip_id = ?'
     ),
     insertPinInTrip: db.prepare(
-      `INSERT INTO pins (trip_id, poi_id, name, address, lng, lat, category, rating, cost, tel, photo, note, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO pins (trip_id, poi_id, name, address, lng, lat, category, rating, cost, tel, photo, note, sort_order, day)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     deletePinOfTripByPoi: db.prepare('DELETE FROM pins WHERE trip_id = ? AND poi_id = ?'),
     setSortOrderInTrip: db.prepare('UPDATE pins SET sort_order = ? WHERE poi_id = ? AND trip_id = ?'),
@@ -390,6 +393,7 @@ function createDb(filePath) {
       `UPDATE pins SET sort_order = ? WHERE id = ? AND trip_id IN (SELECT id FROM trips WHERE city = ?)`
     ),
     updatePinNote: db.prepare('UPDATE pins SET note = ? WHERE id = ?'),
+    updatePinDay: db.prepare('UPDATE pins SET day = ? WHERE id = ?'),
 
     // ---- T4 POI 缓存表 ----
     getPoiRow: db.prepare('SELECT * FROM pois WHERE poi_id = ?'),
@@ -727,9 +731,15 @@ function createDb(filePath) {
         poi.tel || null,
         poi.photo || null,
         poi.note || null,
-        Number(next) || 0
+        Number(next) || 0,
+        Number(poi.day) || 1
       );
       return stmts.getPin.get(toNumber(info.lastInsertRowid));
+    },
+    updatePinDay(id, day) {
+      const n = Math.max(1, Math.min(30, Number(day) || 1));
+      const info = stmts.updatePinDay.run(n, Number(id));
+      return { changes: toNumber(info.changes), pin: stmts.getPin.get(Number(id)) };
     },
     deletePinOfTripByPoi(tripId, poiId) {
       const info = stmts.deletePinOfTripByPoi.run(Number(tripId), String(poiId));
@@ -1078,19 +1088,28 @@ function createDb(filePath) {
     },
     // 一条路线就是一个有序清单：不再按类别分组（页面上列表也是不分的），
     // 有明确点序（order）时就按那条顺序排，没有就按库里的 sort_order。
-    // 一趟行程的 Markdown 清单（导出 / 分享都用它）
+    // 一趟行程的 Markdown 清单（导出 / 分享都用它）；多天时按天分段
     buildTripMarkdown(tripId, order = null) {
       const trip = stmts.getTrip.get(Number(tripId));
       const pins = applyPoiOrder(this.getTripPinsOrdered(tripId), order);
       const city = (trip && trip.city) || '';
       const title = (trip && trip.title) || `${city} · 我的行程`;
+      const dayCount = pins.reduce((m, p) => Math.max(m, Number(p.day) || 1), 1);
       const lines = [`# ${title}（${pins.length} 个地点）`];
-      pins.forEach((pin, index) => {
+      let curDay = null;
+      let seq = 0;
+      pins.forEach((pin) => {
+        const d = Number(pin.day) || 1;
+        if (dayCount > 1 && d !== curDay) {
+          lines.push('', `## 第 ${d} 天`);
+          curDay = d;
+        }
+        seq += 1;
         const meta = [];
         if (pin.rating) meta.push(`★${pin.rating}`);
         if (pin.cost) meta.push(`¥${pin.cost}`);
         const suffix = meta.length ? `（${meta.join(' · ')}）` : '';
-        lines.push(`${index + 1}. ${pin.name} — ${pin.address || '（无详细地址）'}${suffix}`);
+        lines.push(`${seq}. ${pin.name} — ${pin.address || '（无详细地址）'}${suffix}`);
       });
       return lines.join('\n');
     },

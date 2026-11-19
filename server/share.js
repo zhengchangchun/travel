@@ -128,6 +128,8 @@ function categoryLabel(labels, key) {
 function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors }) {
   const list = (stops || []).map((s, i) => ({
     seq: i + 1,
+    // 按天分段：第几天（默认 1）
+    day: Number(s.day) || 1,
     name: s.name || '',
     address: s.address || '',
     lng: Number(s.lng),
@@ -195,7 +197,13 @@ function buildText(payload) {
   const legOf = (i) => ((route && route.legs) || []).find((l) => Number(l.index) === i) || null;
   lines.push('');
   if (p.base) lines.push(`住宿：${p.base.name}（${fmt(p.base.lng, 5)}, ${fmt(p.base.lat, 5)}）\n`);
+  const dayCount = p.stops.reduce((m, s) => Math.max(m, Number(s.day) || 1), 1);
+  let curDay = null;
   p.stops.forEach((s) => {
+    if (dayCount > 1 && (Number(s.day) || 1) !== curDay) {
+      curDay = Number(s.day) || 1;
+      lines.push('', `【第 ${curDay} 天】`);
+    }
     const meta = [];
     if (s.categoryLabel) meta.push(s.categoryLabel);
     if (s.rating) meta.push('★' + s.rating);
@@ -337,7 +345,11 @@ function buildHtml(payload) {
   const day = localDay(p.generatedAt);
   const svg = routeBlockHtml(p);
   const items = p.stops
-    .map((s) => {
+    .map((s, i, arr) => {
+      const dayNo = Number(s.day) || 1;
+      const prevDay = i > 0 ? Number(arr[i - 1].day) || 1 : null;
+      const multiDay = arr.reduce((m, x) => Math.max(m, Number(x.day) || 1), 1) > 1;
+      const dayHead = multiDay && dayNo !== prevDay ? `<li class="day-head">第 ${dayNo} 天</li>` : '';
       const meta = [];
       if (s.categoryLabel) meta.push(escHtml(s.categoryLabel));
       if (s.rating) meta.push('★' + escHtml(s.rating));
@@ -346,6 +358,7 @@ function buildHtml(payload) {
         ? `<img class="thumb" src="${escHtml(s.photo)}" alt="" loading="lazy" onerror="this.remove()"/>`
         : '';
       return (
+        dayHead +
         `<li class="stop" data-seq="${s.seq}">` +
         `<div class="idx">${s.seq}</div>` +
         `<div class="body">` +
@@ -432,6 +445,7 @@ function buildHtml(payload) {
   .tripnote b { color:#a86400; margin-right:4px; }
   ol { list-style:none; margin:14px 0 0; padding:0; }
   .stop { display:flex; gap:10px; align-items:flex-start; background:#fff; border:1px solid var(--line);
+  .day-head { list-style:none; margin:18px 0 2px -18px; font-size:15px; font-weight:700; color:#0f766e; }
           border-radius:12px; padding:12px; margin:0 0 10px; }
   .idx { flex:none; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff;
          font-size:13px; display:flex; align-items:center; justify-content:center; font-weight:600; }

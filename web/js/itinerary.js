@@ -110,8 +110,41 @@
       return;
     }
     const cums = cumulative(legs, pins.length);
+    const dayCount = pins.reduce((m, p) => Math.max(m, Number(p.day) || 1), 1);
+    // 多天时，每天开头插一条标题：第 N 天 · k 个点 · 直线 ≈ x km
+    const dayStats = {};
+    let prevPin = null;
+    let prevDayNo = null;
+    pins.forEach((pin) => {
+      const d = Number(pin.day) || 1;
+      if (!dayStats[d]) dayStats[d] = { n: 0, m: 0 };
+      dayStats[d].n += 1;
+      const Geo = window.TravelGeo;
+      if (prevPin && prevDayNo === d && Geo && Geo.distanceM) {
+        const dist = Geo.distanceM(prevPin, pin);
+        if (Number.isFinite(dist)) dayStats[d].m += dist;
+      }
+      prevPin = pin;
+      prevDayNo = d;
+    });
+    let curDay = null;
 
     pins.forEach((pin, index) => {
+      const dayNo = Number(pin.day) || 1;
+      if (dayCount > 1 && dayNo !== curDay) {
+        curDay = dayNo;
+        const head = document.createElement('li');
+        head.className = 'itin-day';
+        const st = dayStats[dayNo] || { n: 0, m: 0 };
+        const Geo = window.TravelGeo;
+        const km = st.m >= 1000 ? (st.m / 1000).toFixed(1) + ' km' : Math.round(st.m) + ' m';
+        head.innerHTML =
+          '<span class="itin-day-title">第 ' + dayNo + ' 天</span>' +
+          '<span class="itin-day-meta">' + st.n + ' 个点' +
+          (st.m > 0 ? ' · 直线 ≈ ' + (Geo && Geo.humanDistance ? Geo.humanDistance(st.m) : km) : '') +
+          '</span>';
+        container.appendChild(head);
+      }
       const color = Cats.colorOf(pin.category);
       const label = Cats.labelOf(pin.category);
       const meta = [];
@@ -144,6 +177,10 @@
         '<b class="poi-name">' + esc(pin.name) + '</b>' +
         '<span class="poi-tag">' + esc(label) + '</span>' +
         '<span class="itin-btns">' +
+        (handlers.onPinDay
+          ? '<button class="day-prev" title="挪到前一天"' + (dayNo <= 1 ? ' disabled' : '') + '>D-</button>' +
+            '<button class="day-next" title="挪到后一天">D+</button>'
+          : '') +
         '<button class="up" title="上移">↑</button>' +
         '<button class="down" title="下移">↓</button>' +
         '</span>' +
@@ -161,6 +198,14 @@
       const up = li.querySelector('.up');
       const down = li.querySelector('.down');
       const del = li.querySelector('.del');
+      const dayPrev = li.querySelector('.day-prev');
+      const dayNext = li.querySelector('.day-next');
+      if (dayPrev && handlers.onPinDay) {
+        dayPrev.onclick = (e) => { e.stopPropagation(); handlers.onPinDay(pin, Math.max(1, dayNo - 1)); };
+      }
+      if (dayNext && handlers.onPinDay) {
+        dayNext.onclick = (e) => { e.stopPropagation(); handlers.onPinDay(pin, dayNo + 1); };
+      }
       if (up) up.onclick = (e) => { e.stopPropagation(); handlers.onMove(index, -1); };
       if (down) down.onclick = (e) => { e.stopPropagation(); handlers.onMove(index, 1); };
       if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
