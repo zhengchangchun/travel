@@ -6,6 +6,7 @@ data/*.db-shm
 data/backups/
 data/notes-img/
 data/home-img/
+data/featured-photos/
 *.log
 .DS_Store
 
