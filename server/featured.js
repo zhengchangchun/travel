@@ -82,7 +82,7 @@ function buildFeatured({ featured, db, city, current }) {
     let trips = 0;
     try {
       collected = db ? db.countPoisByCity(r.city) : 0;
-      trips = db ? db.listTrips(r.city).length : 0;
+      trips = db ? db.countTripsByCity(r.city) : 0;
     } catch (err) {
       collected = 0;
     }

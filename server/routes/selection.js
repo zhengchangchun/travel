@@ -5,6 +5,10 @@ function requireCity(ctx, city) {
   return String(city).trim();
 }
 
+const auth = require('../auth');
+// 选中的点属于「我的行程」：一律要登录，且只看得到自己的
+const me = (ctx) => auth.requireUser(ctx);
+
 const { parseOrderCsv } = require('../order');
 
 // 显式点序（「按距离」时前端算出来的那份）：逗号分隔的 poi_id；给了就按它排
@@ -15,9 +19,10 @@ module.exports = [
     method: 'GET',
     path: '/api/selection',
     handler(ctx) {
+      const user = me(ctx);
       const city = requireCity(ctx, ctx.query.city);
-      const trip = ctx.db.getCityTrip(city);
-      const pins = ctx.db.getSelectionByCity(city);
+      const trip = ctx.db.getCityTrip(city, user.id);
+      const pins = ctx.db.getSelectionByCity(city, user.id);
       return {
         tripId: trip ? trip.id : null,
         title: trip ? trip.title : null,
@@ -30,6 +35,7 @@ module.exports = [
     method: 'POST',
     path: '/api/selection',
     handler(ctx) {
+      const user = me(ctx);
       const b = ctx.body || {};
       const city = requireCity(ctx, b.city);
       const poi = b.poi || {};
@@ -53,9 +59,9 @@ module.exports = [
         tel: poi.tel,
         photo: poi.photo,
         note: poi.note,
-      });
-      const trip = ctx.db.getCityTrip(city);
-      const pins = ctx.db.getSelectionByCity(city);
+      }, user.id);
+      const trip = ctx.db.getCityTrip(city, user.id);
+      const pins = ctx.db.getSelectionByCity(city, user.id);
       return { tripId: trip ? trip.id : null, pin, count: pins.length };
     },
   },
@@ -63,16 +69,17 @@ module.exports = [
     method: 'DELETE',
     path: '/api/selection',
     handler(ctx) {
+      const user = me(ctx);
       const city = requireCity(ctx, ctx.query.city);
       const poiId = ctx.query.poi_id;
       if (!poiId) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 poi_id');
       }
-      const { changes } = ctx.db.deletePinByPoi(city, poiId);
+      const { changes } = ctx.db.deletePinByPoi(city, poiId, user.id);
       if (!changes) {
         throw new ctx.HttpError(404, 'NOT_FOUND', `未选中该地点 ${poiId}`);
       }
-      const pins = ctx.db.getSelectionByCity(city);
+      const pins = ctx.db.getSelectionByCity(city, user.id);
       return { deleted: poiId, count: pins.length };
     },
   },
@@ -80,12 +87,13 @@ module.exports = [
     method: 'PUT',
     path: '/api/selection/order',
     handler(ctx) {
+      const user = me(ctx);
       const b = ctx.body || {};
       const city = requireCity(ctx, b.city);
       if (!Array.isArray(b.poi_ids)) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', 'poi_ids 必须为数组');
       }
-      const pins = ctx.db.reorderPins(city, b.poi_ids.map(String));
+      const pins = ctx.db.reorderPins(city, b.poi_ids.map(String), user.id);
       return { count: pins.length, pins };
     },
   },
@@ -93,12 +101,13 @@ module.exports = [
     method: 'GET',
     path: '/api/selection/export',
     handler(ctx) {
+      const user = me(ctx);
       const city = requireCity(ctx, ctx.query.city);
       const labels = {};
       (ctx.categories || []).forEach((c) => {
         labels[c.key] = { label: c.label };
       });
-      const text = ctx.db.buildItineraryMarkdown(city, labels, parseOrder(ctx.query.order)) + '\n';
+      const text = ctx.db.buildItineraryMarkdown(city, labels, parseOrder(ctx.query.order), user.id) + '\n';
       ctx.res.writeHead(200, {
         'Content-Type': 'text/markdown; charset=utf-8',
         'Content-Length': Buffer.byteLength(text),

@@ -50,6 +50,13 @@
       e.status = res.status;
       throw e;
     }
+    if (res.status === 401) {
+      // 没登录 / 会话过期：送去登录页，登录完回到原地（规划页的东西都是「我的」）
+      const here = window.location.pathname + window.location.search;
+      if (!/^\/login/.test(window.location.pathname)) {
+        window.location.href = '/login?next=' + encodeURIComponent(here || '/app');
+      }
+    }
     if (!res.ok || !body.ok) {
       const info = body && body.error ? body.error : {};
       const e = new Error(info.msg || 'HTTP ' + res.status);
@@ -62,6 +69,9 @@
 
   window.TravelAPI = {
     getConfig: () => request('/api/config'),
+    me: () => request('/api/auth/me'),
+    legacyPending: () => request('/api/legacy/pending'),
+    claimLegacy: () => request('/api/legacy/claim', post({})),
     searchCity: (q) => request('/api/city/search?' + qs({ q })),
     cityBoundary: (city) => request('/api/city/boundary?' + qs({ city })),
     searchPoi: (params) => request('/api/poi/search?' + qs(params)),

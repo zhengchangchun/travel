@@ -46,6 +46,7 @@ function amapFixture(overrides = {}) {
 async function start(opts = {}) {
   const db = opts.db || createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,

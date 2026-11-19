@@ -44,7 +44,7 @@ function fakeAmap() {
 
 async function start(amap) {
   const db = createDb(':memory:');
-  const app = createApp({ config: TEST_CONFIG, categories: [{ key: 'sight', label: '景点', amapCode: '110000', color: '#1677ff' }], db, amap, routeIntervalMs: 0 });
+  const app = createApp({ authFallbackUser: true, config: TEST_CONFIG, categories: [{ key: 'sight', label: '景点', amapCode: '110000', color: '#1677ff' }], db, amap, routeIntervalMs: 0 });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return { base, db, close: () => new Promise((r) => app.server.close(() => { db.close(); r(); })) };

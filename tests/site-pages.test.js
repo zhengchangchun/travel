@@ -38,6 +38,7 @@ async function start(opts) {
   const db = createDb(':memory:');
   const amap = (opts && opts.amap) || fakeAmap();
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: [{ key: 'sight', label: '景点', amapCode: '110000', color: '#1677ff' }],
     db,
@@ -360,6 +361,14 @@ test('分享列表：share/ 里当年生成的老包会被补进列表（不用�
   fs.writeFileSync(path.join(dir, '杭州-我的行程-2026-11-10.json'), JSON.stringify({ stops: [{ name: '西湖' }, { name: '灵隐' }] }), 'utf8');
   const s = await start();
   try {
+    // 老包先被补进库里（归属空），第一次读列表看不到 —— 认领之后才成「我的」
+    const first = await call(s.base, 'GET', '/api/shares');
+    assert.equal(first.body.data.length, 0, '没认领的老包不属于任何人');
+    const pending = await call(s.base, 'GET', '/api/legacy/pending');
+    assert.equal(pending.body.data.shares, 1, '能报出「还有几条分享没归属」');
+    const claimed = await call(s.base, 'POST', '/api/legacy/claim', {});
+    assert.equal(claimed.body.data.shares, 1);
+
     const list = await call(s.base, 'GET', '/api/shares');
     assert.equal(list.body.data.length, 1);
     const row = list.body.data[0];

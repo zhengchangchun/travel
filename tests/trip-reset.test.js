@@ -26,6 +26,7 @@ const CATEGORIES = [
 async function start(opts = {}) {
   const db = opts.db || createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,
@@ -127,19 +128,19 @@ test('DELETE /api/trips?city= 缺 city → 400', async () => {
 
 test('db.deleteCityTrips：只删本城市，且返回删了几条行程/几个点', () => {
   const db = createDb(':memory:');
-  const a = db.createTrip({ city: '杭州', title: 'A' });
-  const b = db.createTrip({ city: '杭州', title: 'B' });
-  const c = db.createTrip({ city: '上海', title: 'C' });
+  const a = db.createTrip({ city: '杭州', title: 'A', userId: 1});
+  const b = db.createTrip({ city: '杭州', title: 'B', userId: 1});
+  const c = db.createTrip({ city: '上海', title: 'C', userId: 1});
   db.addPin({ trip_id: a.id, poi_id: 'X1', name: 'x1', lng: 1, lat: 1, category: 'food' });
   db.addPin({ trip_id: b.id, poi_id: 'X2', name: 'x2', lng: 2, lat: 2, category: 'food' });
   db.addPin({ trip_id: c.id, poi_id: 'Y1', name: 'y1', lng: 3, lat: 3, category: 'food' });
-  const res = db.deleteCityTrips('杭州');
+  const res = db.deleteCityTrips('杭州', 1);
   assert.deepEqual({ trips: res.trips, pins: res.pins }, { trips: 2, pins: 2 });
-  assert.equal(db.listTrips('杭州').length, 0);
-  assert.equal(db.listTrips('上海').length, 1);
+  assert.equal(db.listTrips(1, '杭州').length, 0);
+  assert.equal(db.listTrips(1, '上海').length, 1);
   assert.equal(db.getPinsByTrip(c.id).length, 1, '别的城市的点不能动');
   // 幂等：再删一次不报错
-  assert.deepEqual(db.deleteCityTrips('杭州'), { city: '杭州', trips: 0, pins: 0 });
+  assert.deepEqual(db.deleteCityTrips('杭州', 1), { city: '杭州', trips: 0, pins: 0 });
   db.close();
 });
 

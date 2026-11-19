@@ -301,6 +301,7 @@ test('fillAroundGrids：只取第 1 页（浏览级，不翻页不细分）', as
 async function start(opts = {}) {
   const db = opts.db || createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,

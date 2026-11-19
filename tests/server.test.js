@@ -42,6 +42,7 @@ function fakeAmap(overrides = {}) {
 
 async function start(opts = {}) {
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     db: createDb(':memory:'),
     amap: fakeAmap(opts.amapOverrides),

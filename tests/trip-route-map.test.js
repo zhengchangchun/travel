@@ -325,6 +325,7 @@ const req = async (base, p, opts) => {
 async function start(amap) {
   const db = createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,

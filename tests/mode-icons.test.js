@@ -174,6 +174,7 @@ function fakeAmap() {
 async function start(amapImpl) {
   const db = createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: { port: 0, amap: { webServiceKey: 'K', jsApiKey: 'J', jsApiSecurityCode: 'S' }, defaultCity: '杭州' },
     categories: [],
     db,

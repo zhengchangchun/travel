@@ -268,6 +268,12 @@ function createDb(filePath) {
     getTrip: db.prepare('SELECT * FROM trips WHERE id = ?'),
     listTrips: db.prepare('SELECT * FROM trips ORDER BY id DESC'),
     listTripsByCity: db.prepare('SELECT * FROM trips WHERE city = ? ORDER BY id DESC'),
+    // 按用户隔离：一个人的行程只看得到自己的（user_id 为 NULL 的是旧数据，靠「认领」归给某个账号）
+    listTripsByUser: db.prepare('SELECT * FROM trips WHERE user_id = ? ORDER BY id DESC'),
+    listTripsByUserCity: db.prepare('SELECT * FROM trips WHERE user_id = ? AND city = ? ORDER BY id DESC'),
+    tripByCityForUser: db.prepare('SELECT * FROM trips WHERE city = ? AND user_id = ? ORDER BY id LIMIT 1'),
+    countUnownedTrips: db.prepare('SELECT COUNT(*) AS c FROM trips WHERE user_id IS NULL'),
+    countUnownedShares: db.prepare('SELECT COUNT(*) AS c FROM shares WHERE user_id IS NULL'),
     updateTripTitle: db.prepare('UPDATE trips SET title = ? WHERE id = ?'),
     updateTripNote: db.prepare('UPDATE trips SET note = ? WHERE id = ?'),
     updateTripTheme: db.prepare('UPDATE trips SET theme = ? WHERE id = ?'),
@@ -277,6 +283,10 @@ function createDb(filePath) {
       'DELETE FROM pins WHERE trip_id IN (SELECT id FROM trips WHERE city = ?)'
     ),
     deleteCityTrips: db.prepare('DELETE FROM trips WHERE city = ?'),
+    deleteCityPinsOfUser: db.prepare(
+      'DELETE FROM pins WHERE trip_id IN (SELECT id FROM trips WHERE city = ? AND user_id = ?)'
+    ),
+    deleteCityTripsOfUser: db.prepare('DELETE FROM trips WHERE city = ? AND user_id = ?'),
     insertPin: db.prepare(
       `INSERT INTO pins (trip_id, poi_id, name, address, lng, lat, category, rating, cost, tel, photo, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -319,6 +329,14 @@ function createDb(filePath) {
 
     // ---- T2 选中模型 ----
     tripByCity: db.prepare('SELECT * FROM trips WHERE city = ? ORDER BY id LIMIT 1'),
+    selectionByCityForUser: db.prepare(
+      `SELECT p.* FROM pins p JOIN trips t ON p.trip_id = t.id
+       WHERE t.city = ? AND t.user_id = ? ORDER BY p.sort_order, p.id`
+    ),
+    pinByCityPoiForUser: db.prepare(
+      `SELECT p.* FROM pins p JOIN trips t ON p.trip_id = t.id
+       WHERE t.city = ? AND t.user_id = ? AND p.poi_id = ? ORDER BY p.id LIMIT 1`
+    ),
     pinByCityPoi: db.prepare(
       `SELECT p.* FROM pins p JOIN trips t ON p.trip_id = t.id
        WHERE t.city = ? AND p.poi_id = ? ORDER BY p.id LIMIT 1`
@@ -336,6 +354,17 @@ function createDb(filePath) {
     ),
     deletePinByPoi: db.prepare(
       `DELETE FROM pins WHERE poi_id = ? AND trip_id IN (SELECT id FROM trips WHERE city = ?)`
+    ),
+    deletePinByPoiOfUser: db.prepare(
+      `DELETE FROM pins WHERE trip_id IN (SELECT id FROM trips WHERE city = ? AND user_id = ?) AND poi_id = ?`
+    ),
+    setSortOrderOfUser: db.prepare(
+      `UPDATE pins SET sort_order = ? WHERE poi_id = ?
+       AND trip_id IN (SELECT id FROM trips WHERE user_id = ? AND city = ?)`
+    ),
+    setSortOrderByPinOfUser: db.prepare(
+      `UPDATE pins SET sort_order = ? WHERE id = ?
+       AND trip_id IN (SELECT id FROM trips WHERE user_id = ? AND city = ?)`
     ),
     setSortOrder: db.prepare(
       `UPDATE pins SET sort_order = ? WHERE poi_id = ? AND trip_id IN (SELECT id FROM trips WHERE city = ?)`
@@ -429,6 +458,10 @@ function createDb(filePath) {
     getShare: db.prepare('SELECT * FROM shares WHERE id = ?'),
     findShareByBase: db.prepare('SELECT * FROM shares WHERE base = ? ORDER BY id DESC LIMIT 1'),
     listShares: db.prepare('SELECT * FROM shares ORDER BY id DESC LIMIT ?'),
+    listSharesByUser: db.prepare('SELECT * FROM shares WHERE user_id = ? ORDER BY id DESC LIMIT ?'),
+    claimTrips: db.prepare('UPDATE trips SET user_id = ? WHERE user_id IS NULL'),
+    claimShares: db.prepare('UPDATE shares SET user_id = ? WHERE user_id IS NULL'),
+    countTripsCity: db.prepare('SELECT COUNT(*) AS c FROM trips WHERE city = ?'),
     deleteShare: db.prepare('DELETE FROM shares WHERE id = ?'),
   };
 
@@ -438,11 +471,19 @@ function createDb(filePath) {
       const info = stmts.insertTrip.run(city, title, theme || null, userId ?? null);
       return stmts.getTrip.get(toNumber(info.lastInsertRowid));
     },
-    listTrips(city) {
-      return city ? stmts.listTripsByCity.all(city) : stmts.listTrips.all();
+    // userId 必须给：只看得到自己的行程（旧数据 user_id 为 NULL，不会被任何人看到，要先认领）
+    listTrips(userId, city) {
+      if (userId == null) return [];
+      return city ? stmts.listTripsByUserCity.all(Number(userId), city) : stmts.listTripsByUser.all(Number(userId));
     },
     getTrip(id) {
       return stmts.getTrip.get(id);
+    },
+    // 这一趟是不是他的（不是就当不存在）
+    getTripOfUser(id, userId) {
+      const trip = stmts.getTrip.get(Number(id));
+      if (!trip) return null;
+      return Number(trip.user_id) === Number(userId) ? trip : null;
     },
     deleteTrip(id) {
       db.exec('BEGIN');
@@ -456,12 +497,13 @@ function createDb(filePath) {
         throw err;
       }
     },
-    // 删除该城市的全部行程与地点（同一城市只保留一个行程的口径；删干净才不会有“幽灵星标”）
-    deleteCityTrips(city) {
+    // 删除该城市里「他的」全部行程与地点（别人同城的动不了）
+    deleteCityTrips(city, userId) {
+      if (userId == null) return { city, trips: 0, pins: 0 };
       db.exec('BEGIN');
       try {
-        const pins = stmts.deleteCityPins.run(city);
-        const trips = stmts.deleteCityTrips.run(city);
+        const pins = stmts.deleteCityPinsOfUser.run(city, Number(userId));
+        const trips = stmts.deleteCityTripsOfUser.run(city, Number(userId));
         db.exec('COMMIT');
         return {
           city,
@@ -623,11 +665,13 @@ function createDb(filePath) {
     },
 
     // ---- T2 选中模型 ----
-    getCityTrip(city) {
-      return stmts.tripByCity.get(city) || null;
+    getCityTrip(city, userId) {
+      if (userId == null) return null;
+      return stmts.tripByCityForUser.get(city, Number(userId)) || null;
     },
-    getOrCreateCityTrip(city) {
-      const existing = stmts.tripByCity.get(city);
+    getOrCreateCityTrip(city, userId) {
+      if (userId == null) throw new Error('getOrCreateCityTrip 需要 userId');
+      const existing = stmts.tripByCityForUser.get(city, Number(userId));
       if (existing) {
         const fixed = dedupeCityTitle(city, existing.title);
         if (fixed !== existing.title) {
@@ -636,15 +680,17 @@ function createDb(filePath) {
         }
         return existing;
       }
-      return this.createTrip({ city, title: `${city} · 我的行程` });
+      return this.createTrip({ city, title: `${city} · 我的行程`, userId });
     },
-    getSelectionByCity(city) {
-      return stmts.selectionByCity.all(city);
+    getSelectionByCity(city, userId) {
+      if (userId == null) return [];
+      return stmts.selectionByCityForUser.all(city, Number(userId));
     },
-    insertPinIfAbsent(city, poi) {
-      const existing = stmts.pinByCityPoi.get(city, poi.id);
+    insertPinIfAbsent(city, poi, userId) {
+      if (userId == null) throw new Error('insertPinIfAbsent 需要 userId');
+      const existing = stmts.pinByCityPoiForUser.get(city, Number(userId), poi.id);
       if (existing) return existing;
-      const trip = this.getOrCreateCityTrip(city);
+      const trip = this.getOrCreateCityTrip(city, userId);
       const { next } = stmts.nextSortOrder.get(trip.id);
       const info = stmts.insertPinOrdered.run(
         trip.id,
@@ -663,26 +709,29 @@ function createDb(filePath) {
       );
       return stmts.getPin.get(toNumber(info.lastInsertRowid));
     },
-    deletePinByPoi(city, poiId) {
-      const info = stmts.deletePinByPoi.run(poiId, city);
-      return { changes: info.changes };
+    // 按 poi 删 / 排：只动当前用户自己那些行程里的点
+    deletePinByPoi(city, poiId, userId) {
+      if (userId == null) return { changes: 0 };
+      const info = stmts.deletePinByPoiOfUser.run(city, Number(userId), poiId);
+      return { changes: toNumber(info.changes) };
     },
-    reorderPins(city, poiIds) {
+    reorderPins(city, poiIds, userId) {
+      if (userId == null) return [];
       db.exec('BEGIN');
       try {
         poiIds.forEach((poiId, index) => {
           const key = String(poiId);
           // 客户端的点序口径：有 poi_id 给 poi_id，没有的给 pin:<pins.id>（见 web/js/selection.js::mapPin）
           const synthetic = /^pin:(\d+)$/.exec(key);
-          if (synthetic) stmts.setSortOrderByPin.run(index, Number(synthetic[1]), city);
-          else stmts.setSortOrder.run(index, key, city);
+          if (synthetic) stmts.setSortOrderByPinOfUser.run(index, Number(synthetic[1]), Number(userId), city);
+          else stmts.setSortOrderOfUser.run(index, key, Number(userId), city);
         });
         db.exec('COMMIT');
       } catch (err) {
         db.exec('ROLLBACK');
         throw err;
       }
-      return this.getSelectionByCity(city);
+      return this.getSelectionByCity(city, userId);
     },
     updatePinNote(id, note) {
       const info = stmts.updatePinNote.run(note, id);
@@ -964,9 +1013,12 @@ function createDb(filePath) {
     },
     // 一条路线就是一个有序清单：不再按类别分组（页面上列表也是不分的），
     // 有明确点序（order）时就按那条顺序排，没有就按库里的 sort_order。
-    buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS, order = null) {
-      const trip = stmts.tripByCity.get(city);
-      const pins = applyPoiOrder(stmts.selectionByCity.all(city), order);
+    buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS, order = null, userId = null) {
+      const trip = userId == null ? null : stmts.tripByCityForUser.get(city, Number(userId));
+      const pins = applyPoiOrder(
+        userId == null ? [] : stmts.selectionByCityForUser.all(city, Number(userId)),
+        order
+      );
       void labels; // 兼容老调用点：分组标题已取消，labels 不再参与排版
       const title = (trip && trip.title) || `${city} · 我的行程`;
       const lines = [`# ${title}（${pins.length} 个地点）`];
@@ -1052,7 +1104,6 @@ function createDb(filePath) {
       return { changes: toNumber(info.changes) };
     },
 
-    // ---- 分享列表 ----
     addShare(s) {
       const info = stmts.insertShare.run(
         s.tripId ?? null,
@@ -1070,6 +1121,29 @@ function createDb(filePath) {
     listShares(limit) {
       return stmts.listShares.all(Number(limit) || 50).map(parseShareRow);
     },
+    listSharesByUser(userId, limit) {
+      if (userId == null) return [];
+      return stmts.listSharesByUser.all(Number(userId), Number(limit) || 50).map(parseShareRow);
+    },
+    countUnowned() {
+      const trips = toNumber(stmts.countUnownedTrips.get().c);
+      const shares = toNumber(stmts.countUnownedShares.get().c);
+      return { trips, shares };
+    },
+    // 旧数据认领：把没有归属的行程 / 分享归给当前账号（单机场景下的迁移用）
+    claimUnowned(userId) {
+      if (userId == null) return { trips: 0, shares: 0 };
+      db.exec('BEGIN');
+      try {
+        const t = stmts.claimTrips.run(Number(userId));
+        const s = stmts.claimShares.run(Number(userId));
+        db.exec('COMMIT');
+        return { trips: toNumber(t.changes), shares: toNumber(s.changes) };
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
     getShare(id) {
       const row = stmts.getShare.get(Number(id));
       return row ? parseShareRow(row) : null;
@@ -1084,6 +1158,10 @@ function createDb(filePath) {
     },
     countPoisByCity(city) {
       const row = stmts.countPoisCity.get(String(city));
+      return toNumber(row && row.c);
+    },
+    countTripsByCity(city) {
+      const row = stmts.countTripsCity.get(String(city));
       return toNumber(row && row.c);
     },
     updateTripTheme(id, theme) {

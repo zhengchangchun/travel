@@ -34,6 +34,7 @@ const CATEGORIES = [{ key: 'food', label: '美食', amapCode: '050000', color: '
 async function start(opts = {}) {
   const db = opts.db || createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,
@@ -80,7 +81,9 @@ test('trips 有 note 列；老库（没有这列）打开时自动补上，已�
   old.close();
 
   const db = createDb(file);
-  const rows = db.listTrips();
+  // 老库里没有归属：认领给账号 1（账号上线前的数据都走这条）
+  db.claimUnowned(1);
+  const rows = db.listTrips(1);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].title, '老行程');
   assert.ok('note' in rows[0], '老库也要有 note 列');
@@ -90,7 +93,7 @@ test('trips 有 note 列；老库（没有这列）打开时自动补上，已�
   db.updateTripNote(rows[0].id, '周三下午到，先吃饭再逛');
   db.close();
   const db2 = createDb(file);
-  const again = db2.listTrips()[0];
+  const again = db2.listTrips(1)[0];
   assert.equal(again.note, '周三下午到，先吃饭再逛');
   const cols = db2.raw.prepare('PRAGMA table_info(trips)').all().filter((c) => c.name === 'note');
   assert.equal(cols.length, 1, 'note 列只能有一个');
@@ -100,7 +103,7 @@ test('trips 有 note 列；老库（没有这列）打开时自动补上，已�
 
 test('updateTripNote：空串存 NULL（写了个空的＝没有备注）', () => {
   const db = createDb(':memory:');
-  const trip = db.createTrip({ city: '杭州', title: '杭州行程' });
+  const trip = db.createTrip({ city: '杭州', title: '杭州行程', userId: 1});
   assert.equal(db.updateTripNote(trip.id, '   ').trip.note, null);
   assert.equal(db.updateTripNote(trip.id, '有内容').trip.note, '有内容');
   assert.equal(db.updateTripNote(trip.id, '').trip.note, null);

@@ -16,11 +16,11 @@ test('createDb 建表幂等（可重复初始化）', () => {
 
 test('createTrip / listTrips 往返', () => {
   const db = createDb(':memory:');
-  const trip = db.createTrip({ city: '杭州', title: '周末杭州' });
+  const trip = db.createTrip({ city: '杭州', title: '周末杭州', userId: 1});
   assert.ok(trip.id > 0);
   assert.strictEqual(trip.city, '杭州');
   assert.strictEqual(trip.title, '周末杭州');
-  const all = db.listTrips();
+  const all = db.listTrips(1);
   assert.strictEqual(all.length, 1);
   assert.strictEqual(all[0].id, trip.id);
   db.close();
@@ -28,7 +28,7 @@ test('createTrip / listTrips 往返', () => {
 
 test('addPin 后 getPinsByTrip 能取回，字段完整', () => {
   const db = createDb(':memory:');
-  const trip = db.createTrip({ city: '杭州', title: 'T' });
+  const trip = db.createTrip({ city: '杭州', title: 'T', userId: 1});
   const pin = db.addPin({
     trip_id: trip.id,
     poi_id: 'B123',
@@ -57,12 +57,12 @@ test('持久化：写文件后重开仍能读到', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-db-'));
   const file = path.join(dir, 'nested', 'travel.db');
   const db = createDb(file);
-  const trip = db.createTrip({ city: '杭州', title: '持久化' });
+  const trip = db.createTrip({ city: '杭州', title: '持久化', userId: 1});
   db.addPin({ trip_id: trip.id, name: '点A', lng: 1, lat: 2, category: 'food' });
   db.close();
 
   const reopened = createDb(file);
-  const trips = reopened.listTrips();
+  const trips = reopened.listTrips(1);
   assert.strictEqual(trips.length, 1);
   const pins = reopened.getPinsByTrip(trips[0].id);
   assert.strictEqual(pins.length, 1);
@@ -72,13 +72,13 @@ test('持久化：写文件后重开仍能读到', () => {
 
 test('deleteTrip 级联删除其下 pins', () => {
   const db = createDb(':memory:');
-  const trip = db.createTrip({ city: '杭州', title: 'T' });
+  const trip = db.createTrip({ city: '杭州', title: 'T', userId: 1});
   db.addPin({ trip_id: trip.id, name: 'p1', lng: 1, lat: 1, category: 'food' });
   db.addPin({ trip_id: trip.id, name: 'p2', lng: 2, lat: 2, category: 'stay' });
   assert.strictEqual(db.getPinsByTrip(trip.id).length, 2);
 
   db.deleteTrip(trip.id);
-  assert.strictEqual(db.listTrips().length, 0);
+  assert.strictEqual(db.listTrips(1).length, 0);
   assert.strictEqual(db.getPinsByTrip(trip.id).length, 0);
   db.close();
 });

@@ -6,6 +6,25 @@ const routemap = require('../routemap');
 const auth = require('../auth');
 const { applyPoiOrder } = require('../order');
 
+// 行程、点位、分享包都是「我的」：一律要登录，且只能碰自己的
+const me = (ctx) => auth.requireUser(ctx);
+
+function tripOfUser(ctx, id) {
+  const user = me(ctx);
+  const trip = ctx.db.getTripOfUser(Number(id), user.id);
+  if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
+  return { user, trip };
+}
+
+// 点属于某趟行程，行程属于某人：别人的点当不存在
+function pinOfUser(ctx, id) {
+  const user = me(ctx);
+  const pin = ctx.db.getPin(Number(id));
+  const trip = pin ? ctx.db.getTripOfUser(pin.trip_id, user.id) : null;
+  if (!pin || !trip) throw new ctx.HttpError(404, 'NOT_FOUND', `点 ${id} 不存在`);
+  return pin;
+}
+
 const MODE_KEYS = ['driving', 'riding', 'walking', 'transit'];
 
 // 页面上那条「按我的安排」：每段自己的方式（客户端把段方式随请求带过来）
@@ -38,7 +57,8 @@ function revealFile(full) {
 // 行程分享载荷：库里读行程 + 有序点，住宿锚点在前端（localStorage）⇒ 由请求体带过来
 function sharePayload(ctx, tripId) {
   const id = Number(tripId);
-  const trip = ctx.db.getTrip(id);
+  const user = auth.requireUser(ctx);
+  const trip = ctx.db.getTripOfUser(id, user.id);
   if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
   const b = (ctx.body && ctx.body.base) || null;
   const base =
@@ -124,10 +144,10 @@ module.exports = [
       // 记一笔到分享列表（首页/分享列表页要用）；记录失败不影响分享本身
       let shareRow = null;
       try {
-        const user = auth.currentUser(ctx.db, ctx.req);
+        const user = me(ctx);
         shareRow = ctx.db.addShare({
           tripId: payload.tripId != null ? Number(payload.tripId) : Number(ctx.params.id) || null,
-          userId: user ? user.id : null,
+          userId: user.id,
           city: payload.city,
           title: payload.title,
           base: out.base,
@@ -183,24 +203,25 @@ module.exports = [
     method: 'GET',
     path: '/api/trips',
     handler(ctx) {
+      const user = me(ctx);
       const city = ctx.query && ctx.query.city;
-      return ctx.db.listTrips(city ? String(city).trim() : undefined);
+      return ctx.db.listTrips(user.id, city ? String(city).trim() : undefined);
     },
   },
   {
     method: 'POST',
     path: '/api/trips',
     handler(ctx) {
+      const user = me(ctx);
       const { city, title, theme } = ctx.body || {};
       if (!city || !String(city).trim() || !title || !String(title).trim()) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 city/title');
       }
-      const user = auth.currentUser(ctx.db, ctx.req);
       return ctx.db.createTrip({
         city: String(city).trim(),
         title: String(title).trim(),
         theme: theme == null ? null : String(theme).trim(),
-        userId: user ? user.id : null,
+        userId: user.id,
       });
     },
   },
@@ -208,11 +229,12 @@ module.exports = [
     method: 'DELETE',
     path: '/api/trips',
     handler(ctx) {
+      const user = me(ctx);
       const city = ctx.query && ctx.query.city;
       if (!city || !String(city).trim()) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 city');
       }
-      const res = ctx.db.deleteCityTrips(String(city).trim());
+      const res = ctx.db.deleteCityTrips(String(city).trim(), user.id);
       return { city: res.city, trips: res.trips, pins: res.pins, deleted: true };
     },
   },
@@ -220,12 +242,9 @@ module.exports = [
     method: 'DELETE',
     path: '/api/trips/:id',
     handler(ctx) {
-      const id = Number(ctx.params.id);
-      if (!ctx.db.getTrip(id)) {
-        throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
-      }
-      ctx.db.deleteTrip(id);
-      return { deleted: id };
+      const { trip } = tripOfUser(ctx, ctx.params.id);
+      ctx.db.deleteTrip(trip.id);
+      return { deleted: trip.id };
     },
   },
   {
@@ -233,9 +252,9 @@ module.exports = [
     method: 'PATCH',
     path: '/api/trips/:id',
     handler(ctx) {
-      const id = Number(ctx.params.id);
-      let trip = ctx.db.getTrip(id);
-      if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
+      const { trip: owned } = tripOfUser(ctx, ctx.params.id);
+      const id = owned.id;
+      let trip = owned;
       const b = ctx.body || {};
       if (b.title !== undefined) {
         const title = String(b.title).trim();
@@ -251,17 +270,15 @@ module.exports = [
     method: 'GET',
     path: '/api/trips/:id/pins',
     handler(ctx) {
-      const id = Number(ctx.params.id);
-      if (!ctx.db.getTrip(id)) {
-        throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
-      }
-      return ctx.db.getPinsByTrip(id);
+      const { trip } = tripOfUser(ctx, ctx.params.id);
+      return ctx.db.getPinsByTrip(trip.id);
     },
   },
   {
     method: 'POST',
     path: '/api/pins',
     handler(ctx) {
+      const user = me(ctx);
       const b = ctx.body || {};
       if (b.name === undefined || b.lng === undefined || b.lat === undefined) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 name/lng/lat');
@@ -270,14 +287,14 @@ module.exports = [
       let tripId;
       if (b.trip_id !== undefined && b.trip_id !== null) {
         tripId = Number(b.trip_id);
-        if (!ctx.db.getTrip(tripId)) {
+        if (!ctx.db.getTripOfUser(tripId, user.id)) {
           throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${b.trip_id} 不存在`);
         }
       } else {
         if (!b.city || !String(b.city).trim()) {
           throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 trip_id 时必须提供 city');
         }
-        tripId = ctx.db.getOrCreateCityTrip(String(b.city).trim()).id;
+        tripId = ctx.db.getOrCreateCityTrip(String(b.city).trim(), user.id).id;
       }
       return ctx.db.addPin({
         trip_id: tripId,
@@ -299,24 +316,18 @@ module.exports = [
     method: 'PATCH',
     path: '/api/pins/:id',
     handler(ctx) {
-      const id = Number(ctx.params.id);
-      if (!ctx.db.getPin(id)) {
-        throw new ctx.HttpError(404, 'NOT_FOUND', `点 ${id} 不存在`);
-      }
+      const pin = pinOfUser(ctx, ctx.params.id);
       const { note } = ctx.body || {};
-      return ctx.db.updatePinNote(id, note === undefined ? null : note).pin;
+      return ctx.db.updatePinNote(pin.id, note === undefined ? null : note).pin;
     },
   },
   {
     method: 'DELETE',
     path: '/api/pins/:id',
     handler(ctx) {
-      const id = Number(ctx.params.id);
-      if (!ctx.db.getPin(id)) {
-        throw new ctx.HttpError(404, 'NOT_FOUND', `点 ${id} 不存在`);
-      }
-      ctx.db.deletePin(id);
-      return { deleted: id };
+      const pin = pinOfUser(ctx, ctx.params.id);
+      ctx.db.deletePin(pin.id);
+      return { deleted: pin.id };
     },
   },
 ];

@@ -24,6 +24,7 @@ const routeRoutes = require('./routes/route');
 const authRoutes = require('./routes/auth');
 const homeRoutes = require('./routes/home');
 const sharesRoutes = require('./routes/shares');
+const legacyRoutes = require('./routes/legacy');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
 
@@ -180,6 +181,7 @@ function createApp(opts = {}) {
     ...authRoutes,
     ...homeRoutes,
     ...sharesRoutes,
+    ...legacyRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));
@@ -191,6 +193,8 @@ function createApp(opts = {}) {
     cache,
     amap,
     HttpError,
+    // 只在老测试里用：有些用例早于账号体系，写死一个假登录用户（生产永远不设）
+    fallbackUser: opts.authFallbackUser === true ? { id: 1, username: 'tester', nickname: 'tester' } : null,
     // 笔记抓取（P5）：可注入（测试里换成假抓取器，不起浏览器）
     noteFetch: opts.noteFetch || require('./note-fetch'),
     // 笔记长任务（P10-⑩）：抓取/搜索的后台任务表（内存），可注入

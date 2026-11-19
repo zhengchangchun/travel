@@ -45,6 +45,7 @@ function fakeAmap(calls) {
 
 async function startApp(opts = {}) {
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db: opts.db || createDb(':memory:'),

@@ -53,6 +53,7 @@ function startImageServer() {
 
 async function startApp(db) {
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db: db || createDb(':memory:'),

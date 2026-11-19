@@ -10,8 +10,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const auth = require('../auth');
 
 const SHARE_DIR = () => process.env.TRAVEL_SHARE_DIR || path.join(__dirname, '..', '..', 'share');
+// 分享列表是「我的」：要登录，且只看得到自己的
+const me = (ctx) => auth.requireUser(ctx);
 
 function withLinks(row) {
   if (!row) return null;
@@ -25,7 +28,7 @@ function withLinks(row) {
 
 // 老文件补账：share/ 目录里当年生成的分享包（那时还没有分享表）要能在列表里看到。
 // 文件名约定 <城市>-<行程名>-<本地日期>.html ⇒ 拆出城市与标题；只读文件头部，不动内容。
-function importExistingShares(ctx) {
+function importExistingShares(ctx, userId) {
   const dir = path.resolve(SHARE_DIR());
   let entries = [];
   try {
@@ -60,7 +63,15 @@ function importExistingShares(ctx) {
         stops = 0;
       }
       try {
-        ctx.db.addShare({ city, title: title || base, base, text, stops, files: { imported: true, day } });
+        ctx.db.addShare({
+          city,
+          title: title || base,
+          base,
+          text,
+          stops,
+          files: { imported: true, day },
+          userId: userId == null ? null : userId,
+        });
         imported += 1;
       } catch (err) {
         /* 单条失败不挡其余 */
@@ -74,17 +85,22 @@ module.exports = [
     method: 'GET',
     path: '/api/shares',
     handler(ctx) {
+      const user = me(ctx);
       const limit = Number((ctx.query && ctx.query.limit) || 50) || 50;
-      importExistingShares(ctx);
-      return ctx.db.listShares(limit).map(withLinks);
+      // 老包装（没有归属）不直接露给任何账号：认领之后才算他的
+      importExistingShares(ctx, null);
+      return ctx.db.listSharesByUser(user.id, limit).map(withLinks);
     },
   },
   {
     method: 'GET',
     path: '/api/shares/:id',
     handler(ctx) {
+      const user = me(ctx);
       const row = ctx.db.getShare(Number(ctx.params.id));
-      if (!row) throw new ctx.HttpError(404, 'NOT_FOUND', `分享 ${ctx.params.id} 不存在`);
+      if (!row || Number(row.user_id) !== Number(user.id)) {
+        throw new ctx.HttpError(404, 'NOT_FOUND', `分享 ${ctx.params.id} 不存在`);
+      }
       return withLinks(row);
     },
   },
@@ -92,9 +108,12 @@ module.exports = [
     method: 'DELETE',
     path: '/api/shares/:id',
     handler(ctx) {
+      const user = me(ctx);
       const id = Number(ctx.params.id);
       const row = ctx.db.getShare(id);
-      if (!row) throw new ctx.HttpError(404, 'NOT_FOUND', `分享 ${id} 不存在`);
+      if (!row || Number(row.user_id) !== Number(user.id)) {
+        throw new ctx.HttpError(404, 'NOT_FOUND', `分享 ${id} 不存在`);
+      }
       const dir = path.resolve(SHARE_DIR());
       const removed = [];
       ['html', 'txt', 'json'].forEach((ext) => {

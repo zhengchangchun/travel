@@ -167,6 +167,7 @@ const TEST_CONFIG = {
 
 async function start(amap) {
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: [{ key: 'food', label: '美食', amapCode: '050000', color: '#FF6B35' }],
     db: createDb(':memory:'),

@@ -61,7 +61,7 @@ async function start(opts = {}) {
       return [];
     },
   };
-  const app = createApp({ config: TEST_CONFIG, db, amap });
+  const app = createApp({ authFallbackUser: true, config: TEST_CONFIG, db, amap });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return {

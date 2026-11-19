@@ -2760,6 +2760,21 @@
       return;
     }
 
+    // 行程 / 点位都是「我的」：没登录看不了这一页（直接把人送去登录，登录完回 /app）
+    try {
+      const me = await API.me();
+      if (!me || !me.user) {
+        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+        return;
+      }
+      state.user = me.user;
+    } catch (err) {
+      if (!err || err.status !== 401) {
+        UI.setStatus('登录状态检查失败：' + human(err));
+      }
+      return;
+    }
+
     Cats.init(state.config.categories);
     state.orderMode = readOrderMode(); // 点的顺序：默认「按距离」（上次选过就沿用上次的）
     // 首先是一个地图：打开就把四类都显示出来，而不是空着等用户去选（用户 2026-11-11）

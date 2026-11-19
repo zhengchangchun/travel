@@ -116,6 +116,15 @@ function currentUser(db, req) {
   return user || null;
 }
 
+// 供路由用：没登录就 401（HttpError 由 index.js 注到 ctx 上）
+// ctx.fallbackUser 只给已有的老测试用（createApp({ authFallbackUser: true })），生产不会设
+function requireUser(ctx) {
+  const row = currentUser(ctx.db, ctx.req);
+  if (row) return row;
+  if (ctx.fallbackUser) return ctx.fallbackUser;
+  throw new ctx.HttpError(401, 'AUTH_REQUIRED', '先登录');
+}
+
 function register(db, { username, password, nickname }) {
   const user = String(username == null ? '' : username).trim();
   const up = usernameProblem(user);
@@ -157,6 +166,7 @@ module.exports = {
   publicUser,
   issueSession,
   currentUser,
+  requireUser,
   register,
   login,
 };

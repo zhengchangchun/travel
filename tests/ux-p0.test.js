@@ -245,6 +245,7 @@ async function start(opts = {}) {
   const amap = opts.amap || {};
   const calls = amap.calls || { poiSearch: 0 };
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,

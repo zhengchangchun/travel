@@ -51,6 +51,7 @@ async function start(opts = {}) {
   const db = opts.db || createDb(':memory:');
   const amap = opts.amap || fakeAmap(opts.amapOverrides);
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     db,
     amap,
@@ -75,9 +76,9 @@ async function start(opts = {}) {
 }
 
 function seedThree(db) {
-  db.insertPinIfAbsent('杭州', { id: 'A', name: '甲点', lng: 120.1, lat: 30.2, category: 'food' });
-  db.insertPinIfAbsent('杭州', { id: 'B', name: '乙点', lng: 120.2, lat: 30.3, category: 'sight' });
-  db.insertPinIfAbsent('杭州', { id: 'C', name: '丙点', lng: 120.3, lat: 30.4, category: 'stay' });
+  db.insertPinIfAbsent('杭州', { id: 'A', name: '甲点', lng: 120.1, lat: 30.2, category: 'food' }, 1);
+  db.insertPinIfAbsent('杭州', { id: 'B', name: '乙点', lng: 120.2, lat: 30.3, category: 'sight' }, 1);
+  db.insertPinIfAbsent('杭州', { id: 'C', name: '丙点', lng: 120.3, lat: 30.4, category: 'stay' }, 1);
 }
 
 async function getJson(base, p) {
@@ -191,7 +192,7 @@ test('GET /api/itinerary/route 缺 city → 400', async () => {
 
 test('GET /api/itinerary/route 单点行程 → 400', async () => {
   const db = createDb(':memory:');
-  db.insertPinIfAbsent('杭州', { id: 'A', name: '甲点', lng: 120.1, lat: 30.2, category: 'food' });
+  db.insertPinIfAbsent('杭州', { id: 'A', name: '甲点', lng: 120.1, lat: 30.2, category: 'food' }, 1);
   const { base, close } = await start({ db });
   try {
     const { status, body } = await getJson(base, '/api/itinerary/route?city=' + encodeURIComponent('杭州') + '&mode=driving');

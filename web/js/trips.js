@@ -131,6 +131,54 @@
     }
   }
 
+  function claimBanner(pending, user) {
+    const trips = Number(pending && pending.trips) || 0;
+    const shares = Number(pending && pending.shares) || 0;
+    if (!trips && !shares) return '';
+    const bits = [];
+    if (trips) bits.push(trips + ' 条历史行程');
+    if (shares) bits.push(shares + ' 条历史分享');
+    return (
+      '<div class="card" style="border-color:rgba(255,200,97,.4)">' +
+      '<h2>有没归属的旧数据</h2>' +
+      '<p class="hint" style="margin-bottom:10px">账号上线前建的 ' +
+      bits.join(' / ') +
+      ' 还没归属给任何账号（现在谁都看不到）。这是本机自用，一次性认领到「' +
+      Site.esc(user.nickname || user.username) +
+      '」名下就行。</p>' +
+      '<button class="btn primary" type="button" id="claim-btn">认领到我的账号</button>' +
+      '</div>'
+    );
+  }
+
+  async function loadPending(user) {
+    try {
+      const pending = await Site.api.request('/api/legacy/pending');
+      const holder = document.getElementById('pending-box');
+      if (!holder) return;
+      holder.innerHTML = claimBanner(pending, user);
+      const btn = document.getElementById('claim-btn');
+      if (btn) {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          btn.textContent = '认领中…';
+          try {
+            const done = await Site.api.request('/api/legacy/claim', { method: 'POST', body: {} });
+            Site.toast('已认领 ' + (done.trips || 0) + ' 条行程 / ' + (done.shares || 0) + ' 条分享', true);
+            await reload();
+            await loadPending(user);
+          } catch (err) {
+            Site.toast(err.message || '认领失败');
+            btn.disabled = false;
+            btn.textContent = '认领到我的账号';
+          }
+        };
+      }
+    } catch (err) {
+      /* 读不到就不提示 */
+    }
+  }
+
   (async function init() {
     let me = { user: null };
     if (window.TravelHead) me = (await window.TravelHead.start()) || me;
@@ -142,5 +190,6 @@
     }
     $('tp-create').onclick = create;
     await reload();
+    await loadPending(me.user);
   })();
 })();

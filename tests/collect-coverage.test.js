@@ -65,6 +65,7 @@ async function withApp(deps, fn) {
   const db = deps.db || createDb(':memory:');
   const amap = deps.amap || makeAmap();
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,

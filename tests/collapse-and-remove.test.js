@@ -198,6 +198,7 @@ const CATEGORIES = [{ key: 'food', label: '美食', amapCode: '050000', color: '
 async function start() {
   const db = createDb(':memory:');
   const app = createApp({
+    authFallbackUser: true,
     config: TEST_CONFIG,
     categories: CATEGORIES,
     db,
