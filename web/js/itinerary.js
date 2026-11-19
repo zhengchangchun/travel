@@ -85,6 +85,19 @@
     });
   }
 
+  // 一行的缩略实景图（拿不到图就不占位）
+  function shotHtml(pin, handlers) {
+    const fn = handlers && handlers.photoOf;
+    const src = typeof fn === 'function' ? fn(pin) : pin && pin.photo ? String(pin.photo) : '';
+    if (!src) return '';
+    const creditFn = handlers && handlers.photoCreditOf;
+    const credit = typeof creditFn === 'function' ? creditFn(pin) : '';
+    return (
+      '<img class="itin-shot" src="' + esc(src) + '" alt="" loading="lazy" title="' +
+      esc(credit ? '图：' + credit : pin.name) + '" onerror="this.remove()" />'
+    );
+  }
+
   function render(container, pins, handlers) {
     handlers = handlers || {};
     if (!container) return;
@@ -126,6 +139,7 @@
         '<div class="poi-head">' +
         (handlers.onReorder ? '<span class="itin-handle" title="按住拖动排序">⋮⋮</span>' : '') +
         '<span class="itin-no">' + (index + 1) + '</span>' +
+        shotHtml(pin, handlers) +
         '<span class="dot" style="background:' + esc(color) + '"></span>' +
         '<b class="poi-name">' + esc(pin.name) + '</b>' +
         '<span class="poi-tag">' + esc(label) + '</span>' +

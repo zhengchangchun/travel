@@ -111,6 +111,7 @@
     li.dataset.sig = sig;
     li.innerHTML =
       '<div class="poi-head">' +
+      shotHtml(poi, handlers) +
       '<span class="dot" style="background:' + esc(color) + '"></span>' +
       '<b class="poi-name">' + esc(poi.name) + '</b>' +
       topStarHtml(poi) +
@@ -171,6 +172,8 @@
             p.cost,
             handlers.isSelected ? handlers.isSelected(p) : false,
             handlers.isBase ? handlers.isBase(p) : false,
+            // 实景图是异步拿的：图变了也要重画这一行
+            handlers.photoOf ? handlers.photoOf(p) : '',
           ])
         : '';
 
@@ -201,6 +204,19 @@
     }
   }
 
+  // 一行的缩略实景图（「我的选择」与行程清单共用同一份图片口径：先看点自己的图，再按名字查）
+  function shotHtml(pin, handlers) {
+    const fn = handlers && handlers.photoOf;
+    const src = typeof fn === 'function' ? fn(pin) : pin && pin.photo ? String(pin.photo) : '';
+    if (!src) return '';
+    const creditFn = handlers && handlers.photoCreditOf;
+    const credit = typeof creditFn === 'function' ? creditFn(pin) : '';
+    return (
+      '<img class="itin-shot" src="' + esc(src) + '" alt="" loading="lazy" title="' +
+      esc(credit ? '图：' + credit : pin.name) + '" onerror="this.remove()" />'
+    );
+  }
+
   // 「我的选择」：序号 + 上一站到这里的耗时（实时）+ 上移/下移/定位/移除
   function renderSelectionPanel(container, pins, handlers) {
     container.innerHTML = '';
@@ -224,6 +240,7 @@
         '</div>' +
         '<div class="poi-head">' +
         '<span class="sel-order">' + (i + 1) + '</span>' +
+        shotHtml(pin, handlers) +
         '<span class="dot" style="background:' + esc(color) + '"></span>' +
         '<b class="poi-name">' + esc(pin.name) + '</b>' +
         '<span class="poi-tag">' + esc(label) + '</span>' +

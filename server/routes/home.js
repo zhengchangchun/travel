@@ -8,6 +8,7 @@
 const { ROOT } = require('../config');
 const { locate } = require('../geo-locate');
 const { loadFeatured, buildFeatured } = require('../featured');
+const photos = require('../featured-photos');
 
 // 精选库是仓里的文件：进程内缓存一次，改完文件重启生效（本地自用够用）
 let featuredCache = null;
@@ -48,6 +49,16 @@ module.exports = [
           : { ...guessed, city: defaultCity, source: guessed.source === 'fallback' ? 'default' : guessed.source };
       }
       return buildFeatured({ featured: featured(), db: ctx.db, city: current.city, current });
+    },
+  },
+  {
+    // 一座城的实景图索引（规划页的行程清单用：点位名 → 图）
+    method: 'GET',
+    path: '/api/photos',
+    handler(ctx) {
+      const city = String((ctx.query && ctx.query.city) || '').trim();
+      if (!city) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 city');
+      return { city, credits: photos.credits(), photos: photos.photosForCity(city) };
     },
   },
 ];

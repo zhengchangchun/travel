@@ -485,3 +485,63 @@ test('首页配图：坐标缺失（null）不能当成 0,0 —— 那会把取�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('实景图：推荐路程每站带图与出处，/photo/ 能取到图，/api/photos 给规划页用', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-photos-'));
+  process.env.TRAVEL_FEATURED_PHOTO_DIR = dir;
+  const files = fs.readdirSync(path.join(ROOT, 'config'));
+  assert.ok(files.includes('featured-photos.json'), '实景图索引要在仓里');
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/featured-photos.json'), 'utf8'));
+  assert.ok(idx.entries.length >= 20, '索引里应有一批实景图（现在 ' + idx.entries.length + ' 张）');
+  assert.ok(idx.entries.every((e) => e.author !== undefined && e.license), '每张都要有许可');
+
+  // 把其中一张拷进临时目录，验证 /photo/ 能发出来
+  const one = idx.entries[0];
+  const srcFile = path.join(ROOT, 'data/featured-photos', one.file);
+  assert.ok(fs.existsSync(srcFile), '图片文件应该在 data/featured-photos 下');
+  fs.copyFileSync(srcFile, path.join(dir, one.file));
+
+  const s = await start();
+  try {
+    const r = await call(s.base, 'GET', '/api/featured?city=' + encodeURIComponent(one.city));
+    const route = r.body.data.routes.find((x) => x.stops.some((st) => st.name === one.name));
+    const stop = route.stops.find((st) => st.name === one.name);
+    assert.match(stop.photo, /^\/photo\//, '有图的站要带 photo 地址');
+    assert.ok(stop.photoCredit, '要带摄影者/许可');
+    assert.ok(route.photoCount >= 1, '整条路线要统计有图几站');
+    assert.ok(r.body.data.photoCredits, '要带整体出处说明');
+    assert.ok(!/"lng"|"lat"/.test(JSON.stringify(r.body.data)), '还是不能漏坐标');
+
+    const img = await fetch(s.base + stop.photo);
+    assert.equal(img.status, 200);
+    assert.match(img.headers.get('content-type'), /image\//);
+
+    const photos = await call(s.base, 'GET', '/api/photos?city=' + encodeURIComponent(one.city));
+    assert.ok(photos.body.data.photos[one.name], '规划页按点位名查得到图');
+    assert.match(photos.body.data.photos[one.name].url, /^\/photo\//);
+
+    // 文件不在就别硬给（页面会自动不显示）
+    fs.rmSync(path.join(dir, one.file));
+    const gone = await fetch(s.base + stop.photo);
+    assert.equal(gone.status, 404);
+  } finally {
+    await s.close();
+    delete process.env.TRAVEL_FEATURED_PHOTO_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('实景图接线：首页卡与详情、行程清单都要用上（且带出处）', () => {
+  const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const homeJs = read('web/js/home.js');
+  assert.match(homeJs, /class="shots"/, '路程卡上要有一排实景小图');
+  assert.match(homeJs, /stop-shot/, '路程详情每站要有实景图');
+  assert.match(homeJs, /Wikimedia Commons/, '要标出处');
+  const itinerary = read('web/js/itinerary.js');
+  assert.match(itinerary, /itin-shot/, '行程清单要有缩略图');
+  const app = read('web/js/app.js');
+  assert.match(app, /getCityPhotos/, '规划页要按城市拉实景图索引');
+  assert.match(app, /function photoOfPin/, '要点自己的图优先、其次按名字查');
+  const css = read('web/css/style.css');
+  assert.match(css, /\.itin-shot/, '缩略图要样式');
+});

@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { shortCity } = require('./geo-locate');
+const photos = require('./featured-photos');
 
 function emptyFeatured() {
   return { updatedAt: null, note: '', regions: [], routes: [] };
@@ -47,6 +48,17 @@ function coverFor(kind, key) {
 
 // 一条路线给前端的形状（列表/详情共用；不吐坐标，详情里的点靠高德搜索链接）
 function routeCard(route, extra) {
+  const stops = route.stops.map((s) => {
+    const photo = photos.photoFor(route.city, s.name);
+    return {
+      day: Number(s.day) || 1,
+      name: s.name,
+      note: s.note || '',
+      photo: photo ? photo.url : '',
+      photoCredit: photo ? photo.credit : '',
+      photoSource: photo ? photo.source : '',
+    };
+  });
   return {
     id: route.id,
     city: route.city,
@@ -55,8 +67,9 @@ function routeCard(route, extra) {
     days: Number(route.days) || 1,
     note: route.note || '',
     highlights: route.highlights,
-    stops: route.stops.map((s) => ({ day: Number(s.day) || 1, name: s.name, note: s.note || '' })),
+    stops,
     stopCount: route.stops.length,
+    photoCount: stops.filter((s) => s.photo).length,
     cover: coverFor('route', route.id),
     ...(extra || {}),
   };
@@ -105,6 +118,7 @@ function buildFeatured({ featured, db, city, current }) {
     current: current || null,
     regions,
     routes,
+    photoCredits: photos.credits(),
   };
 }
 

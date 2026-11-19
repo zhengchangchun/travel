@@ -24,6 +24,7 @@ const routeRoutes = require('./routes/route');
 const authRoutes = require('./routes/auth');
 const homeRoutes = require('./routes/home');
 const sharesRoutes = require('./routes/shares');
+const photos = require('./featured-photos');
 const homeImg = require('./home-img');
 
 class HttpError extends Error {
@@ -317,6 +318,19 @@ function createApp(opts = {}) {
       const query = Object.fromEntries(u.searchParams.entries());
       if (pathname.startsWith('/api/')) {
         await handleApi(req, res, baseCtx, req.method, pathname, query);
+      } else if (pathname.startsWith('/photo/')) {
+        // 实景图（推荐路程 / 行程清单里用，拼在本机 data/featured-photos/）
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          sendErr(res, 405, 'METHOD_NOT_ALLOWED', '图片仅支持 GET/HEAD');
+          return;
+        }
+        const dir = path.resolve(photos.dir());
+        const full = path.resolve(dir, path.basename(pathname.slice('/photo/'.length)));
+        if (path.dirname(full) !== dir || !fs.existsSync(full)) {
+          sendErr(res, 404, 'NOT_FOUND', '这张图还没有');
+          return;
+        }
+        serveStatic(req, res, pathname.slice('/photo'.length), dir);
       } else if (pathname.startsWith('/home-img/')) {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           sendErr(res, 405, 'METHOD_NOT_ALLOWED', '图片仅支持 GET/HEAD');

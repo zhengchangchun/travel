@@ -68,6 +68,8 @@
     nearbyPoi: (params) => request('/api/poi/nearby?' + qs(params)),
     poiDetail: (id) => request('/api/poi/detail?' + qs({ id })),
     listTrips: (city) => request('/api/trips' + (city ? '?' + qs({ city }) : '')),
+    // 该城的实景图索引（点位名 → 图）：清单里的小图用
+    getCityPhotos: (city) => request('/api/photos?' + qs({ city })),
     createTrip: (payload) => request('/api/trips', post(payload)),
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
     // 行程改内容：标题 / 整条行程的备注

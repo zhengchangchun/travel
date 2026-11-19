@@ -1388,3 +1388,11 @@ section.card.collapsed > .card-body { display: none; }
 /* ⑦ 不可点的按钮：鼠标给个交代 */
 button:disabled { cursor: not-allowed; }
 .pin-card .row button[disabled] { opacity: .4; }
+
+/* ⑦ 实景图缩略（行程清单 / 我的选择）：有图才占位，拿不到图整张不显示 */
+.itin-shot {
+  flex: none; width: 34px; height: 34px; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--line-2);
+  background: var(--surface-2);
+}
+.poi-head .itin-shot { margin-right: 2px; }

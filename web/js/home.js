@@ -48,6 +48,21 @@
     const path = (rt.stops || [])
       .map((s) => s.name)
       .join(' → ');
+    // 卡上先给几张实景（有图才显示）：一眼能看出这条路线长什么样
+    const shots = (rt.stops || []).filter((s) => s.photo).slice(0, 4);
+    const strip = shots.length
+      ? '<div class="shots">' +
+        shots
+          .map(
+            (s) =>
+              '<img class="shot" src="' + Site.esc(s.photo) + '" alt="' + Site.esc(s.name) +
+              '" title="' + Site.esc(s.name + (s.photoCredit ? ' · ' + s.photoCredit : '')) +
+              '" loading="lazy" onerror="this.remove()" />'
+          )
+          .join('') +
+        (rt.photoCount > shots.length ? '<span class="shot-more">+' + (rt.photoCount - shots.length) + '</span>' : '') +
+        '</div>'
+      : '';
     return (
       '<button class="route-card" type="button" data-route="' + Site.esc(rt.id) + '">' +
       '<div class="cover">' + coverHtml(rt.cover, rt.title + ' 路线图') +
@@ -56,8 +71,10 @@
       '</div>' +
       '<div class="body">' +
       '<span class="title">' + Site.esc(rt.title) + '</span>' +
-      '<div class="meta">' + rt.days + ' 天 · ' + rt.stopCount + ' 个点</div>' +
+      '<div class="meta">' + rt.days + ' 天 · ' + rt.stopCount + ' 个点' +
+      (rt.photoCount ? ' · 实景 ' + rt.photoCount + ' 张' : '') + '</div>' +
       '<div class="path">' + Site.esc(path) + '</div>' +
+      strip +
       '<div class="note">' + Site.esc(rt.note || '') + '</div>' +
       '</div>' +
       '</button>'
@@ -181,14 +198,23 @@
     Object.keys(days).forEach((d) => {
       html += '<div class="day">第 ' + d + ' 天</div><ol class="stops">';
       days[d].forEach((s) => {
+        const thumb = s.photo
+          ? '<img class="stop-shot" src="' + Site.esc(s.photo) + '" alt="" loading="lazy" ' +
+            'title="' + Site.esc(s.photoCredit ? '图：' + s.photoCredit : '实景图') + '" onerror="this.remove()" />'
+          : '';
         html +=
-          '<li><a href="' + Site.amapSearchUrl(s.name, rt.city) + '" target="_blank" rel="noreferrer">' +
+          '<li>' + thumb +
+          '<span class="stop-main"><a href="' + Site.amapSearchUrl(s.name, rt.city) + '" target="_blank" rel="noreferrer">' +
           Site.esc(s.name) + '</a>' +
           (s.note ? ' — <span class="muted">' + Site.esc(s.note) + '</span>' : '') +
-          '<span class="sn">第 ' + s.seq + ' 站</span></li>';
+          '<span class="sn">第 ' + s.seq + ' 站</span></span></li>';
       });
       html += '</ol>';
     });
+    if (rt.photoCount) {
+      html +=
+        '<p class="credit">实景图来自 Wikimedia Commons（CC 授权，' + rt.photoCount + ' 张）—— 把鼠标放到图上能看到摄影者与许可。</p>';
+    }
     $('rd-body').innerHTML = html;
     $('rd-plan').href = '/app?city=' + encodeURIComponent(rt.city);
     mask.classList.remove('hidden');

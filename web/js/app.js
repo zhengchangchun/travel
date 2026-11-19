@@ -783,6 +783,8 @@
       onNote: onEditPinNote,
       onCancel: renderSelection,
       legs: pick.legs,
+      photoOf: photoOfPin,
+      photoCreditOf: photoCreditOfPin,
     });
     renderOrderChips();
     renderQuickLegs(panelPins, pick);
@@ -920,6 +922,34 @@
     if (state.orderMode !== 'distance' || pins.length < 3) return pins;
     const start = baseForPlan();
     return Planner.orderStops(pins, start ? { start } : undefined);
+  }
+
+  // 实景图：优先用点自己的照片（高德 POI 图），没有就按名字查该城的实景图索引
+  async function loadCityPhotos(city) {
+    state.photos = {};
+    state.photoCredits = '';
+    if (!city) return;
+    try {
+      const data = await API.getCityPhotos(city);
+      state.photos = (data && data.photos) || {};
+      state.photoCredits = (data && data.credits) || '';
+    } catch (err) {
+      state.photos = {};
+    }
+  }
+
+  function photoOfPin(pin) {
+    if (!pin) return '';
+    if (pin.photo) return String(pin.photo);
+    const hit = state.photos && state.photos[pin.name];
+    return hit && hit.url ? hit.url : '';
+  }
+
+  function photoCreditOfPin(pin) {
+    if (!pin) return '';
+    const hit = state.photos && state.photos[pin.name];
+    if (!hit) return '';
+    return hit.credit || '';
   }
 
   // 地图上的点也要能看出先后顺序：把眼前这条路线（第 1 站…第 N 站）交给地图编号
@@ -1065,6 +1095,8 @@
       legs: state.routeLegs,
       selectedLeg: Route ? Route.getSelectedLeg() : null,
       base: baseForPlan(),
+      photoOf: photoOfPin,
+      photoCreditOf: photoCreditOfPin,
       onMove: (index, delta) => onMoveDisplayed(list, index, delta),
       onRemove: onRemoveFromItinerary,
       onNote: onEditPinNote,
@@ -1188,6 +1220,8 @@
       isBase: baseIs,
       onSetBase: setBase,
       emptyText,
+      photoOf: photoOfPin,
+      photoCreditOf: photoCreditOfPin,
     });
     renderResultMore(full.length - list.length);
     $('result-count').textContent = String(full.length);
@@ -1890,6 +1924,8 @@
     if (window.TravelHead && window.TravelHead.city !== state.city) {
       window.TravelHead.setCity(state.city, 'auto');
     }
+    // 该城的实景图索引（点位名 → 图）：先拿回来，清单里才画得出缩略图
+    await loadCityPhotos(state.city);
     state.activeCats = new Set(Cats.all().map((c) => c.key));
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
