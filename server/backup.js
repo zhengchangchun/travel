@@ -216,6 +216,9 @@ function createBackup({ db, include = {}, now } = {}) {
       '  4) 重新启动服务（node server/index.js），打开 http://127.0.0.1:8787',
       '',
       '说明：home-img/ 可以不放回，缺图时服务会按需重画。',
+      '',
+      '解压提示（macOS）：双击解压，或 ditto -x -k 这个包 目标目录。',
+      '  老的 unzip 命令行（Info-ZIP 6.00）不认 UTF-8 文件名，会把中文名弄成乱码。',
     ].join('\n') + '\n';
     zip.add('README.txt', readme, { compress: true });
 
