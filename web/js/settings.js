@@ -57,6 +57,77 @@
     }
   }
 
+  function fmtBytes(n) {
+    const v = Number(n) || 0;
+    if (v >= 1048576) return (v / 1048576).toFixed(1) + ' MB';
+    if (v >= 1024) return Math.round(v / 1024) + ' KB';
+    return v + ' B';
+  }
+
+  function renderBackups(data) {
+    const box = $('bk-list');
+    if (!box) return;
+    const items = (data && data.items) || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="empty-box">还没有备份</div>';
+      return;
+    }
+    box.innerHTML = items
+      .map(
+        (it) =>
+          '<div class="item"><div class="body"><div class="t">' + Site.esc(it.name) +
+          '<span class="badge">' + fmtBytes(it.bytes) + '</span></div>' +
+          '<div class="s">' + Site.esc(Site.fmtDate(it.at)) + ' · data/backups/</div></div>' +
+          '<div class="acts"><button class="btn small" type="button" data-reveal="' + Site.esc(it.name) + '">发到 Finder</button></div></div>'
+      )
+      .join('');
+    box.querySelectorAll('[data-reveal]').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await Site.api.request('/api/backup/reveal', { method: 'POST', body: { name: b.dataset.reveal } });
+          Site.toast('已在 Finder 里选中', true);
+        } catch (err) {
+          Site.toast(err.message || '打不开目录');
+        }
+      };
+    });
+  }
+
+  async function loadBackups() {
+    try {
+      const data = await Site.api.request('/api/backup');
+      renderBackups(data);
+    } catch (err) {
+      renderBackups({ items: [] });
+    }
+  }
+
+  function wireBackup() {
+    const card = $('backup-card');
+    if (!card) return;
+    card.style.display = '';
+    $('bk-now').onclick = async () => {
+      const btn = $('bk-now');
+      const msg = $('bk-msg');
+      btn.disabled = true;
+      msg.className = 'form-msg';
+      msg.textContent = '正在打包…';
+      try {
+        const out = await Site.api.request('/api/backup', { method: 'POST', body: {} });
+        msg.className = 'form-msg ok';
+        msg.textContent =
+          '已生成 ' + out.file + '（' + fmtBytes(out.bytes) + '，' + out.entries + ' 个文件 · 库里 ' + fmtBytes(out.dbBytes) + '）';
+        await loadBackups();
+      } catch (err) {
+        msg.className = 'form-msg';
+        msg.textContent = err.message || '备份失败';
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    loadBackups();
+  }
+
   (async function init() {
     let started = null;
     if (window.TravelHead) started = await window.TravelHead.start();
@@ -68,6 +139,7 @@
     }
     $('main').innerHTML = form(user);
     $('st-save').onclick = save;
+    wireBackup();
     $('st-logout').onclick = async () => {
       try {
         await Site.api.logout();

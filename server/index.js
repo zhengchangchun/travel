@@ -25,6 +25,7 @@ const authRoutes = require('./routes/auth');
 const homeRoutes = require('./routes/home');
 const sharesRoutes = require('./routes/shares');
 const legacyRoutes = require('./routes/legacy');
+const backupRoutes = require('./routes/backup');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
 
@@ -182,6 +183,7 @@ function createApp(opts = {}) {
     ...homeRoutes,
     ...sharesRoutes,
     ...legacyRoutes,
+    ...backupRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));

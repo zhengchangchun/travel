@@ -14,6 +14,17 @@
     <h1 class="page">个人设置</h1>
     <p class="hint">账号、昵称头像是站点的；默认城市与默认出行方式会带到规划页。</p>
     <div id="main"></div>
+
+    <!-- 备份：数据库快照 + 分享包 + 实景图 打成一个 zip（data/backups/） -->
+    <div class="card" id="backup-card" style="display:none">
+      <h2>备份</h2>
+      <p class="hint">把数据库（账号 / 行程 / 点位 / 分享记录 / 已收录地点）＋ 分享包 ＋ 实景图打成一个 zip，落在本机 <code>data/backups/</code>。恢复方法写在包里的 README.txt。</p>
+      <div class="row">
+        <button class="btn primary" type="button" id="bk-now">立即备份</button>
+        <span class="form-msg" id="bk-msg"></span>
+      </div>
+      <div class="list" id="bk-list" style="margin-top:12px"></div>
+    </div>
   </main>
 
   <footer class="site">旅迹 · 账号与设置都存本机 sqlite</footer>
