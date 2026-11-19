@@ -31,6 +31,8 @@
       photo: pin.photo,
       note: pin.note || '',
       sort_order: pin.sort_order,
+      // 按天分段：第几天（默认 1）——清单分组要用
+      day: Number(pin.day) || 1,
     };
   }
 
@@ -122,6 +124,7 @@
       tel: poi.tel,
       photo: poi.photo,
       note: '',
+      day: Number(poi.day) || 1,
     });
     notify();
     try {
