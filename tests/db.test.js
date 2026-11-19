@@ -85,16 +85,16 @@ test('deleteTrip 级联删除其下 pins', () => {
 
 test('notes CRUD：按城市过滤', () => {
   const db = createDb(':memory:');
-  const n = db.addNote({ city: '杭州', url: 'https://xhs/1', title: '西湖笔记', source: 'xhs' });
+  const n = db.addNote({ userId: 1, city: '杭州', url: 'https://xhs/1', title: '西湖笔记', source: 'xhs' });
   assert.ok(n.id > 0);
-  db.addNote({ city: '上海', url: 'https://xhs/2' });
+  db.addNote({ userId: 1, city: '上海', url: 'https://xhs/2' });
 
-  assert.strictEqual(db.listNotes('杭州').length, 1);
-  assert.strictEqual(db.listNotes('杭州')[0].title, '西湖笔记');
-  assert.strictEqual(db.listNotes().length, 2);
+  assert.strictEqual(db.listNotes(1, '杭州').length, 1);
+  assert.strictEqual(db.listNotes(1, '杭州')[0].title, '西湖笔记');
+  assert.strictEqual(db.listNotes(1).length, 2);
 
   db.deleteNote(n.id);
-  assert.strictEqual(db.listNotes('杭州').length, 0);
+  assert.strictEqual(db.listNotes(1, '杭州').length, 0);
   db.close();
 });
 

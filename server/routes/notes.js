@@ -2,7 +2,11 @@
 // 口径：内容由用户提供（分享文案/链接/正文/图 URL），平台侧抓取在本机被风控
 // （抖音验证码页、小红书 300012 IP 风险、B站风控页、微博 302 访客登）⇒ 这里只做「落库/落图/本地读/补全」。
 const path = require('node:path');
+const auth = require('../auth');
 const { downloadImages, refererForPlatform } = require('../note-images');
+
+// 笔记是「我的素材」：一律要登录，且只看得到自己的（没归属的旧行要先认领）
+const me = (ctx) => auth.requireUser(ctx);
 const { matchesName } = require('../geocode-osm');
 
 // 同一个地名可能在两个源上都失败：错因合并成一条，别在界面上重复报同一个名字
@@ -51,8 +55,8 @@ function toPublic(note) {
   });
 }
 
-function findNote(db, id) {
-  return db.listNotes().find((n) => n.id === id) || null;
+function findNote(db, id, userId) {
+  return db.getNoteOfUser(Number(id), Number(userId));
 }
 
 // 每条笔记的地点条数（列表角标用；一次 GROUP BY，不逐条查）
@@ -115,6 +119,7 @@ async function ingestFetched(ctx, r, opts = {}) {
   const sourceName = nameOfType(sourceType);
   const tidyTitle = tidyText(r.title, 80) || sourceName + (r.kind === 'video' ? ' 视频' : ' 笔记');
   const payload = {
+    userId: opts.userId ?? null,
     city: opts.city || null,
     url: r.url || '',
     title: tidyTitle,
@@ -139,7 +144,7 @@ async function ingestFetched(ctx, r, opts = {}) {
     });
     return { note: toPublic(preview), preview: true, download, saved: false, updated: false, stats: r.stats || null };
   }
-  const existing = ctx.db.findNoteByUrl(payload.url);
+  const existing = ctx.db.findNoteByUrl(payload.url, opts.userId ?? null);
   let note;
   let updated = false;
   if (existing) {
@@ -173,13 +178,13 @@ async function ingestFetched(ctx, r, opts = {}) {
  */
 
 // 抓一条：读链接 → 本机浏览器抓回来 → 按需要落图落库
-async function fetchAndIngest(ctx, { url, city, save, hooks }) {
+async function fetchAndIngest(ctx, { url, city, save, hooks, userId }) {
   const r = await ctx.noteFetch.fetchNote({ url, hooks });
   if (!r || r.ok !== true) {
     const info = r || {};
     throw new ctx.HttpError(502, info.error || 'FETCH_FAIL', info.message || '抓取失败');
   }
-  const out = await ingestFetched(ctx, r, { city: city || null, save: !!save });
+  const out = await ingestFetched(ctx, r, { city: city || null, save: !!save, userId: userId ?? null });
   return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
 }
 
@@ -205,8 +210,8 @@ async function discoverItems(ctx, { platform, keyword, limit, hooks }) {
 }
 
 // 重抓已有一条（对「只存了标题封面」的候选记录很有用）
-async function refreshNoteById(ctx, id, hooks) {
-  const existing = findNote(ctx.db, Number(id));
+async function refreshNoteById(ctx, id, hooks, userId) {
+  const existing = findNote(ctx.db, Number(id), userId);
   if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
   if (!existing.url) throw new ctx.HttpError(400, 'BAD_REQUEST', '这条笔记没有链接，没法重抓');
   const r = await ctx.noteFetch.fetchNote({ url: existing.url, hooks });
@@ -254,8 +259,9 @@ module.exports = [
     method: 'GET',
     path: '/api/notes',
     handler(ctx) {
+      const user = me(ctx);
       const city = ctx.query.city ? String(ctx.query.city).trim() : '';
-      return withCounts(ctx.db, ctx.db.listNotes(city || undefined));
+      return withCounts(ctx.db, ctx.db.listNotes(user.id, city || undefined));
     },
   },
   // 本地搜索（注册在 /api/notes/:id 之前，否则会被 :id 抢）
@@ -263,11 +269,12 @@ module.exports = [
     method: 'GET',
     path: '/api/notes/search',
     handler(ctx) {
+      const user = me(ctx);
       const q = ctx.query.q ? String(ctx.query.q).trim() : '';
       const source = ctx.query.source ? String(ctx.query.source).trim() : '';
       const city = ctx.query.city ? String(ctx.query.city).trim() : '';
       const limit = Number(ctx.query.limit) || 200;
-      const items = withCounts(ctx.db, ctx.db.searchNotes({ q, source, city, limit }));
+      const items = withCounts(ctx.db, ctx.db.searchNotes({ userId: user.id, q, source, city, limit }));
       return { q, source, city, total: items.length, items };
     },
   },
@@ -276,8 +283,9 @@ module.exports = [
     method: 'GET',
     path: '/api/notes/:id',
     handler(ctx) {
+      const user = me(ctx);
       const id = Number(ctx.params.id);
-      const note = findNote(ctx.db, id);
+      const note = findNote(ctx.db, id, user.id);
       if (!note) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
       return Object.assign(toPublic(note), {
         places: ctx.db.listNotePlaces(id),
@@ -289,6 +297,7 @@ module.exports = [
     method: 'POST',
     path: '/api/notes',
     async handler(ctx) {
+      const user = me(ctx);
       const b = ctx.body || {};
       // 用户既可能贴分享文案，也可能只给链接/正文 ⇒ 分享文案优先补全其它字段
       const shareText = b.share_text ? String(b.share_text) : '';
@@ -310,6 +319,7 @@ module.exports = [
         else coverErr = got[0] ? got[0].error : '封面下载失败';
       }
       const note = ctx.db.addNoteFull({
+        userId: user.id,
         pin_id: b.pin_id,
         city: b.city,
         url,
@@ -343,8 +353,14 @@ module.exports = [
     method: 'POST',
     path: '/api/notes/fetch',
     async handler(ctx) {
+      const user = me(ctx);
       const b = ctx.body || {};
-      return fetchAndIngest(ctx, { url: urlFromBody(ctx, b), city: b.city || null, save: !!b.save });
+      return fetchAndIngest(ctx, {
+        url: urlFromBody(ctx, b),
+        city: b.city || null,
+        save: !!b.save,
+        userId: user.id,
+      });
     },
   },
   // 按关键词搜笔记（目前小红书已通；返回候选，不写库，用户挑完再抓）
@@ -365,6 +381,7 @@ module.exports = [
     method: 'POST',
     path: '/api/notes/jobs',
     handler(ctx) {
+      const user = me(ctx);
       const b = ctx.body || {};
       const kind = String(b.kind || '');
       if (kind === 'discover') {
@@ -380,7 +397,7 @@ module.exports = [
       if (kind === 'fetch') {
         const url = urlFromBody(ctx, b);
         const job = ctx.noteJobs.start('fetch', { url }, (hooks) =>
-          fetchAndIngest(ctx, { url, city: b.city || null, save: !!b.save, hooks })
+          fetchAndIngest(ctx, { url, city: b.city || null, save: !!b.save, hooks, userId: me(ctx).id })
         );
         return ctx.noteJobs.view(job);
       }
@@ -388,10 +405,10 @@ module.exports = [
         const noteId = Number(b.note_id || b.id);
         if (!noteId) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 note_id');
         // 与 /api/notes/:id/refresh 同一份实现；同步版先校验存在性，避免任务起了才发现没这条
-        const existing = findNote(ctx.db, noteId);
+        const existing = findNote(ctx.db, noteId, user.id);
         if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${noteId} 不存在`);
         const job = ctx.noteJobs.start('refresh', { note_id: noteId }, (hooks) =>
-          refreshNoteById(ctx, noteId, hooks)
+          refreshNoteById(ctx, noteId, hooks, user.id)
         );
         return ctx.noteJobs.view(job);
       }
@@ -421,7 +438,8 @@ module.exports = [
     method: 'POST',
     path: '/api/notes/:id/refresh',
     async handler(ctx) {
-      return refreshNoteById(ctx, ctx.params.id);
+      const user = me(ctx);
+      return refreshNoteById(ctx, ctx.params.id, undefined, user.id);
     },
   },
   // 给已有笔记补内容/补图（用户手动提供时走这里）
@@ -429,9 +447,10 @@ module.exports = [
     method: 'PATCH',
     path: '/api/notes/:id',
     async handler(ctx) {
+      const user = me(ctx);
       const id = Number(ctx.params.id);
       if (!id) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 id');
-      const existing = findNote(ctx.db, id);
+      const existing = findNote(ctx.db, id, user.id);
       if (!existing) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
       const b = ctx.body || {};
       const imageUrls = Array.isArray(b.image_urls) ? b.image_urls : [];
@@ -476,8 +495,9 @@ module.exports = [
     method: 'POST',
     path: '/api/notes/:id/places',
     async handler(ctx) {
+      const user = me(ctx);
       const id = Number(ctx.params.id);
-      const note = findNote(ctx.db, id);
+      const note = findNote(ctx.db, id, user.id);
       if (!note) throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
       const b = ctx.body || {};
       const city = String(b.city || note.city || '').trim();
@@ -573,8 +593,9 @@ module.exports = [
     method: 'DELETE',
     path: '/api/notes/:id',
     handler(ctx) {
+      const user = me(ctx);
       const id = Number(ctx.params.id);
-      const existing = findNote(ctx.db, id);
+      const existing = findNote(ctx.db, id, user.id);
       if (!existing) {
         throw new ctx.HttpError(404, 'NOT_FOUND', `笔记 ${id} 不存在`);
       }

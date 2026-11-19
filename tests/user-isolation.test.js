@@ -185,7 +185,7 @@ test('旧数据认领：没归属的行程 / 分享归给认领人，认领完�
     assert.equal(before.body.data.length, 0, '没认领前谁都看不到');
 
     const pending = await call(s.base, 'GET', '/api/legacy/pending', null, alice.cookie);
-    assert.deepEqual(pending.body.data, { trips: 1, shares: 1 });
+    assert.deepEqual(pending.body.data, { trips: 1, shares: 1, notes: 0 });
 
     const claim = await call(s.base, 'POST', '/api/legacy/claim', {}, alice.cookie);
     assert.deepEqual(claim.body.data.trips, 1);
@@ -199,7 +199,10 @@ test('旧数据认领：没归属的行程 / 分享归给认领人，认领完�
     const bobTrips = await call(s.base, 'GET', '/api/trips', null, bob.cookie);
     assert.equal(bobTrips.body.data.length, 0, '认领是先到先得，晚来的看不到');
     const bobClaim = await call(s.base, 'POST', '/api/legacy/claim', {}, bob.cookie);
-    assert.deepEqual({ trips: bobClaim.body.data.trips, shares: bobClaim.body.data.shares }, { trips: 0, shares: 0 });
+    assert.deepEqual(
+      { trips: bobClaim.body.data.trips, shares: bobClaim.body.data.shares, notes: bobClaim.body.data.notes },
+      { trips: 0, shares: 0, notes: 0 }
+    );
 
     // 认领后的行程是真的能用（点还在）
     const pins = await call(s.base, 'GET', '/api/trips/' + aliceTrips.body.data[0].id + '/pins', null, alice.cookie);
@@ -223,6 +226,48 @@ test('退出登录后立刻看不到自己的数据', async () => {
     assert.equal(out.status, 200);
     const after = await call(s.base, 'GET', '/api/trips', null, alice.cookie);
     assert.equal(after.status, 401, '退出后旧 cookie 不认了');
+  } finally {
+    await s.close();
+  }
+});
+
+test('笔记也按账号隔离：A 存的 B 看不到，搜不到，也删不掉', async () => {
+  const s = await start();
+  try {
+    const alice = await signup(s.base, 'notes-a');
+    const bob = await signup(s.base, 'notes-b');
+
+    const made = await call(
+      s.base,
+      'POST',
+      '/api/notes',
+      { url: 'https://www.xiaohongshu.com/explore/abc', title: 'A 的笔记', content: '杭州 咖啡店', city: '杭州' },
+      alice.cookie
+    );
+    assert.equal(made.status, 200, JSON.stringify(made.body));
+    const noteId = made.body.data.id;
+    assert.ok(noteId);
+
+    const aList = await call(s.base, 'GET', '/api/notes', null, alice.cookie);
+    assert.equal(aList.body.data.length, 1, 'A 看得到自己的');
+    const bList = await call(s.base, 'GET', '/api/notes', null, bob.cookie);
+    assert.equal(bList.body.data.length, 0, 'B 看不到 A 的');
+
+    const bSearch = await call(s.base, 'GET', '/api/notes/search?q=' + encodeURIComponent('咖啡'), null, bob.cookie);
+    assert.equal(bSearch.body.data.items.length, 0, 'B 也搜不到');
+    const aSearch = await call(s.base, 'GET', '/api/notes/search?q=' + encodeURIComponent('咖啡'), null, alice.cookie);
+    assert.equal(aSearch.body.data.items.length, 1);
+
+    const bGet = await call(s.base, 'GET', '/api/notes/' + noteId, null, bob.cookie);
+    assert.equal(bGet.status, 404, '别人的笔记当不存在');
+    const bDel = await call(s.base, 'DELETE', '/api/notes/' + noteId, null, bob.cookie);
+    assert.equal(bDel.status, 404);
+    const stillThere = await call(s.base, 'GET', '/api/notes/' + noteId, null, alice.cookie);
+    assert.equal(stillThere.status, 200);
+
+    // 没登录：列表要 401
+    const anon = await call(s.base, 'GET', '/api/notes');
+    assert.equal(anon.status, 401);
   } finally {
     await s.close();
   }

@@ -134,10 +134,12 @@
   function claimBanner(pending, user) {
     const trips = Number(pending && pending.trips) || 0;
     const shares = Number(pending && pending.shares) || 0;
-    if (!trips && !shares) return '';
+    const notes = Number(pending && pending.notes) || 0;
+    if (!trips && !shares && !notes) return '';
     const bits = [];
     if (trips) bits.push(trips + ' 条历史行程');
     if (shares) bits.push(shares + ' 条历史分享');
+    if (notes) bits.push(notes + ' 条历史笔记');
     return (
       '<div class="card" style="border-color:rgba(255,200,97,.4)">' +
       '<h2>有没归属的旧数据</h2>' +

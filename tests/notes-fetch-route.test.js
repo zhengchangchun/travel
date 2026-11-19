@@ -121,7 +121,7 @@ test('POST /api/notes/fetch：默认只预览（图落本地、库不写），sa
     assert.match(d.note.cover_url, /^\/notes-img\/[0-9a-f]{16}\.(webp|png)$/);
     assert.strictEqual(d.note.images.length, 2);
     assert.strictEqual(d.download.saved, 2);
-    assert.strictEqual(db.listNotes().length, 0, '没点存就不写库');
+    assert.strictEqual(db.listNotes(1).length, 0, '没点存就不写库');
     // 封面/图下载带平台 referer
     assert.ok(img.hits.every((h) => h.referer === 'https://www.xiaohongshu.com/'), JSON.stringify(img.hits));
 
@@ -133,7 +133,7 @@ test('POST /api/notes/fetch：默认只预览（图落本地、库不写），sa
     assert.strictEqual(saved.body.data.saved, true);
     assert.strictEqual(saved.body.data.updated, false);
     assert.ok(saved.body.data.note.id > 0);
-    assert.strictEqual(db.listNotes().length, 1);
+    assert.strictEqual(db.listNotes(1).length, 1);
     // 再抓一次同一条 ⇒ 更新而不是变成两条
     const again = await req(base, 'POST', '/api/notes/fetch', {
       url: 'https://www.xiaohongshu.com/explore/abc',
@@ -141,7 +141,7 @@ test('POST /api/notes/fetch：默认只预览（图落本地、库不写），sa
       save: true,
     });
     assert.strictEqual(again.body.data.updated, true);
-    assert.strictEqual(db.listNotes().length, 1, '同链接不重复入库');
+    assert.strictEqual(db.listNotes(1).length, 1, '同链接不重复入库');
     assert.strictEqual(calls.filter((c) => c.op === 'fetchNote').length, 3);
   } finally {
     await new Promise((r) => app.server.close(r));
@@ -206,7 +206,7 @@ test('POST /api/notes/discover：按关键词搜返回候选（封面落本地�
     ],
   });
   const db = createDb(':memory:');
-  db.addNoteFull({ url: 'https://www.xiaohongshu.com/explore/1', title: 'A', source_type: 'xhs' });
+  db.addNoteFull({ userId: 1, url: 'https://www.xiaohongshu.com/explore/1', title: 'A', source_type: 'xhs' });
   const app = await startApp({ db, noteFetch });
   const base = 'http://127.0.0.1:' + app.server.address().port;
   try {
@@ -220,7 +220,7 @@ test('POST /api/notes/discover：按关键词搜返回候选（封面落本地�
     assert.strictEqual(calls[0].limit, 30, 'limit 封顶 30');
     const noKw = await req(base, 'POST', '/api/notes/discover', {});
     assert.strictEqual(noKw.status, 400);
-    assert.strictEqual(db.listNotes().length, 1, '搜不写库');
+    assert.strictEqual(db.listNotes(1).length, 1, '搜不写库');
   } finally {
     await new Promise((r) => app.server.close(r));
     await new Promise((r) => img.server.close(r));
@@ -260,7 +260,7 @@ test('POST /api/notes/:id/refresh：按库里链接重抓并覆盖正文/图', a
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.body.data.note.title, '标题 v1');
     assert.strictEqual(r.body.data.note.content, '正文 v1');
-    assert.strictEqual(db.listNotes().length, 1);
+    assert.strictEqual(db.listNotes(1).length, 1);
     const missing = await req(base, 'POST', '/api/notes/9999/refresh', {});
     assert.strictEqual(missing.status, 404);
   } finally {

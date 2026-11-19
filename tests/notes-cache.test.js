@@ -288,7 +288,8 @@ test('存量库前滚：老库也能加 kind / video_url / share_text', async ()
     old.close();
 
     const db = createDb(dbPath);
-    const rows = db.listNotes();
+    db.claimUnowned(1); // 老笔记没归属，先认领才看得见
+    const rows = db.listNotes(1);
     assert.strictEqual(rows.length, 1);
     const cols = db.raw.prepare('PRAGMA table_info(notes)').all().map((c) => c.name);
     ['kind', 'video_url', 'share_text'].forEach((c) => assert.ok(cols.includes(c), '应前滚出 ' + c));
@@ -314,10 +315,12 @@ test('存量库前滚：老 notes 表也能加内容字段（ensureColumn 幂等
     old.close();
 
     const db = createDb(dbPath);
-    const rows = db.listNotes();
+    // 账号上线前的笔记没有归属：认领给账号 1 之后才看得见（与行程的口径一致）
+    db.claimUnowned(1);
+    const rows = db.listNotes(1);
     assert.strictEqual(rows.length, 1, '老数据还在');
     assert.strictEqual(rows[0].title, '老笔记');
-    const found = db.searchNotes({ q: '老笔记' });
+    const found = db.searchNotes({ userId: 1, q: '老笔记' });
     assert.strictEqual(found.length, 1, '新加的内容字段可用（搜索走得通）');
     db.raw.close();
   } finally {

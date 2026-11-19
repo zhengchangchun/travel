@@ -488,7 +488,7 @@ test('POST /api/notes/jobs（kind=fetch）：跑完给 note 形状，同步接�
     assert.strictEqual(done.status, 'done');
     assert.strictEqual(done.result.note.title, '杭州咖啡地图');
     assert.strictEqual(done.result.saved, true);
-    assert.strictEqual(db.listNotes().length, 1);
+    assert.strictEqual(db.listNotes(1).length, 1);
     // 同步接口还在（命令行/老调用方）
     const sync = await req(base, 'POST', '/api/notes/fetch', {
       url: 'https://www.xiaohongshu.com/explore/abc',

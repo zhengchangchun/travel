@@ -265,6 +265,8 @@ function createDb(filePath) {
 
   // 按天分段：每个点属于第几天（默认 1）——要多天就得先有这个列，再建下面那些语句
   ensureColumn(db, 'pins', 'day', 'day INTEGER NOT NULL DEFAULT 1');
+  // 笔记也按账号隔离（账号上线前的笔记 user_id 为空，靠「认领」归给某个账号）
+  ensureColumn(db, 'notes', 'user_id', 'user_id INTEGER');
 
   const stmts = {
     insertTrip: db.prepare('INSERT INTO trips (city, title, theme, user_id) VALUES (?, ?, ?, ?)'),
@@ -298,21 +300,22 @@ function createDb(filePath) {
     pinsByTrip: db.prepare('SELECT * FROM pins WHERE trip_id = ? ORDER BY id'),
     deletePin: db.prepare('DELETE FROM pins WHERE id = ?'),
     insertNote: db.prepare(
-      'INSERT INTO notes (pin_id, city, url, title, source) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO notes (pin_id, city, url, title, source, user_id) VALUES (?, ?, ?, ?, ?, ?)'
     ),
     getNote: db.prepare('SELECT * FROM notes WHERE id = ?'),
     findNoteByUrl: db.prepare('SELECT * FROM notes WHERE url = ? ORDER BY id LIMIT 1'),
-    listNotesAll: db.prepare('SELECT * FROM notes ORDER BY id DESC'),
-    listNotesCity: db.prepare('SELECT * FROM notes WHERE city = ? ORDER BY id DESC'),
+    listNotesAll: db.prepare('SELECT * FROM notes WHERE user_id = ? ORDER BY id DESC'),
+    listNotesCity: db.prepare('SELECT * FROM notes WHERE user_id = ? AND city = ? ORDER BY id DESC'),
     deleteNote: db.prepare('DELETE FROM notes WHERE id = ?'),
     insertNoteFull: db.prepare(
-      `INSERT INTO notes (pin_id, city, url, title, source, source_type, kind, author, content, cover, images, tags, video_url, share_text, fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (pin_id, city, url, title, source, source_type, kind, author, content, cover, images, tags, video_url, share_text, fetched_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     // 本地搜索：关键词命中标题/正文/作者；source 同时认 source 与 source_type（小红书/抖音…）
     searchNotes: db.prepare(
       `SELECT * FROM notes
-        WHERE (? = '' OR COALESCE(title, '') LIKE ? OR COALESCE(content, '') LIKE ? OR COALESCE(author, '') LIKE ?)
+        WHERE user_id = ?
+          AND (? = '' OR COALESCE(title, '') LIKE ? OR COALESCE(content, '') LIKE ? OR COALESCE(author, '') LIKE ?)
           AND (? = '' OR COALESCE(source, '') = ? OR COALESCE(source_type, '') = ?)
           AND (? = '' OR COALESCE(city, '') = ?)
         ORDER BY id DESC LIMIT ?`
@@ -480,6 +483,8 @@ function createDb(filePath) {
     listShares: db.prepare('SELECT * FROM shares ORDER BY id DESC LIMIT ?'),
     listSharesByUser: db.prepare('SELECT * FROM shares WHERE user_id = ? ORDER BY id DESC LIMIT ?'),
     claimTrips: db.prepare('UPDATE trips SET user_id = ? WHERE user_id IS NULL'),
+    claimNotes: db.prepare('UPDATE notes SET user_id = ? WHERE user_id IS NULL'),
+    countUnownedNotes: db.prepare('SELECT COUNT(*) AS c FROM notes WHERE user_id IS NULL'),
     claimShares: db.prepare('UPDATE shares SET user_id = ? WHERE user_id IS NULL'),
     countTripsCity: db.prepare('SELECT COUNT(*) AS c FROM trips WHERE city = ?'),
     deleteShare: db.prepare('DELETE FROM shares WHERE id = ?'),
@@ -568,7 +573,8 @@ function createDb(filePath) {
         note.city || null,
         note.url,
         note.title || null,
-        note.source || null
+        note.source || null,
+        note.userId ?? null
       );
       return stmts.getNote.get(toNumber(info.lastInsertRowid));
     },
@@ -590,7 +596,8 @@ function createDb(filePath) {
         note.tags ? JSON.stringify(note.tags) : null,
         note.video_url || null,
         note.share_text || null,
-        note.fetched_at || null
+        note.fetched_at || null,
+        note.userId ?? null
       );
       return stmts.getNote.get(toNumber(info.lastInsertRowid));
     },
@@ -643,9 +650,11 @@ function createDb(filePath) {
     listNotePlaces(noteId) {
       return stmts.listNotePlaces.all(noteId);
     },
-    searchNotes({ q = '', source = '', city = '', limit = 200 } = {}) {
+    searchNotes({ userId = null, q = '', source = '', city = '', limit = 200 } = {}) {
+      if (userId == null) return [];
       const like = '%' + q + '%';
       return stmts.searchNotes.all(
+        Number(userId),
         q,
         like,
         like,
@@ -670,12 +679,25 @@ function createDb(filePath) {
       );
       return stmts.getNote.get(id) || null;
     },
-    listNotes(city) {
-      return city ? stmts.listNotesCity.all(city) : stmts.listNotesAll.all();
+    listNotes(userId, city) {
+      if (userId == null) return [];
+      return city
+        ? stmts.listNotesCity.all(Number(userId), city)
+        : stmts.listNotesAll.all(Number(userId));
     },
-    findNoteByUrl(url) {
+    // 单条笔记：不是自己的当不存在
+    getNoteOfUser(id, userId) {
+      const row = stmts.getNote.get(Number(id));
+      if (!row) return null;
+      return Number(row.user_id) === Number(userId) ? row : null;
+    },
+    findNoteByUrl(url, userId) {
       if (!url) return null;
-      return stmts.findNoteByUrl.get(String(url)) || null;
+      const row = stmts.findNoteByUrl.get(String(url)) || null;
+      if (!row) return null;
+      // 没给 userId 就照旧返回（内部用途）；给了就只认自己的那条
+      if (userId == null) return row;
+      return Number(row.user_id) === Number(userId) ? row : null;
     },
     deleteNote(id) {
       // 地点候选跟笔记一起走（不留孤儿行）
@@ -1217,7 +1239,8 @@ function createDb(filePath) {
     countUnowned() {
       const trips = toNumber(stmts.countUnownedTrips.get().c);
       const shares = toNumber(stmts.countUnownedShares.get().c);
-      return { trips, shares };
+      const notesRow = stmts.countUnownedNotes.get();
+      return { trips, shares, notes: toNumber(notesRow && notesRow.c) };
     },
     // 旧数据认领：把没有归属的行程 / 分享归给当前账号（单机场景下的迁移用）
     claimUnowned(userId) {
@@ -1226,8 +1249,9 @@ function createDb(filePath) {
       try {
         const t = stmts.claimTrips.run(Number(userId));
         const s = stmts.claimShares.run(Number(userId));
+        const n = stmts.claimNotes.run(Number(userId));
         db.exec('COMMIT');
-        return { trips: toNumber(t.changes), shares: toNumber(s.changes) };
+        return { trips: toNumber(t.changes), shares: toNumber(s.changes), notes: toNumber(n.changes) };
       } catch (err) {
         db.exec('ROLLBACK');
         throw err;
