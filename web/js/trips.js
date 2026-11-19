@@ -9,7 +9,7 @@
     const pins = state.pins[t.id];
     const n = Array.isArray(pins) ? pins.length : null;
     const acts = [
-      '<a class="btn small primary" href="/app?city=' + encodeURIComponent(t.city) + '">去规划</a>',
+      '<a class="btn small primary" href="/app?trip=' + t.id + '">去规划</a>',
       '<button class="btn small" type="button" data-act="rename" data-id="' + t.id + '">改名</button>',
       '<button class="btn small" type="button" data-act="theme" data-id="' + t.id + '">改主题</button>',
       '<button class="btn small danger" type="button" data-act="del" data-id="' + t.id + '">删除</button>',

@@ -38,6 +38,7 @@
 
   // 点的顺序（用户 2026-11-17）：「默认顺序先按地点之间的距离计算」
   const ORDER_KEY = 'travel.orderMode'; // 'distance'（默认）| 'manual'
+  const TRIP_KEY = 'travel.tripId'; // 上次在改哪一趟（按城市各记一份：travel.tripId.<city>）
   const ORDER_MODES = [
     { key: 'distance', label: '按距离', tip: '默认：从住宿（没定就从第一个点）出发，先按最近的一站排，再把整条线的回头路减掉' },
     { key: 'manual', label: '手动顺序', tip: '按你自己排的顺序走：拖行 / ↑↓ 调' },
@@ -49,6 +50,9 @@
     activeCats: new Set(),
     pois: [],
     trip: null,
+    trips: [],
+    tripId: null,
+    pendingTripId: null,
     onlySelected: false,
     view: 'list',
     cardPoi: null,
@@ -888,6 +892,7 @@
     const start = baseForPlan();
     const stops = state.autoReturn && start && pins.length ? pins.concat([start]) : pins;
     Route.draw(state.city, stops, {
+      tripId: state.tripId,
       onLegs: onRouteLegs,
       onSelectLeg: paintLegSel,
       // 只在行程视图里让镜头去追这条线：挑点时别把用户的视野拽走
@@ -1265,7 +1270,12 @@
   async function reloadSelection() {
     if (!state.city) return;
     try {
-      await Selection.load(state.city);
+      await Selection.load(state.city, state.tripId);
+      // 服务端可能给回它认的「当前一趟」：跟着它走
+      if (Selection.tripId != null && Number(Selection.tripId) !== Number(state.tripId)) {
+        state.tripId = Number(Selection.tripId);
+        saveTripId(state.tripId);
+      }
     } catch (err) {
       // 读不到就清空：留着旧选中会在列表里显示误导人的“幽灵星标”
       if (Selection.reset) Selection.reset();
@@ -1332,7 +1342,7 @@
   async function onCopyItinerary() {
     if (!state.city) return;
     try {
-      const text = await API.exportSelection(state.city, orderKeys(orderedPins()));
+      const text = await API.exportSelection(state.city, orderKeys(orderedPins()), state.tripId);
       const ok = await Itinerary.copyText(text);
       UI.setStatus(ok ? '行程单已复制到剪贴板' : '已弹出复制框');
     } catch (err) {
@@ -1343,7 +1353,7 @@
   async function onDownloadItinerary() {
     if (!state.city) return;
     try {
-      const text = await API.exportSelection(state.city, orderKeys(orderedPins()));
+      const text = await API.exportSelection(state.city, orderKeys(orderedPins()), state.tripId);
       Itinerary.download(state.city + '-行程.md', text);
       UI.setStatus('行程单已下载');
     } catch (err) {
@@ -1943,6 +1953,8 @@
     state.pois = [];
     state.cityTotal = 0;
     state.trip = null; // N20：切城市必须重置当前行程，避免残留上一城市的行程
+    state.tripId = null;
+    state.trips = [];
     UI.setViewHint('');
     renderCatChips();
     renderRatingSlider();
@@ -1980,17 +1992,24 @@
       }, 700);
     }
 
-    try {
-      await Selection.load(state.city);
-    } catch (err) {
-      /* 选中加载失败不阻塞主流程 */
-    }
-    // N20：按新城市重取行程（没有则置空），界面同步刷新
+    // N20：按新城市重取行程（一城多趟：优先用 URL 指定的那趟，其次上次记住的，最后第一趟）
     try {
       const trips = await API.listTrips(state.city);
-      state.trip = trips[0] || null;
+      state.trips = trips;
+      const wanted = state.pendingTripId != null ? Number(state.pendingTripId) : savedTripId(state.city);
+      state.pendingTripId = null;
+      state.trip = trips.find((t) => Number(t.id) === Number(wanted)) || trips[0] || null;
+      state.tripId = state.trip ? state.trip.id : null;
+      saveTripId(state.tripId);
     } catch (err) {
       state.trip = null;
+      state.tripId = null;
+      state.trips = [];
+    }
+    try {
+      await Selection.load(state.city, state.tripId);
+    } catch (err) {
+      /* 选中加载失败不阻塞主流程 */
     }
     await refreshTrips();
     await loadCityView(state.city);
@@ -2523,13 +2542,63 @@
 
   async function ensureTrip() {
     if (state.trip) return state.trip;
-    const title = state.city + '行程';
+    // 一城多趟：没现成的就新建一趟（标题默认「城市 · 我的行程」，再建就叫「新的一趟」）
+    const existing = await API.listTrips(state.city).catch(() => []);
+    const title = existing.length ? state.city + ' · 新的一趟' : state.city + ' · 我的行程';
     state.trip = await API.createTrip({ city: state.city, title });
+    state.tripId = state.trip.id;
+    saveTripId(state.tripId);
     await refreshTrips();
     return state.trip;
   }
 
+  // 记住「上次在改哪一趟」（按城市存，换城市各自记住）
+  function saveTripId(id) {
+    try {
+      if (id == null) window.localStorage.removeItem(TRIP_KEY + '.' + state.city);
+      else window.localStorage.setItem(TRIP_KEY + '.' + state.city, String(id));
+    } catch (err) {
+      /* 存不了就算了 */
+    }
+  }
+
+  function savedTripId(city) {
+    try {
+      const v = window.localStorage.getItem(TRIP_KEY + '.' + city);
+      return v ? Number(v) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
   async function refreshTrips() {
+    // 该城我所有的行程（一城多趟）：切换器 + 当前一趟的点清单
+    const trips = state.city ? await API.listTrips(state.city).catch(() => []) : [];
+    state.trips = trips;
+    if (state.tripId != null) {
+      state.trip = trips.find((t) => Number(t.id) === Number(state.tripId)) || null;
+      if (!state.trip) state.tripId = null;
+    }
+    if (!state.trip) state.trip = trips[0] || null;
+    if (state.trip && state.tripId == null) state.tripId = state.trip.id;
+
+    const sel = $('trip-switch');
+    if (sel) {
+      sel.innerHTML = trips.length
+        ? trips
+            .map(
+              (t) =>
+                '<option value="' + t.id + '"' +
+                (state.trip && Number(t.id) === Number(state.trip.id) ? ' selected' : '') +
+                '>' +
+                (t.theme ? '[' + t.theme + '] ' : '') +
+                t.title +
+                '</option>'
+            )
+            .join('')
+        : '<option value="">（还没有行程）</option>';
+      sel.disabled = trips.length === 0;
+    }
     $('trip-name').textContent = state.trip
       ? '#' + state.trip.id + ' ' + state.trip.title
       : '未创建';
@@ -2553,41 +2622,73 @@
     );
   }
 
+  // 切到另一趟（同一城市）：点、行程卡、路线、分享全部换成那一趟的
+  async function switchTrip(tripId) {
+    const id = tripId == null ? null : Number(tripId);
+    if (id != null && id === Number(state.tripId)) return;
+    state.tripId = id;
+    saveTripId(id);
+    state.routeLegSig = '';
+    try {
+      await Selection.load(state.city, id);
+    } catch (err) {
+      UI.setStatus('切换行程失败：' + human(err));
+      return;
+    }
+    await refreshTrips();
+    if (state.view === 'itinerary') renderItinerary();
+    refresh({ fit: false });
+    UI.setStatus(state.trip ? '当前行程：' + state.trip.title : '当前城市还没有行程');
+  }
+
   // 删除整个行程：二次确认 → DELETE /api/trips/:id → 踢出守卫并重选/置空
+  // 删除当前这一趟（一城多趟之后不再按城市清空）
   async function onDeleteTrip() {
     if (!state.city) {
       UI.setStatus('先选城市');
       return;
     }
+    if (!state.trip) {
+      UI.setStatus('当前城市还没有行程');
+      return;
+    }
     const n = Selection.count();
-    const title = state.trip ? state.trip.title : state.city + ' 的行程';
+    const title = state.trip.title;
     if (
       !(await confirmDialog(
-        '删除「' + title + '」及其全部地点（共 ' + n + ' 个）？此操作不可恢复'
+        '删除这一趟「' + title + '」及其全部地点（共 ' + n + ' 个）？其他趟不受影响，此操作不可恢复'
       ))
     )
       return;
     try {
-      // 按城市删干净（同一城市可能因历史原因有多条行程，只删一条会留“幽灵星标”）
-      await API.clearCityTrips(state.city);
+      await API.deleteTrip(state.tripId);
       state.trip = null;
+      state.tripId = null;
+      saveTripId(null);
       if (Selection.reset) Selection.reset(); // 先本地清星，再跟后端对齐
       if (state.view === 'itinerary') setView('list');
-      await reloadSelection();
-      await syncTripFromServer();
-      refresh();
-      UI.setStatus('已删除「' + state.city + '」的全部行程与地点（' + n + ' 个）');
+      await refreshTrips();
+      const nextId = state.trip ? state.trip.id : null;
+      await switchTrip(nextId);
+      refresh({ fit: false });
+      UI.setStatus('已删除「' + title + '」（' + n + ' 个点）');
     } catch (err) {
       UI.setStatus('删除行程失败：' + human(err));
     }
   }
 
-  // 选中会自动在后端建城市行程；同步守卫 state.trip，保证「删除行程」可用
+  // 跟后端的「当前一趟」对齐（选中后服务端会建/确认行程）
   async function syncTripFromServer() {
     if (!state.city) return;
     try {
       const trips = await API.listTrips(state.city);
-      state.trip = trips[0] || null;
+      state.trips = trips;
+      if (Selection.tripId && trips.some((t) => Number(t.id) === Number(Selection.tripId))) {
+        state.tripId = Number(Selection.tripId);
+      }
+      state.trip = trips.find((t) => Number(t.id) === Number(state.tripId)) || trips[0] || null;
+      state.tripId = state.trip ? state.trip.id : null;
+      saveTripId(state.tripId);
       await refreshTrips();
     } catch (err) {
       /* 行程非关键路径，失败不阻塞 */
@@ -2734,19 +2835,24 @@
       };
     }
     $('trip-new-btn').onclick = async () => {
-      // 同一城市只保留一个行程：已有就复用，避免“两条行程的 pin 并集”导致删了还有星标
-      if (state.trip) {
-        UI.setStatus('已有行程：' + state.trip.title + '（同城只保留一个；要重来请先删除行程）');
-        return;
-      }
-      state.trip = null;
+      // 一城多趟：每次点就是新加一趟，加完直接切过去
       try {
+        state.trip = null;
+        state.tripId = null;
         await ensureTrip();
-        UI.setStatus('已新建行程');
+        await switchTrip(state.tripId);
+        UI.setStatus('已新建一趟：' + (state.trip ? state.trip.title : ''));
       } catch (err) {
         UI.setStatus('新建行程失败：' + human(err));
       }
     };
+    const tripSwitch = $('trip-switch');
+    if (tripSwitch) {
+      tripSwitch.onchange = async () => {
+        const id = tripSwitch.value ? Number(tripSwitch.value) : null;
+        await switchTrip(id);
+      };
+    }
     $('trip-delete-btn').onclick = onDeleteTrip;
   }
 
@@ -2848,7 +2954,10 @@
     }
 
     // 默认城市：URL 上带了 city（从首页/我的行程点进来）就用它，否则用配置里的默认城市
-    const askedCity = (new URLSearchParams(window.location.search).get('city') || '').trim();
+    const params = new URLSearchParams(window.location.search);
+    const askedCity = (params.get('city') || '').trim();
+    const askedTrip = (params.get('trip') || '').trim();
+    if (askedTrip) state.pendingTripId = Number(askedTrip) || null;
     const bootName = askedCity || state.config.defaultCity;
     let bootCity = { name: bootName };
     try {

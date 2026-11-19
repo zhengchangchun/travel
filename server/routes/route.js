@@ -155,12 +155,21 @@ module.exports = [
     path: '/api/itinerary/route',
     async handler(ctx) {
       const user = require('../auth').requireUser(ctx);
-      const city = requireCity(ctx, ctx.query.city);
+      const q = ctx.query || {};
+      // 一城多趟：给了 tripId 就只看那一趟，否则回退到该城第一趟
+      let trip = null;
+      if (q.tripId !== undefined && String(q.tripId).trim() !== '') {
+        trip = ctx.db.getTripOfUser(Number(q.tripId), user.id);
+        if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${q.tripId} 不存在`);
+      } else {
+        trip = ctx.db.getCityTrip(requireCity(ctx, q.city), user.id);
+      }
+      const city = requireCity(ctx, trip ? trip.city : q.city);
       // order（可选）= 页面上的点序（默认「按距离」算出来的那份）：逐段规划就按它走，
       // 否则页面上是距离序、服务端按库里的顺序规划，两边的「第 n 段」会对不上
       const pins = applyPoiOrder(
-        ctx.db.getSelectionByCity(city, user.id),
-        parseOrderCsv(ctx.query.order)
+        trip ? ctx.db.getTripPinsOrdered(trip.id) : [],
+        parseOrderCsv(q.order)
       );
       if (pins.length < 2) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '行程点数不足 2，无法连线');

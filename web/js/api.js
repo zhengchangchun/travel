@@ -113,16 +113,21 @@
     refreshNote: (id) => request('/api/notes/' + id + '/refresh', post({})),
     updatePinNote: (id, note) => request('/api/pins/' + id, patch({ note })),
 
-    // 选中（T2）
-    getSelection: (city) => request('/api/selection?' + qs({ city })),
+    // 选中（T2）：一次只针对「某一趟」（一城多趟）；不给 tripId 就由服务端取该城第一趟
+    getSelection: (city, tripId) => request('/api/selection?' + qs({ city, tripId })),
     selectPoi: (payload) => request('/api/selection', post(payload)),
-    unselectPoi: ({ city, poiId }) =>
-      request('/api/selection?' + qs({ city, poi_id: poiId }), { method: 'DELETE' }),
+    unselectPoi: ({ city, poiId, tripId }) =>
+      request('/api/selection?' + qs({ city, poi_id: poiId, tripId }), { method: 'DELETE' }),
     reorderSelection: (payload) => request('/api/selection/order', put(payload)),
-    exportSelection: async (city, order) => {
+    exportSelection: async (city, order, tripId) => {
       const res = await fetch(
         '/api/selection/export?' +
-          qs({ city, format: 'md', order: order && order.length ? order.join(',') : undefined })
+          qs({
+            city,
+            tripId,
+            format: 'md',
+            order: order && order.length ? order.join(',') : undefined,
+          })
       );
       if (!res.ok) {
         const e = new Error('导出失败（HTTP ' + res.status + '）');
@@ -140,6 +145,8 @@
         '/api/itinerary/route?' +
           qs({
             city,
+            // 一城多趟：一次只规划「这一趟」的点
+            tripId: o.tripId,
             mode: o.modes && o.modes.length ? undefined : o.mode,
             modes: o.modes && o.modes.length ? o.modes.join(',') : undefined,
             // 页面上的点序（默认按距离算的那份）：不带上，服务端会按库里的顺序规划

@@ -63,14 +63,22 @@
     listeners.forEach((fn) => fn(snap));
   }
 
-  async function load(nextCity) {
+  async function load(nextCity, nextTripId) {
     city = nextCity;
-    const data = await API.getSelection(city);
-    tripId = data.tripId;
+    tripId = nextTripId == null || nextTripId === '' ? null : Number(nextTripId);
+    const data = await API.getSelection(city, tripId || undefined);
+    // 服务端可能回「该城第一趟」（没指定 tripId 时）：以它为准
+    tripId = data.tripId == null ? null : Number(data.tripId);
     pins = (data.pins || []).map(mapPin);
     ids = new Set(pins.map((p) => p.id));
     notify();
     return snapshot();
+  }
+
+  // 换一趟（同一城市）：重新拉那一趟的点
+  async function loadTrip(nextTripId) {
+    if (!city) return snapshot();
+    return load(city, nextTripId);
   }
 
   function has(poi) {
@@ -149,7 +157,7 @@
             : Number(String(key).slice(4));
         await API.deletePin(rowId);
       } else {
-        await API.unselectPoi({ city, poiId: key });
+        await API.unselectPoi({ city, poiId: key, tripId: tripId || undefined });
       }
     } catch (err) {
       pins = backupPins;
@@ -175,7 +183,7 @@
     pins = next;
     notify();
     try {
-      await API.reorderSelection({ city, poi_ids: next.map((p) => p.id) });
+      await API.reorderSelection({ city, tripId: tripId || undefined, poi_ids: next.map((p) => p.id) });
     } catch (err) {
       pins = backup;
       notify();
@@ -202,7 +210,7 @@
     pins = next;
     notify();
     try {
-      await API.reorderSelection({ city, poi_ids: next.map((p) => p.id) });
+      await API.reorderSelection({ city, tripId: tripId || undefined, poi_ids: next.map((p) => p.id) });
       return next;
     } catch (err) {
       pins = backup;

@@ -163,10 +163,14 @@
 
         <section class="card trip-card">
           <h2>我的行程</h2>
-          <p class="card-sub">存档：按天保存的清单（与地图上的旗子无关）</p>
+          <p class="card-sub">一座城市可以有多趟：上面切换，下面这趟的清单（与地图上的旗子无关）</p>
+          <div class="row trip-switch-row">
+            <label class="trip-switch-label" for="trip-switch">当前一趟</label>
+            <select id="trip-switch" class="trip-switch" title="切到另一趟（该城别的行程）"></select>
+          </div>
           <div class="row">
-            <button id="trip-new-btn" class="ghost">新建行程</button>
-            <button id="trip-delete-btn" class="ghost" title="删除当前行程">删除行程</button>
+            <button id="trip-new-btn" class="ghost">新建一趟</button>
+            <button id="trip-delete-btn" class="ghost" title="删除当前这一趟（别的趟不受影响）">删除这一趟</button>
             <button id="trip-share-btn" class="ghost" title="生成可发给别人的分享包（网页＋文本）">分享</button>
             <span id="trip-name" class="trip-name">未创建</span>
           </div>

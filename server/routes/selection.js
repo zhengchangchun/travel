@@ -14,15 +14,29 @@ const { parseOrderCsv } = require('../order');
 // 显式点序（「按距离」时前端算出来的那份）：逗号分隔的 poi_id；给了就按它排
 const parseOrder = parseOrderCsv;
 
+// 这次操作针对哪一趟：给了 tripId 就验归属；没给就退回「该城第一趟」（没有且允许建就建）
+function resolveTrip(ctx, user, rawTripId, city, createIfMissing) {
+  if (rawTripId !== undefined && rawTripId !== null && String(rawTripId).trim() !== '') {
+    const trip = ctx.db.getTripOfUser(Number(rawTripId), user.id);
+    if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${rawTripId} 不存在`);
+    return trip;
+  }
+  if (!city) throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少 city 或 tripId');
+  const found = ctx.db.getCityTrip(city, user.id);
+  if (found) return found;
+  return createIfMissing ? ctx.db.getOrCreateCityTrip(city, user.id) : null;
+}
+
 module.exports = [
   {
     method: 'GET',
     path: '/api/selection',
     handler(ctx) {
       const user = me(ctx);
-      const city = requireCity(ctx, ctx.query.city);
-      const trip = ctx.db.getCityTrip(city, user.id);
-      const pins = ctx.db.getSelectionByCity(city, user.id);
+      const q = ctx.query || {};
+      const city = String(q.city || '').trim();
+      const trip = resolveTrip(ctx, user, q.tripId, city, false);
+      const pins = trip ? ctx.db.getTripPinsOrdered(trip.id) : [];
       return {
         tripId: trip ? trip.id : null,
         title: trip ? trip.title : null,
@@ -37,7 +51,7 @@ module.exports = [
     handler(ctx) {
       const user = me(ctx);
       const b = ctx.body || {};
-      const city = requireCity(ctx, b.city);
+      const city = String(b.city || '').trim();
       const poi = b.poi || {};
       if (
         poi.id === undefined ||
@@ -47,7 +61,8 @@ module.exports = [
       ) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 poi.id/name/lng/lat');
       }
-      const pin = ctx.db.insertPinIfAbsent(city, {
+      const trip = resolveTrip(ctx, user, b.tripId, city, true);
+      const pin = ctx.db.insertPinIntoTrip(trip.id, {
         id: String(poi.id),
         name: poi.name,
         address: poi.address,
@@ -59,10 +74,9 @@ module.exports = [
         tel: poi.tel,
         photo: poi.photo,
         note: poi.note,
-      }, user.id);
-      const trip = ctx.db.getCityTrip(city, user.id);
-      const pins = ctx.db.getSelectionByCity(city, user.id);
-      return { tripId: trip ? trip.id : null, pin, count: pins.length };
+      });
+      const pins = ctx.db.getTripPinsOrdered(trip.id);
+      return { tripId: trip.id, pin, count: pins.length };
     },
   },
   {
@@ -70,17 +84,19 @@ module.exports = [
     path: '/api/selection',
     handler(ctx) {
       const user = me(ctx);
-      const city = requireCity(ctx, ctx.query.city);
-      const poiId = ctx.query.poi_id;
+      const q = ctx.query || {};
+      const poiId = q.poi_id;
       if (!poiId) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 poi_id');
       }
-      const { changes } = ctx.db.deletePinByPoi(city, poiId, user.id);
+      const trip = resolveTrip(ctx, user, q.tripId, String(q.city || '').trim(), false);
+      if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `未选中该地点 ${poiId}`);
+      const { changes } = ctx.db.deletePinOfTripByPoi(trip.id, poiId);
       if (!changes) {
         throw new ctx.HttpError(404, 'NOT_FOUND', `未选中该地点 ${poiId}`);
       }
-      const pins = ctx.db.getSelectionByCity(city, user.id);
-      return { deleted: poiId, count: pins.length };
+      const pins = ctx.db.getTripPinsOrdered(trip.id);
+      return { deleted: poiId, tripId: trip.id, pins, count: pins.length };
     },
   },
   {
@@ -89,12 +105,13 @@ module.exports = [
     handler(ctx) {
       const user = me(ctx);
       const b = ctx.body || {};
-      const city = requireCity(ctx, b.city);
       if (!Array.isArray(b.poi_ids)) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', 'poi_ids 必须为数组');
       }
-      const pins = ctx.db.reorderPins(city, b.poi_ids.map(String), user.id);
-      return { count: pins.length, pins };
+      const trip = resolveTrip(ctx, user, b.tripId, String(b.city || '').trim(), false);
+      if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', '还没有行程可排序');
+      const pins = ctx.db.reorderPinsOfTrip(trip.id, b.poi_ids.map(String));
+      return { tripId: trip.id, count: pins.length, pins };
     },
   },
   {
@@ -102,12 +119,14 @@ module.exports = [
     path: '/api/selection/export',
     handler(ctx) {
       const user = me(ctx);
-      const city = requireCity(ctx, ctx.query.city);
+      const q = ctx.query || {};
+      const trip = resolveTrip(ctx, user, q.tripId, String(q.city || '').trim(), false);
+      if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', '还没有行程可导出');
       const labels = {};
       (ctx.categories || []).forEach((c) => {
         labels[c.key] = { label: c.label };
       });
-      const text = ctx.db.buildItineraryMarkdown(city, labels, parseOrder(ctx.query.order), user.id) + '\n';
+      const text = ctx.db.buildTripMarkdown(trip.id, parseOrder(q.order)) + '\n';
       ctx.res.writeHead(200, {
         'Content-Type': 'text/markdown; charset=utf-8',
         'Content-Length': Buffer.byteLength(text),

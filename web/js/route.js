@@ -21,6 +21,7 @@
   let mode = DEFAULT_MODE;
   let perLeg = null; // 每段各自的方式（数组，长度 = 段数）；null = 全段用 mode
   let lastCity = null;
+  let lastTripId = null;
   let lastPins = [];
   let lastData = null;
   let selectedLeg = null; // P15：当前选中的段（地图高亮 + 列表高亮），null=没选
@@ -321,8 +322,12 @@
   async function draw(city, pins, opts) {
     if (city) lastCity = city;
     if (pins) lastPins = pins || [];
-    if (opts) handlers = opts;
-    const key = routeKey(lastCity, lastPins);
+    if (opts) {
+      handlers = opts;
+      // 一城多趟：这次画的是哪一趟（变了就当换了一条路线）
+      if (opts.tripId !== undefined) lastTripId = opts.tripId == null ? null : Number(opts.tripId);
+    }
+    const key = routeKey(lastCity, lastPins) + '#' + (lastTripId == null ? '' : lastTripId);
     const sameRoute = key === lastRouteKey;
     if (!sameRoute) {
       selectedLeg = null; // 换城市/换方式/点序变了 ⇒ 选中态收回
@@ -371,8 +376,8 @@
 
     try {
       const data = perLeg
-        ? await API.itineraryRoute(lastCity, { modes: perLeg, order: orderKeys(lastPins) })
-        : await API.itineraryRoute(lastCity, { mode, order: orderKeys(lastPins) });
+        ? await API.itineraryRoute(lastCity, { modes: perLeg, order: orderKeys(lastPins), tripId: lastTripId || undefined })
+        : await API.itineraryRoute(lastCity, { mode, order: orderKeys(lastPins), tripId: lastTripId || undefined });
       if (my !== reqId) return;
       lastData = data;
       lastDataKey = key;

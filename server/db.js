@@ -333,6 +333,22 @@ function createDb(filePath) {
       `SELECT p.* FROM pins p JOIN trips t ON p.trip_id = t.id
        WHERE t.city = ? AND t.user_id = ? ORDER BY p.sort_order, p.id`
     ),
+    // 按「某一趟」看点的序（一城多趟之后，规划页一次只改一趟）
+    pinsByTripOrdered: db.prepare('SELECT * FROM pins WHERE trip_id = ? ORDER BY sort_order, id'),
+    pinInTripByPoi: db.prepare(
+      'SELECT * FROM pins WHERE trip_id = ? AND poi_id = ? ORDER BY id LIMIT 1'
+    ),
+    maxSortInTrip: db.prepare(
+      'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM pins WHERE trip_id = ?'
+    ),
+    insertPinInTrip: db.prepare(
+      `INSERT INTO pins (trip_id, poi_id, name, address, lng, lat, category, rating, cost, tel, photo, note, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ),
+    deletePinOfTripByPoi: db.prepare('DELETE FROM pins WHERE trip_id = ? AND poi_id = ?'),
+    setSortOrderInTrip: db.prepare('UPDATE pins SET sort_order = ? WHERE poi_id = ? AND trip_id = ?'),
+    setSortOrderByPinInTrip: db.prepare('UPDATE pins SET sort_order = ? WHERE id = ? AND trip_id = ?'),
+    countPinsByTrip: db.prepare('SELECT COUNT(*) AS c FROM pins WHERE trip_id = ?'),
     pinByCityPoiForUser: db.prepare(
       `SELECT p.* FROM pins p JOIN trips t ON p.trip_id = t.id
        WHERE t.city = ? AND t.user_id = ? AND p.poi_id = ? ORDER BY p.id LIMIT 1`
@@ -686,6 +702,55 @@ function createDb(filePath) {
       if (userId == null) return [];
       return stmts.selectionByCityForUser.all(city, Number(userId));
     },
+    // ---- 按「某一趟」工作（一城多趟）----
+    getTripPinsOrdered(tripId) {
+      return stmts.pinsByTripOrdered.all(Number(tripId));
+    },
+    countPinsOfTrip(tripId) {
+      const row = stmts.countPinsByTrip.get(Number(tripId));
+      return toNumber(row && row.c);
+    },
+    insertPinIntoTrip(tripId, poi) {
+      const existing = stmts.pinInTripByPoi.get(Number(tripId), poi.id);
+      if (existing) return existing;
+      const { next } = stmts.maxSortInTrip.get(Number(tripId));
+      const info = stmts.insertPinInTrip.run(
+        Number(tripId),
+        poi.id,
+        poi.name,
+        poi.address || '',
+        Number(poi.lng),
+        Number(poi.lat),
+        poi.category || 'other',
+        poi.rating || null,
+        poi.cost || null,
+        poi.tel || null,
+        poi.photo || null,
+        poi.note || null,
+        Number(next) || 0
+      );
+      return stmts.getPin.get(toNumber(info.lastInsertRowid));
+    },
+    deletePinOfTripByPoi(tripId, poiId) {
+      const info = stmts.deletePinOfTripByPoi.run(Number(tripId), String(poiId));
+      return { changes: toNumber(info.changes) };
+    },
+    reorderPinsOfTrip(tripId, poiIds) {
+      db.exec('BEGIN');
+      try {
+        (poiIds || []).forEach((poiId, index) => {
+          const key = String(poiId);
+          const synthetic = /^pin:(\d+)$/.exec(key);
+          if (synthetic) stmts.setSortOrderByPinInTrip.run(index, Number(synthetic[1]), Number(tripId));
+          else stmts.setSortOrderInTrip.run(index, key, Number(tripId));
+        });
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return this.getTripPinsOrdered(tripId);
+    },
     insertPinIfAbsent(city, poi, userId) {
       if (userId == null) throw new Error('insertPinIfAbsent 需要 userId');
       const existing = stmts.pinByCityPoiForUser.get(city, Number(userId), poi.id);
@@ -1013,22 +1078,27 @@ function createDb(filePath) {
     },
     // 一条路线就是一个有序清单：不再按类别分组（页面上列表也是不分的），
     // 有明确点序（order）时就按那条顺序排，没有就按库里的 sort_order。
-    buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS, order = null, userId = null) {
-      const trip = userId == null ? null : stmts.tripByCityForUser.get(city, Number(userId));
-      const pins = applyPoiOrder(
-        userId == null ? [] : stmts.selectionByCityForUser.all(city, Number(userId)),
-        order
-      );
-      void labels; // 兼容老调用点：分组标题已取消，labels 不再参与排版
+    // 一趟行程的 Markdown 清单（导出 / 分享都用它）
+    buildTripMarkdown(tripId, order = null) {
+      const trip = stmts.getTrip.get(Number(tripId));
+      const pins = applyPoiOrder(this.getTripPinsOrdered(tripId), order);
+      const city = (trip && trip.city) || '';
       const title = (trip && trip.title) || `${city} · 我的行程`;
       const lines = [`# ${title}（${pins.length} 个地点）`];
-      pins.forEach((pin, index) => {        const meta = [];
+      pins.forEach((pin, index) => {
+        const meta = [];
         if (pin.rating) meta.push(`★${pin.rating}`);
         if (pin.cost) meta.push(`¥${pin.cost}`);
         const suffix = meta.length ? `（${meta.join(' · ')}）` : '';
         lines.push(`${index + 1}. ${pin.name} — ${pin.address || '（无详细地址）'}${suffix}`);
       });
       return lines.join('\n');
+    },
+    buildItineraryMarkdown(city, labels = DEFAULT_CATEGORY_LABELS, order = null, userId = null) {
+      void labels; // 兼容老调用点：分组标题已取消，labels 不再参与排版
+      const trip = userId == null ? null : stmts.tripByCityForUser.get(city, Number(userId));
+      if (!trip) return `# ${city} · 我的行程（0 个地点）`;
+      return this.buildTripMarkdown(trip.id, order);
     },
     // 城市轮廓：rings 不在或为空就当作没缓存（宁可重新拉，也别画一张空图）
     getCityBoundary(city) {

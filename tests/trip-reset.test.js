@@ -89,8 +89,15 @@ test('DELETE /api/trips?city= 删掉该城市全部行程与地点，选中态�
       });
       assert.equal(r.status, 200, JSON.stringify(r.body));
     }
+    // 2026-11-19：一城多趟之后，选中只看「当前一趟」（默认该城第一趟），不再并集
     const before = await req(h.base, '/api/selection?city=' + encodeURIComponent('杭州'));
-    assert.equal(before.body.data.count, 2, '按城市看：两个点都在（跨行程并集）');
+    assert.equal(before.body.data.count, 1, '默认只返回该城第一趟的点');
+    const byTrip = await req(
+      h.base,
+      '/api/selection?tripId=' + t2.body.data.id
+    );
+    assert.equal(byTrip.body.data.count, 1, '指定 tripId 就能看另一趟');
+    assert.equal(byTrip.body.data.pins[0].name, '点P2');
 
     const del = await req(h.base, '/api/trips?city=' + encodeURIComponent('杭州'), {
       method: 'DELETE',
@@ -146,31 +153,27 @@ test('db.deleteCityTrips：只删本城市，且返回删了几条行程/几个�
 
 // ---------- 前端：删除后必须清星 ----------
 
-test('删除行程走「按城市删」+ 本地清选中 + 刷列表（幽灵星标的修复点）', () => {
-  assert.match(API, /clearCityTrips:/, 'api.js 缺 clearCityTrips');
-  assert.match(API, /'\/api\/trips\?'/, 'clearCityTrips 应打 /api/trips?city=');
+test('删除行程只删当前这一趟 + 本地清选中 + 刷列表', () => {
+  assert.match(API, /deleteTrip:/, 'api.js 要有 deleteTrip');
   assert.match(SEL, /function\s+reset\(\)/, 'selection.js 缺 reset');
   assert.match(SEL, /\n    reset,/, 'reset 未导出');
 
   const m = APP.match(/async function onDeleteTrip[\s\S]*?\n  \}/);
   assert.ok(m, '缺 onDeleteTrip');
-  assert.match(m[0], /API\.clearCityTrips\(state\.city\)/, '应整城删，而不是只删一条行程');
+  assert.match(m[0], /API\.deleteTrip\(state\.tripId\)/, '只删当前这一趟（别的趟不动）');
+  assert.ok(!/clearCityTrips/.test(m[0]), '不再整城删');
   assert.match(m[0], /Selection\.reset\(\)/, '删完必须清本地选中（否则会留星标）');
-  assert.match(m[0], /await reloadSelection\(\)/, '删完要与后端对齐');
-  assert.match(m[0], /refresh\(\)/, '删完要重画列表与地图');
-  // 先清本地再对齐：顺序上 reset 必须在 reloadSelection 之前
-  assert.ok(
-    m[0].indexOf('Selection.reset()') < m[0].indexOf('await reloadSelection()'),
-    '应先本地清星再与后端对齐'
-  );
+  assert.match(m[0], /refreshTrips\(\)/, '删完要重取该城的行程列表');
+  assert.match(m[0], /refresh\(/, '删完要重画列表与地图');
 });
 
-test('读选中失败时清空兜底；同城不多建第二条行程', () => {
+test('读选中失败时清空兜底；一城多趟：点「新建一趟」就真的再加一趟', () => {
   const r = APP.match(/async function reloadSelection[\s\S]*?\n  \}/);
   assert.ok(r, '缺 reloadSelection');
   assert.match(r[0], /Selection\.reset\(\)/, '读取失败应清空（否则旧星标留着）');
   const nb = APP.match(/trip-new-btn'\)\.onclick = async[\s\S]*?\n    \};/);
-  assert.ok(nb, '缺「新建行程」绑定');
-  assert.match(nb[0], /if \(state\.trip\)/, '已有行程时不应再造第二个');
-  assert.match(nb[0], /同城只保留一个/, '应提示同城只保留一个行程');
+  assert.ok(nb, '缺「新建一趟」绑定');
+  assert.match(nb[0], /ensureTrip\(\)/, '新建要真的建一趟');
+  assert.match(nb[0], /switchTrip\(/, '建完直接切过去');
+  assert.match(APP, /id=\"trip-switch\"|trip-switch/, '要有切换器');
 });

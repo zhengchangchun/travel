@@ -214,7 +214,7 @@ test('两张清单、连线、分享、导出用的是同一份顺序', () => {
   assert.match(itin[0], /syncRoute\(\)/, '段数据回填后重画（一条路线只规划一次）');
   assert.match(APP, /const panelPins = orderedPins\(\)/, '挑点清单同一份顺序');
   assert.match(APP, /order: orderKeys\(orderedPins\(\)\)/, '分享带上这份顺序');
-  assert.match(APP, /API\.exportSelection\(state\.city, orderKeys\(orderedPins\(\)\)\)/, '复制/下载带上这份顺序');
+  assert.match(APP, /API\.exportSelection\(state\.city, orderKeys\(orderedPins\(\)\), state\.tripId\)/, '复制/下载带上这份顺序（以及哪一趟）');
   assert.match(API, /order: o\.order && o\.order\.length \? o\.order\.join\(','\) : undefined/, 'api 层要能带 order');
   // 实时耗时不再自己规划一遍：它读的就是 route.js 那条线（点序由 route.js 随请求带给服务端）
   assert.ok(!/API\.itineraryRoute/.test(APP), 'app.js 不得再各自发一遍逐段规划');
