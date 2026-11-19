@@ -2623,9 +2623,9 @@
   }
 
   // 切到另一趟（同一城市）：点、行程卡、路线、分享全部换成那一趟的
-  async function switchTrip(tripId) {
+  async function switchTrip(tripId, force) {
     const id = tripId == null ? null : Number(tripId);
-    if (id != null && id === Number(state.tripId)) return;
+    if (!force && id != null && id === Number(state.tripId)) return;
     state.tripId = id;
     saveTripId(id);
     state.routeLegSig = '';
@@ -2835,12 +2835,12 @@
       };
     }
     $('trip-new-btn').onclick = async () => {
-      // 一城多趟：每次点就是新加一趟，加完直接切过去
+      // 一城多趟：每次点就是新加一趟，加完直接切过去（新建后一样要重新拉那趟的点）
       try {
         state.trip = null;
         state.tripId = null;
         await ensureTrip();
-        await switchTrip(state.tripId);
+        await switchTrip(state.tripId, true);
         UI.setStatus('已新建一趟：' + (state.trip ? state.trip.title : ''));
       } catch (err) {
         UI.setStatus('新建行程失败：' + human(err));
@@ -2953,12 +2953,22 @@
       UI.setStatus('地图加载失败：' + human(err));
     }
 
-    // 默认城市：URL 上带了 city（从首页/我的行程点进来）就用它，否则用配置里的默认城市
+    // 默认城市：URL 上带了 city（从首页/我的行程点进来）就用它，否则用配置里的默认城市；
+    // 只带 trip（我的行程页「去规划」）时，从那一趟反查城市
     const params = new URLSearchParams(window.location.search);
     const askedCity = (params.get('city') || '').trim();
     const askedTrip = (params.get('trip') || '').trim();
     if (askedTrip) state.pendingTripId = Number(askedTrip) || null;
-    const bootName = askedCity || state.config.defaultCity;
+    let bootName = askedCity || state.config.defaultCity;
+    if (!askedCity && state.pendingTripId != null) {
+      try {
+        const all = await API.listTrips();
+        const hit = (all || []).find((t) => Number(t.id) === Number(state.pendingTripId));
+        if (hit && hit.city) bootName = hit.city;
+      } catch (err) {
+        /* 查不到就退回默认城市 */
+      }
+    }
     let bootCity = { name: bootName };
     try {
       const found = await API.searchCity(bootName);
