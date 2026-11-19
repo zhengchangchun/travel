@@ -59,7 +59,9 @@
     return p === '' ? '/' : p;
   }
 
+  // 菜单（我的行程 / 分享列表）只给登录后的人看：没登录就只留「登录 / 注册」
   function navHtml() {
+    if (!state.user) return '';
     const here = currentPath();
     const item = (href, label) =>
       '<a href="' + href + '"' + (here === href ? ' class="on"' : '') + '>' + label + '</a>';
@@ -79,11 +81,8 @@
       Site.esc(city) +
       '</b></button>';
     if (!u) {
-      return (
-        cityBtn +
-        '<a class="btn small ghost" href="/settings" title="个人设置（先登录）">个人设置</a>' +
-        '<a class="btn small primary" href="/login' + nextParam() + '">登录 / 注册</a>'
-      );
+      // 没登录：只给登录入口（个人设置也不用露，登录后自然就出现在「我的 ⌄」里）
+      return cityBtn + '<a class="btn small primary" href="/login' + nextParam() + '">登录 / 注册</a>';
     }
     return (
       cityBtn +

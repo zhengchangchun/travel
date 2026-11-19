@@ -545,3 +545,13 @@ test('实景图接线：首页卡与详情、行程清单都要用上（且带�
   const css = read('web/css/style.css');
   assert.match(css, /\.itin-shot/, '缩略图要样式');
 });
+
+test('头部：没登录只露「登录 / 注册」，我的行程 / 分享列表 / 个人设置都要登录后才出现', () => {
+  const head = fs.readFileSync(path.join(ROOT, 'web/js/headbar.js'), 'utf8');
+  // nav 只在有 user 时才渲染
+  assert.match(head, /function navHtml\(\) \{\s*\n\s*if \(!state\.user\) return '';/, 'nav 要先判登录');
+  // 没登录时右侧只有城市 + 登录按钮，不再给个人设置
+  assert.match(head, /if \(!u\) \{[\s\S]{0,200}登录 \/ 注册/, '没登录要有登录入口');
+  const loggedOutBlock = head.slice(head.indexOf('if (!u) {'), head.indexOf('if (!u) {') + 320);
+  assert.ok(!/\/settings/.test(loggedOutBlock), '没登录不该露个人设置入口');
+});
