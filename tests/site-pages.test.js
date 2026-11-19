@@ -456,3 +456,32 @@ test('推荐载荷带封面地址；坐标底稿只在服务端（接口里仍�
     await s.close();
   }
 });
+
+test('首页配图：坐标缺失（null）不能当成 0,0 —— 那会把取景拉到整张世界地图', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-home-img-null-'));
+  process.env.TRAVEL_HOME_IMG_DIR = dir;
+  const params = [];
+  const amap = {
+    async amapGet() {
+      return { status: '1' };
+    },
+    async staticMap(p) {
+      params.push(p);
+      return { buffer: Buffer.from('89504e470d0a1a0a', 'hex'), contentType: 'image/png' };
+    },
+  };
+  const s = await start({ amap });
+  try {
+    // hz-2d 里「九溪十八涧」查不到坐标（null）—— 它不该出现在 marker / 折线里
+    const res = await fetch(s.base + '/home-img/route-hz-2d.png');
+    assert.equal(res.status, 200);
+    const p = params[params.length - 1];
+    assert.ok(!/0\.00000,0\.00000/.test(p.markers), 'marker 里不能出现 0,0：' + p.markers);
+    assert.ok(!/0\.00000,0\.00000/.test(p.paths), '折线里不能出现 0,0');
+    assert.equal((p.markers.match(/\|/g) || []).length + 1, 7, '8 个站点里那个没坐标的要被跳过');
+  } finally {
+    await s.close();
+    delete process.env.TRAVEL_HOME_IMG_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

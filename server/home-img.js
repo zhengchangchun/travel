@@ -43,8 +43,11 @@ function safeName(s) {
   return String(s || '').replace(/[^\w\u4e00-\u9fa5.-]/g, '_').slice(0, 60);
 }
 
+// 坐标必须真的存在：null / '' 在 Number() 下会变成 0（0,0 会把取景拉到整张世界地图）
 function isValidPoi(p) {
-  return p && Number.isFinite(Number(p.lng)) && Number.isFinite(Number(p.lat));
+  if (!p) return false;
+  const ok = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) && Number(v) !== 0;
+  return ok(p.lng) && ok(p.lat);
 }
 
 async function writeImage({ amap, file, params }) {
