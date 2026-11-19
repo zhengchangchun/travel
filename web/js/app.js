@@ -1886,6 +1886,10 @@
   async function setCity(city) {
     state.city = city.name || city;
     $('current-city').textContent = state.city;
+    // 站点头部那枚「当前地区」跟着走（只在真不一样时同步，避免来回触发）
+    if (window.TravelHead && window.TravelHead.city !== state.city) {
+      window.TravelHead.setCity(state.city, 'auto');
+    }
     state.activeCats = new Set(Cats.all().map((c) => c.key));
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
@@ -2783,14 +2787,15 @@
       UI.setStatus('地图加载失败：' + human(err));
     }
 
-    // 默认城市：用城市搜索拿到主城区 center（高德 city center 就是主城区）；
-    // 名字沿用配置里的 defaultCity，保证与已收录缓存的城市键一致
-    let bootCity = { name: state.config.defaultCity };
+    // 默认城市：URL 上带了 city（从首页/我的行程点进来）就用它，否则用配置里的默认城市
+    const askedCity = (new URLSearchParams(window.location.search).get('city') || '').trim();
+    const bootName = askedCity || state.config.defaultCity;
+    let bootCity = { name: bootName };
     try {
-      const found = await API.searchCity(state.config.defaultCity);
+      const found = await API.searchCity(bootName);
       if (Array.isArray(found) && found.length) {
         bootCity = {
-          name: state.config.defaultCity,
+          name: bootName,
           lng: found[0].lng,
           lat: found[0].lat,
         };
@@ -2799,6 +2804,10 @@
       /* 拿不到 center 时退化为仅城市名 */
     }
     await setCity(bootCity); // setCity 内已按城市载入行程
+    // 站点头部（页面顶部那条）：显示当前地区/登录状态，换城市由它导航到 /app?city=…
+    if (window.TravelHead && window.TravelHead.start) {
+      window.TravelHead.start({ city: state.city });
+    }
   }
 
   window.addEventListener('DOMContentLoaded', boot);

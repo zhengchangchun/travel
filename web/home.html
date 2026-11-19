@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>旅迹 · 按笔记找地方，一屏把行程排出来</title>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body class="site">
+  <div id="headbar"></div>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>按笔记找地方，一屏把行程排出来</h1>
+      <p>
+        把小红书、抖音里刷到的店和景点丢进来，在地图上挑点、看实时耗时与路线，
+        自动按里程排成一条不折返的行程，最后生成一个能直接发给别人的网页。
+      </p>
+      <div class="row">
+        <a class="btn primary" href="/app" id="start-btn">开始规划</a>
+        <a class="btn ghost" href="#routes">看看推荐路程</a>
+      </div>
+      <div class="where" id="where-line">正在认你所在的城市…</div>
+    </section>
+
+    <section class="card" style="padding:16px 16px 6px">
+      <h2>推荐地区 <span class="note" id="regions-note">按你所在地区排</span></h2>
+      <div class="grid region-grid" id="regions"></div>
+    </section>
+
+    <section class="card" id="routes" style="padding:16px 16px 6px">
+      <h2>推荐路程 <span class="note">精选路线，点开看每一站（只浏览，不会动你的行程）</span></h2>
+      <div class="grid route-grid" id="route-list"></div>
+    </section>
+
+    <section class="card" style="padding:16px 16px 6px">
+      <h2>它能帮你做什么</h2>
+      <div class="grid features">
+        <div class="feature"><b>按笔记搜地方</b><span>贴一条小红书/抖音链接，自动抓下标题正文与图，从正文里提出地名并落到地图上。</span></div>
+        <div class="feature"><b>地图上挑点</b><span>按分类与评分挑，选中就看实时耗时与距离，先知道「这几个点顺不顺」。</span></div>
+        <div class="feature"><b>自动成线</b><span>从住宿出发按整体里程最短排序，少走回头路；每站带「从上一站过来多久、多远、累计多少」。</span></div>
+        <div class="feature"><b>一键分享</b><span>生成自包含的网页分享包，发给别人在浏览器里直接能打开，带逐段路线与地图链接。</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site">旅迹 · 本机自用（数据都存在本机 sqlite 里）</footer>
+
+  <div class="mask hidden" id="route-mask">
+    <div class="dialog" role="dialog" aria-label="推荐路线详情">
+      <div class="dhead">
+        <div style="flex:1">
+          <h3 id="rd-title">—</h3>
+          <div class="small muted" id="rd-sub">—</div>
+        </div>
+        <button class="icobtn" type="button" id="rd-close" aria-label="关闭">×</button>
+      </div>
+      <div class="dbody" id="rd-body"></div>
+      <div class="dfoot">
+        <a class="btn primary" id="rd-plan" href="/app">用这个城市开始规划</a>
+        <button class="btn ghost" type="button" id="rd-close2">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/site.js"></script>
+  <script src="/js/headbar.js"></script>
+  <script src="/js/home.js"></script>
+</body>
+</html>

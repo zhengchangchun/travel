@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>我的行程 · 旅迹</title>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body class="site">
+  <div id="headbar"></div>
+
+  <main class="wrap">
+    <h1 class="page">我的行程</h1>
+    <p class="hint">一座城市可以有多趟，每趟定一个主题（比如「西线＋东线」「亲子慢玩」）。</p>
+
+    <div class="card">
+      <h2>新建一趟</h2>
+      <div class="row">
+        <div class="field" style="flex:1 1 160px; margin:0">
+          <label for="tp-city">城市</label>
+          <input id="tp-city" placeholder="如 三亚" />
+        </div>
+        <div class="field" style="flex:1 1 200px; margin:0">
+          <label for="tp-theme">主题（可留空）</label>
+          <input id="tp-theme" placeholder="如 西线＋东线＋海岛" />
+        </div>
+        <div class="field" style="flex:2 1 240px; margin:0">
+          <label for="tp-title">名字（可留空）</label>
+          <input id="tp-title" placeholder="默认「城市 · 我的行程」" />
+        </div>
+        <button class="btn primary" type="button" id="tp-create" style="align-self:flex-end">新建</button>
+      </div>
+      <div class="form-msg" id="tp-msg"></div>
+    </div>
+
+    <div id="main"></div>
+  </main>
+
+  <footer class="site">旅迹 · 行程都存在本机 sqlite（data/travel.db）</footer>
+
+  <script src="/js/site.js"></script>
+  <script src="/js/headbar.js"></script>
+  <script src="/js/trips.js"></script>
+</body>
+</html>

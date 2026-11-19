@@ -21,6 +21,9 @@ const notesRoutes = require('./routes/notes');
 const { createNoteJobs } = require('./note-jobs');
 const selectionRoutes = require('./routes/selection');
 const routeRoutes = require('./routes/route');
+const authRoutes = require('./routes/auth');
+const homeRoutes = require('./routes/home');
+const sharesRoutes = require('./routes/shares');
 
 class HttpError extends Error {
   constructor(status, code, msg) {
@@ -96,13 +99,25 @@ async function readBody(req) {
   }
 }
 
+// 页面路由：首页 / 各子页 / 地图应用（应用本身在 /app，链接别的页面不用带 .html）
+const PAGES = {
+  '/': 'home.html',
+  '/home': 'home.html',
+  '/app': 'index.html',
+  '/trips': 'trips.html',
+  '/shares': 'shares.html',
+  '/settings': 'settings.html',
+  '/login': 'login.html',
+};
+
 function serveStatic(req, res, pathname, baseDir) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendErr(res, 405, 'METHOD_NOT_ALLOWED', '静态资源仅支持 GET/HEAD');
     return;
   }
   const webRoot = baseDir || path.join(ROOT, 'web');
-  const rel = pathname === '/' ? '/index.html' : pathname;
+  const page = !baseDir && PAGES[pathname.replace(/\/+$/, '') || '/'];
+  const rel = page || (pathname === '/' ? '/index.html' : pathname);
   const filePath = path.normalize(path.join(webRoot, rel));
   if (filePath !== webRoot && !filePath.startsWith(webRoot + path.sep)) {
     sendErr(res, 403, 'FORBIDDEN', '路径非法');
@@ -160,6 +175,9 @@ function createApp(opts = {}) {
     ...notesRoutes,
     ...selectionRoutes,
     ...routeRoutes,
+    ...authRoutes,
+    ...homeRoutes,
+    ...sharesRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));

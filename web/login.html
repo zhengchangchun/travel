@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>登录 · 旅迹</title>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body class="site">
+  <div id="headbar"></div>
+
+  <main class="wrap narrow">
+    <div class="card">
+      <h2 id="lg-title">登录</h2>
+      <div class="field">
+        <label for="lg-user">账号</label>
+        <input id="lg-user" autocomplete="username" placeholder="字母/数字，3–32 位" />
+      </div>
+      <div class="field" id="lg-nick-wrap" style="display:none">
+        <label for="lg-nick">昵称（可留空，默认用账号）</label>
+        <input id="lg-nick" autocomplete="nickname" placeholder="比如 长春" />
+      </div>
+      <div class="field">
+        <label for="lg-pass">密码</label>
+        <input id="lg-pass" type="password" autocomplete="current-password" placeholder="至少 8 位" />
+      </div>
+      <div class="form-msg" id="lg-msg"></div>
+      <div class="row">
+        <button class="btn primary" type="button" id="lg-submit">登录</button>
+        <button class="btn ghost" type="button" id="lg-toggle">没有账号？去注册</button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site">旅迹 · 账号只存这一台机器的 sqlite 里（密码 scrypt 哈希，不存明文）</footer>
+
+  <script src="/js/site.js"></script>
+  <script src="/js/headbar.js"></script>
+  <script src="/js/login.js"></script>
+</body>
+</html>

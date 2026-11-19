@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const share = require('../share');
 const routemap = require('../routemap');
+const auth = require('../auth');
 const { applyPoiOrder } = require('../order');
 
 const MODE_KEYS = ['driving', 'riding', 'walking', 'transit'];
@@ -119,11 +120,31 @@ module.exports = [
       payload.maps = built.maps;
       payload.mapErrors = built.errors;
       const out = share.writePackage(SHARE_DIR(), payload);
+      const text = share.buildText(payload);
+      // 记一笔到分享列表（首页/分享列表页要用）；记录失败不影响分享本身
+      let shareRow = null;
+      try {
+        const user = auth.currentUser(ctx.db, ctx.req);
+        shareRow = ctx.db.addShare({
+          tripId: payload.tripId != null ? Number(payload.tripId) : Number(ctx.params.id) || null,
+          userId: user ? user.id : null,
+          city: payload.city,
+          title: payload.title,
+          base: out.base,
+          files: out.files,
+          text,
+          stops: payload.stops.length,
+          distanceM: payload.plan && payload.plan.distanceM,
+        });
+      } catch (err) {
+        shareRow = null;
+      }
       return {
         dir: out.dir,
         base: out.base,
+        shareId: shareRow ? shareRow.id : null,
         files: out.files,
-        text: share.buildText(payload),
+        text,
         count: payload.stops.length,
         maps: Object.keys(built.maps).map((m) => ({
           mode: m,
@@ -170,11 +191,17 @@ module.exports = [
     method: 'POST',
     path: '/api/trips',
     handler(ctx) {
-      const { city, title } = ctx.body || {};
+      const { city, title, theme } = ctx.body || {};
       if (!city || !String(city).trim() || !title || !String(title).trim()) {
         throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少必填字段 city/title');
       }
-      return ctx.db.createTrip({ city: String(city).trim(), title: String(title).trim() });
+      const user = auth.currentUser(ctx.db, ctx.req);
+      return ctx.db.createTrip({
+        city: String(city).trim(),
+        title: String(title).trim(),
+        theme: theme == null ? null : String(theme).trim(),
+        userId: user ? user.id : null,
+      });
     },
   },
   {
@@ -216,6 +243,7 @@ module.exports = [
         trip = ctx.db.updateTripTitle(id, title).trip;
       }
       if (b.note !== undefined) trip = ctx.db.updateTripNote(id, b.note).trip;
+      if (b.theme !== undefined) trip = ctx.db.updateTripTheme(id, b.theme);
       return trip;
     },
   },

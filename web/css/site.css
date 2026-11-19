@@ -1,0 +1,218 @@
+/* 旅迹 · 站点层（首页 / 我的行程 / 分享列表 / 个人设置 / 登录）
+   与地图应用同一套深色语言：改 style.css 的 :root 时这里也要跟着改（色值抄同一份） */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --surface: #151922;
+  --surface-2: #1b2029;
+  --line: rgba(255, 255, 255, .07);
+  --line-2: rgba(255, 255, 255, .14);
+  --ink: #e9edf6;
+  --ink-2: #a7b1c0;
+  --ink-3: #9aa3b2;
+  --accent: #6d8bff;
+  --accent-2: #35d0c0;
+  --ok: #4ad69a;
+  --warn: #ffc861;
+  --danger: #ff6b6b;
+  --radius: 14px;
+  --head-h: 56px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  background-image:
+    radial-gradient(1100px 520px at 12% -10%, rgba(109, 139, 255, .16), transparent 60%),
+    radial-gradient(900px 460px at 100% 0%, rgba(53, 208, 192, .10), transparent 62%);
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; }
+input, select, textarea { font: inherit; }
+
+/* ---------- 通栏头部（所有页面共用） ---------- */
+.head {
+  height: var(--head-h); display: flex; align-items: center; gap: 14px;
+  padding: 0 18px; position: sticky; top: 0; z-index: 50;
+  background: rgba(11, 13, 18, .82);
+  -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.head .brand { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; letter-spacing: .3px; }
+.head .brand img { width: 26px; height: 26px; display: block; }
+.head .spacer { flex: 1; }
+.head nav { display: flex; align-items: center; gap: 4px; }
+.head nav a {
+  padding: 7px 12px; border-radius: 10px; color: var(--ink-2); font-size: 14px;
+  border: 1px solid transparent;
+}
+.head nav a:hover { color: var(--ink); background: rgba(255, 255, 255, .05); }
+.head nav a.on { color: var(--ink); background: rgba(109, 139, 255, .16); border-color: rgba(109, 139, 255, .35); }
+.head .right { display: flex; align-items: center; gap: 8px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 10px; font-size: 14px;
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, .04); color: var(--ink);
+}
+.btn:hover { background: rgba(255, 255, 255, .09); }
+.btn.primary { background: linear-gradient(135deg, var(--accent), #4f6ef0); border-color: transparent; color: #fff; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; }
+.btn.danger { color: var(--danger); border-color: rgba(255, 107, 107, .4); }
+.btn.small { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+.chip-static {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 999px; font-size: 13px; color: var(--ink);
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, .05);
+}
+.chip-static b { color: var(--accent-2); font-weight: 700; }
+
+/* 未登录/已登录两种形态 */
+.who { display: flex; align-items: center; gap: 8px; }
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #0b0d12; overflow: hidden;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: 42px; min-width: 180px; padding: 6px;
+  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .5); display: none;
+}
+.menu.open { display: block; }
+.menu a, .menu button {
+  display: block; width: 100%; text-align: left; padding: 9px 11px; border-radius: 9px;
+  background: transparent; border: 0; color: var(--ink-2); font-size: 14px;
+}
+.menu a:hover, .menu button:hover { background: rgba(255, 255, 255, .07); color: var(--ink); }
+.menu .sep { height: 1px; background: var(--line); margin: 4px 2px; }
+
+/* ---------- 页面骨架 ---------- */
+/* 下面这些是站点页面（home/login/trips/shares/settings）专用的：带 body.site 前缀，
+   免得和规划页（/app 的 style.css）同名的 .card / .row 撞车 */
+body.site .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 18px 60px; }
+body.site .wrap.narrow { max-width: 720px; }
+body.site h1.page { font-size: 24px; margin: 0 0 6px; }
+body.site p.hint { color: var(--ink-2); font-size: 14px; margin: 0 0 18px; }
+body.site .card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 14px;
+}
+body.site .card h2 { font-size: 16px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+body.site .card h2 .note { font-size: 12.5px; color: var(--ink-3); font-weight: 400; }
+.muted { color: var(--ink-2); }
+.small { font-size: 13px; }
+body.site .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grid { display: grid; gap: 12px; }
+
+/* ---------- 首页 ---------- */
+.hero {
+  padding: 44px 0 30px; text-align: center;
+}
+.hero h1 { font-size: 34px; margin: 0 0 12px; letter-spacing: .5px; }
+.hero p { color: var(--ink-2); font-size: 15.5px; margin: 0 auto 20px; max-width: 620px; line-height: 1.7; }
+.hero .row, body.site .hero .row { justify-content: center; }
+.hero .where { margin-top: 14px; color: var(--ink-3); font-size: 13px; }
+
+.region-grid { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); }
+.region {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.region.current { border-color: rgba(109, 139, 255, .45); background: linear-gradient(180deg, rgba(109, 139, 255, .10), transparent); }
+.region .name { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.region .name .here { font-size: 11.5px; font-weight: 600; color: #0b0d12; background: var(--accent-2); border-radius: 999px; padding: 2px 7px; }
+.region .tag { color: var(--ink-2); font-size: 13px; line-height: 1.6; min-height: 38px; }
+.region .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag-pill { font-size: 12px; color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 8px; }
+.region .foot { display: flex; align-items: center; gap: 8px; margin-top: auto; }
+.region .count { font-size: 12.5px; color: var(--ink-3); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.route-grid { grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); }
+.route-card {
+  text-align: left; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 15px; display: flex; flex-direction: column; gap: 9px;
+}
+.route-card:hover { border-color: rgba(109, 139, 255, .42); }
+.route-card .top { display: flex; align-items: baseline; gap: 8px; }
+.route-card .title { font-size: 16px; font-weight: 700; }
+.route-card .city { font-size: 12.5px; color: var(--ink-3); margin-left: auto; }
+.route-card .theme { font-size: 12px; color: #0b0d12; background: var(--accent-2); border-radius: 999px; padding: 2px 8px; font-weight: 600; }
+.route-card .note { color: var(--ink-2); font-size: 13px; line-height: 1.66; }
+.route-card .meta { display: flex; gap: 10px; font-size: 12.5px; color: var(--ink-3); }
+.route-card .path { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.features { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.feature { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 15px; }
+.feature b { display: block; margin-bottom: 6px; font-size: 15px; }
+.feature span { color: var(--ink-2); font-size: 13px; line-height: 1.66; }
+
+footer.site { border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; padding: 18px; text-align: center; }
+
+/* 规划页（/app）也挂了这条头部：三栏高度要扣掉头部那一条，不然底部被顶出屏幕 */
+body.has-headbar #app { height: calc(100vh - var(--head-h)); }
+@media (max-width: 900px) {
+  body.has-headbar #app { height: auto; }
+}
+
+/* ---------- 弹层（路线详情 / 城市选择 / 登录） ---------- */
+.mask {
+  position: fixed; inset: 0; background: rgba(4, 6, 10, .62); z-index: 80;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.mask.hidden { display: none; }
+.dialog {
+  width: 100%; max-width: 560px; max-height: 84vh; overflow: auto;
+  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+.dialog .dhead { display: flex; align-items: flex-start; gap: 10px; padding: 16px 16px 10px; }
+.dialog .dhead h3 { margin: 0; font-size: 18px; }
+.dialog .dbody { padding: 0 16px 16px; }
+.dialog .dfoot { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); }
+.icobtn { background: transparent; border: 0; color: var(--ink-3); font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 8px; }
+.icobtn:hover { background: rgba(255, 255, 255, .08); color: var(--ink); }
+.day { margin: 14px 0 6px; font-size: 13px; color: var(--accent-2); font-weight: 700; }
+ol.stops { margin: 0; padding-left: 22px; }
+ol.stops li { margin: 7px 0; line-height: 1.6; }
+ol.stops li .sn { color: var(--ink-3); font-size: 12.5px; margin-left: 6px; }
+
+/* ---------- 列表（行程 / 分享） ---------- */
+.list { display: flex; flex-direction: column; gap: 10px; }
+body.site .item {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px; display: flex; gap: 12px; align-items: flex-start;
+}
+body.site .item .body { flex: 1; min-width: 0; }
+body.site .item .t { font-size: 15.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+body.site .item .s { color: var(--ink-2); font-size: 13px; margin-top: 5px; line-height: 1.6; }
+body.site .item .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.badge { font-size: 11.5px; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--line-2); color: var(--ink-2); }
+.empty-box { color: var(--ink-2); font-size: 14px; padding: 22px; text-align: center; border: 1px dashed var(--line-2); border-radius: var(--radius); }
+
+/* ---------- 表单 ---------- */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+.field input, .field select, .field textarea {
+  width: 100%; padding: 10px 12px; border-radius: 10px; color: var(--ink);
+  background: rgba(255, 255, 255, .05); border: 1px solid var(--line-2);
+}
+.field input:focus, .field select:focus { outline: 2px solid rgba(109, 139, 255, .35); }
+.form-msg { min-height: 20px; font-size: 13px; color: var(--warn); margin-top: 4px; }
+.form-msg.ok { color: var(--ok); }
+
+@media (max-width: 720px) {
+  .head { gap: 8px; padding: 0 12px; }
+  .head nav a { padding: 6px 8px; font-size: 13px; }
+  .hero { padding: 28px 0 20px; }
+  .hero h1 { font-size: 26px; }
+}

@@ -5,11 +5,48 @@ const { contentHash, setDigest } = require('./poi-hash');
 const { applyPoiOrder } = require('./order');
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  salt          TEXT NOT NULL,
+  nickname      TEXT,
+  avatar        TEXT,
+  default_city  TEXT,
+  default_mode  TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL
+);
+
+-- 分享列表：每次「分享」落一条（网页版 /share/<base>.html 同一个服务里能直接打开）
+CREATE TABLE IF NOT EXISTS shares (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id    INTEGER,
+  user_id    INTEGER,
+  city       TEXT NOT NULL,
+  title      TEXT NOT NULL,
+  base       TEXT NOT NULL,
+  files      TEXT,
+  text       TEXT,
+  stops      INTEGER NOT NULL DEFAULT 0,
+  distance_m INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS trips (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   city        TEXT NOT NULL,
   title       TEXT NOT NULL,
   note        TEXT,
+  theme       TEXT,
+  user_id     INTEGER,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -175,6 +212,18 @@ function dedupeCityTitle(city, rawTitle) {
   return title;
 }
 
+// 分享行 → 给页面用的形状（files 是 JSON 字符串，解开；网页版地址由路由拼）
+function parseShareRow(row) {
+  if (!row) return null;
+  let files = null;
+  try {
+    files = row.files ? JSON.parse(row.files) : null;
+  } catch (err) {
+    files = null;
+  }
+  return { ...row, files: files || {} };
+}
+
 // 幂等迁移：先查 pragma table_info，缺列才 ALTER（重复启动不报错）
 function ensureColumn(db, table, column, ddl) {
   const cols = db
@@ -194,6 +243,9 @@ function createDb(filePath) {
   ensureColumn(db, 'pins', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
   // 行程自己的备注（「先吃饭再逛」这类整条行程的话）—— 每条地点的备注在 pins.note
   ensureColumn(db, 'trips', 'note', 'note TEXT');
+  // 一城可多趟：主题（比如「西线＋东线」）与归属用户
+  ensureColumn(db, 'trips', 'theme', 'theme TEXT');
+  ensureColumn(db, 'trips', 'user_id', 'user_id INTEGER');
   ensureColumn(db, 'poi_coverage', 'truncated', 'truncated INTEGER NOT NULL DEFAULT 0');
   // POI 内容指纹列（存量库前滚；缺失指纹的行在下面回填）
   ensureColumn(db, 'pois', 'content_sha256', 'content_sha256 TEXT');
@@ -212,12 +264,13 @@ function createDb(filePath) {
   ensureColumn(db, 'note_places', 'source', 'source TEXT');
 
   const stmts = {
-    insertTrip: db.prepare('INSERT INTO trips (city, title) VALUES (?, ?)'),
+    insertTrip: db.prepare('INSERT INTO trips (city, title, theme, user_id) VALUES (?, ?, ?, ?)'),
     getTrip: db.prepare('SELECT * FROM trips WHERE id = ?'),
     listTrips: db.prepare('SELECT * FROM trips ORDER BY id DESC'),
     listTripsByCity: db.prepare('SELECT * FROM trips WHERE city = ? ORDER BY id DESC'),
     updateTripTitle: db.prepare('UPDATE trips SET title = ? WHERE id = ?'),
     updateTripNote: db.prepare('UPDATE trips SET note = ? WHERE id = ?'),
+    updateTripTheme: db.prepare('UPDATE trips SET theme = ? WHERE id = ?'),
     deleteTrip: db.prepare('DELETE FROM trips WHERE id = ?'),
     deletePinsOfTrip: db.prepare('DELETE FROM pins WHERE trip_id = ?'),
     deleteCityPins: db.prepare(
@@ -350,12 +403,39 @@ function createDb(filePath) {
          name = excluded.name, adcode = excluded.adcode, center = excluded.center,
          bbox = excluded.bbox, rings = excluded.rings, fetched_at = excluded.fetched_at`
     ),
+
+    // ---- 账号 / 会话 ----
+    insertUser: db.prepare(
+      'INSERT INTO users (username, password_hash, salt, nickname) VALUES (?, ?, ?, ?)'
+    ),
+    getUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
+    getUserByName: db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE'),
+    updateUser: db.prepare(
+      `UPDATE users SET nickname = ?, avatar = ?, default_city = ?, default_mode = ?, updated_at = ?
+       WHERE id = ?`
+    ),
+    insertSession: db.prepare(
+      'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)'
+    ),
+    getSession: db.prepare('SELECT * FROM sessions WHERE token_hash = ?'),
+    deleteSession: db.prepare('DELETE FROM sessions WHERE token_hash = ?'),
+    purgeSessions: db.prepare('DELETE FROM sessions WHERE expires_at < ?'),
+
+    // ---- 分享列表 ----
+    insertShare: db.prepare(
+      `INSERT INTO shares (trip_id, user_id, city, title, base, files, text, stops, distance_m)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ),
+    getShare: db.prepare('SELECT * FROM shares WHERE id = ?'),
+    findShareByBase: db.prepare('SELECT * FROM shares WHERE base = ? ORDER BY id DESC LIMIT 1'),
+    listShares: db.prepare('SELECT * FROM shares ORDER BY id DESC LIMIT ?'),
+    deleteShare: db.prepare('DELETE FROM shares WHERE id = ?'),
   };
 
   const api = {
     raw: db,
-    createTrip({ city, title }) {
-      const info = stmts.insertTrip.run(city, title);
+    createTrip({ city, title, theme, userId }) {
+      const info = stmts.insertTrip.run(city, title, theme || null, userId ?? null);
       return stmts.getTrip.get(toNumber(info.lastInsertRowid));
     },
     listTrips(city) {
@@ -926,6 +1006,89 @@ function createDb(filePath) {
         data.fetchedAt || new Date().toISOString()
       );
       return this.getCityBoundary(city);
+    },
+    // ---- 账号 / 会话（账号密码登录；密码 scrypt 哈希，会话存 token 的 sha256）----
+    createUser({ username, passwordHash, salt, nickname }) {
+      const info = stmts.insertUser.run(username, passwordHash, salt, nickname || username);
+      return stmts.getUserById.get(toNumber(info.lastInsertRowid));
+    },
+    getUserByName(username) {
+      return stmts.getUserByName.get(String(username)) || null;
+    },
+    getUserById(id) {
+      return stmts.getUserById.get(Number(id)) || null;
+    },
+    updateUser(id, fields) {
+      const cur = stmts.getUserById.get(Number(id));
+      if (!cur) return null;
+      stmts.updateUser.run(
+        fields.nickname !== undefined ? fields.nickname : cur.nickname,
+        fields.avatar !== undefined ? fields.avatar : cur.avatar,
+        fields.defaultCity !== undefined ? fields.defaultCity : cur.default_city,
+        fields.defaultMode !== undefined ? fields.defaultMode : cur.default_mode,
+        new Date().toISOString(),
+        Number(id)
+      );
+      return stmts.getUserById.get(Number(id));
+    },
+    createSession({ tokenHash, userId, expiresAt }) {
+      stmts.insertSession.run(tokenHash, Number(userId), expiresAt);
+    },
+    getSession(tokenHash) {
+      const row = stmts.getSession.get(String(tokenHash));
+      if (!row) return null;
+      if (row.expires_at && String(row.expires_at) < new Date().toISOString()) {
+        stmts.deleteSession.run(String(tokenHash));
+        return null;
+      }
+      return row;
+    },
+    deleteSession(tokenHash) {
+      const info = stmts.deleteSession.run(String(tokenHash));
+      return { changes: toNumber(info.changes) };
+    },
+    purgeExpiredSessions(nowIso) {
+      const info = stmts.purgeSessions.run(nowIso || new Date().toISOString());
+      return { changes: toNumber(info.changes) };
+    },
+
+    // ---- 分享列表 ----
+    addShare(s) {
+      const info = stmts.insertShare.run(
+        s.tripId ?? null,
+        s.userId ?? null,
+        s.city,
+        s.title,
+        s.base,
+        s.files ? JSON.stringify(s.files) : null,
+        s.text || null,
+        Number(s.stops) || 0,
+        Number.isFinite(Number(s.distanceM)) ? Number(s.distanceM) : null
+      );
+      return parseShareRow(stmts.getShare.get(toNumber(info.lastInsertRowid)));
+    },
+    listShares(limit) {
+      return stmts.listShares.all(Number(limit) || 50).map(parseShareRow);
+    },
+    getShare(id) {
+      const row = stmts.getShare.get(Number(id));
+      return row ? parseShareRow(row) : null;
+    },
+    findShareByBase(base) {
+      const row = stmts.findShareByBase.get(String(base));
+      return row ? parseShareRow(row) : null;
+    },
+    deleteShare(id) {
+      const info = stmts.deleteShare.run(Number(id));
+      return { changes: toNumber(info.changes) };
+    },
+    countPoisByCity(city) {
+      const row = stmts.countPoisCity.get(String(city));
+      return toNumber(row && row.c);
+    },
+    updateTripTheme(id, theme) {
+      stmts.updateTripTheme.run(theme || null, Number(id));
+      return stmts.getTrip.get(Number(id));
     },
     close() {
       db.close();
