@@ -941,15 +941,24 @@
   function photoOfPin(pin) {
     if (!pin) return '';
     if (pin.photo) return String(pin.photo);
-    const hit = state.photos && state.photos[pin.name];
-    return hit && hit.url ? hit.url : '';
+    const map = state.photos || {};
+    const exact = map[pin.name];
+    if (exact && exact.url) return exact.url;
+    // 名字不完全一样也认（「鹿回头」对「鹿回头风景区」）：谁长谁短都试一下
+    const name = String(pin.name || '');
+    if (!name) return '';
+    const hit = Object.keys(map).find((k) => k && (k.startsWith(name) || name.startsWith(k)));
+    return hit && map[hit].url ? map[hit].url : '';
   }
 
   function photoCreditOfPin(pin) {
-    if (!pin) return '';
-    const hit = state.photos && state.photos[pin.name];
-    if (!hit) return '';
-    return hit.credit || '';
+    if (!pin || !pin.name) return '';
+    const map = state.photos || {};
+    const name = String(pin.name);
+    const exact = map[name];
+    if (exact) return exact.credit || '';
+    const key = Object.keys(map).find((k) => k && (k.startsWith(name) || name.startsWith(k)));
+    return key && map[key].credit ? map[key].credit : '';
   }
 
   // 地图上的点也要能看出先后顺序：把眼前这条路线（第 1 站…第 N 站）交给地图编号

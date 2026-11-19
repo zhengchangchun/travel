@@ -73,13 +73,19 @@ function photoFor(city, name) {
 }
 
 // 一座城的全部实景图（给规划页的行程清单用：按点位名字查）
+// 点位名叫「鹿回头」、索引里叫「鹿回头风景区」这种情况要能对上，所以顺手做几个别名
+const SUFFIX = /(风景区|文化旅游区|旅游度假区|度假区|开发区|研究基地|景区|公园)$/;
+
 function photosForCity(city) {
   const data = load();
   const out = {};
-  data.byKey.forEach((entry, key) => {
+  data.byKey.forEach((entry) => {
     if (entry.city !== String(city)) return;
     const p = photoFor(entry.city, entry.name);
-    if (p) out[entry.name] = p;
+    if (!p) return;
+    out[entry.name] = p;
+    const short = entry.name.replace(SUFFIX, '').trim();
+    if (short && short !== entry.name && !out[short]) out[short] = p;
   });
   return out;
 }

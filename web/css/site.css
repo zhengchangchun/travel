@@ -230,6 +230,11 @@ ol.stops li .stop-shot {
   flex: none; width: 132px; height: 88px; object-fit: cover; border-radius: 10px;
   border: 1px solid var(--line-2);
 }
+/* 没图的站也占住同样宽度，右面的字才不会跳来跳去 */
+ol.stops li .stop-shot.empty {
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,.03) 0 6px, rgba(255,255,255,.06) 6px 12px);
+  border-style: dashed;
+}
 .stop-main { flex: 1; min-width: 0; }
 .credit { font-size: 12px; color: var(--ink-3); margin-top: 12px; }
 

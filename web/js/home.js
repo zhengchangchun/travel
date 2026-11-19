@@ -201,7 +201,7 @@
         const thumb = s.photo
           ? '<img class="stop-shot" src="' + Site.esc(s.photo) + '" alt="" loading="lazy" ' +
             'title="' + Site.esc(s.photoCredit ? '图：' + s.photoCredit : '实景图') + '" onerror="this.remove()" />'
-          : '';
+          : '<span class="stop-shot empty" aria-hidden="true"></span>';
         html +=
           '<li>' + thumb +
           '<span class="stop-main"><a href="' + Site.amapSearchUrl(s.name, rt.city) + '" target="_blank" rel="noreferrer">' +
