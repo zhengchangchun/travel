@@ -39,7 +39,7 @@
   // 点的顺序（用户 2026-11-17）：「默认顺序先按地点之间的距离计算」
   const ORDER_KEY = 'travel.orderMode'; // 'distance'（默认）| 'manual'
   const ORDER_MODES = [
-    { key: 'distance', label: '按距离', tip: '默认：从住宿（没定就从第一个点）出发，每次去最近的那一站' },
+    { key: 'distance', label: '按距离', tip: '默认：从住宿（没定就从第一个点）出发，先按最近的一站排，再把整条线的回头路减掉' },
     { key: 'manual', label: '手动顺序', tip: '按你自己排的顺序走：拖行 / ↑↓ 调' },
   ];
 
@@ -711,6 +711,7 @@
 
   function renderMap(list, fit) {
     if (!MapCtl.isReady()) return;
+    syncOrderToMap(); // 先给地图编号，再落点：新画的点直接就带站号
     // 增量：只补新增 / 删消失，保留不动的旗子（移动地图时不整屏重画 ⇒ 不闪）
     const isSel = (p) => Selection.has(p);
     if (MapCtl.syncMarkers) state.markerInfo = MapCtl.syncMarkers(list, isSel) || null;
@@ -787,6 +788,7 @@
     renderQuickLegs(panelPins, pick);
     // 挑点阶段就把这条线画在地图上（用户 2026-11-18：看不到点和点之间的路线）
     syncRoute();
+    syncOrderToMap(); // 顺序一变，地图上的站号跟着变（第 1 站…第 N 站）
   }
 
   function modeLabelOf(key) {
@@ -910,7 +912,7 @@
   }
 
   // 页面上这条路线按什么顺序走（列表 / 连线 / 分享 / 导出全用它，免得两处不一样）：
-  // - 按距离（默认）：从住宿锚点（没定就从第一个点）出发，每次去最近的下一站（最近邻，可重入）
+  // - 按距离（默认）：从住宿锚点（没定就从第一个点）出发，先最近邻排一遍，再整体减掉回头路
   // - 手动顺序：就是库里存的那份（拖拽 / ↑↓ 排出来的），一个不动
   // - 2 个点及以下：顺序无所谓，直接给库里那份，别让用户看到列表自己跳
   function orderedPins() {
@@ -918,6 +920,13 @@
     if (state.orderMode !== 'distance' || pins.length < 3) return pins;
     const start = baseForPlan();
     return Planner.orderStops(pins, start ? { start } : undefined);
+  }
+
+  // 地图上的点也要能看出先后顺序：把眼前这条路线（第 1 站…第 N 站）交给地图编号
+  // （地图自己做了签名判断，顺序没变时什么也不做）
+  function syncOrderToMap() {
+    if (!MapCtl.setOrder) return;
+    MapCtl.setOrder(orderedPins());
   }
 
   // 显式点序（服务端口径：poi_id 字符串，没有 poi_id 的用 pin:<行号>）
@@ -960,7 +969,7 @@
     const dist = Planner.pathDistance(orderedPins());
     note.textContent =
       (start ? '从「' + (start.name || '住宿') + '」出发，' : '从第 1 个点出发，') +
-      '每次去最近的一站（直线 ' +
+      '按整体里程最短排（少走回头路，直线 ' +
       Geo.humanDistance(dist.distanceM) +
       '）';
   }
@@ -980,7 +989,7 @@
     if (!(opts && opts.silent)) {
       UI.setStatus(
         next === 'distance'
-          ? '顺序：按地点之间的距离排（每次去最近的一站）'
+          ? '顺序：按整体里程最短排（从住宿出发，少走回头路）'
           : '顺序：按库里你自己排的那份（拖行或 ↑↓ 再改）'
       );
     }
@@ -1051,6 +1060,7 @@
 
   function renderItinerary() {
     const list = orderedPins();
+    syncOrderToMap();
     Itinerary.render($('itinerary-list'), list, {
       legs: state.routeLegs,
       selectedLeg: Route ? Route.getSelectedLeg() : null,

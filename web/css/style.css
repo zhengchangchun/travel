@@ -352,6 +352,25 @@ button.danger:hover { background: #ad2102; }
   box-shadow: 0 0 0 2px rgba(255, 210, 63, .55), 0 1px 3px rgba(0, 0, 0, .35);
 }
 
+/* 地图上的点按当前路线编号（第 1 站…第 N 站）：先后顺序要在地图上看得见 */
+.flag-no {
+  position: absolute; top: -7px; left: -7px; box-sizing: border-box;
+  min-width: 17px; height: 17px; padding: 0 3px; border-radius: 9px;
+  background: #1677ff; color: #fff; border: 1.5px solid #fff;
+  font-size: 11px; font-weight: 700; line-height: 14px; text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+}
+.poi-dot.has-no {
+  width: 20px; height: 20px; border-width: 2px;
+  display: flex; align-items: center; justify-content: center;
+}
+.poi-dot-no {
+  color: #fff; font-size: 11px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+}
+
 .flag.selected { transform: scale(1.12); transform-origin: bottom center; }
 .flag.selected .flag-head {
   border-color: #ffffff;

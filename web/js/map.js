@@ -22,8 +22,19 @@
     const bits = [poi.name];
     if (poi.rating) bits.push('★' + poi.rating + (top ? '（满分）' : ''));
     else bits.push('（高德无评分）');
+    const no = orderNo(poi);
+    if (no) bits.unshift('第 ' + no + ' 站');
     if (isBase) bits.push('住宿锚点');
     return bits.join(' · ');
+  }
+
+  // 当前这条路线（第 1 站…第 N 站）的序号表：地图上的点要能一眼看出先后顺序
+  let orderNos = new Map();
+  let orderSig = '';
+
+  function orderNo(poi) {
+    if (!orderNos.size || !poi) return 0;
+    return orderNos.get(poiKey(poi)) || 0;
   }
 
   function flagHtml(poi, selected) {
@@ -35,13 +46,16 @@
     const top = SC ? SC.isTop(poi.rating) : false;
     const noRating = !poi.rating;
     const isBase = isBaseId(poi.id) || isBaseId(poi.poi_id);
+    const no = orderNo(poi);
     return (
       '<div class="flag' + (selected ? ' selected' : '') + (top ? ' top' : '') +
-      (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + '" data-category="' +
+      (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + (no ? ' has-no' : '') +
+      '" data-category="' +
       esc(poi.category) + '" ' +
       'style="--flag-color:' + esc(color) + '" title="' + esc(flagTitle(poi, top, isBase)) + '">' +
       '<div class="flag-head"><span class="flag-icon">' + esc(label.slice(0, 1)) + '</span></div>' +
       '<div class="flag-tail"></div>' +
+      (no ? '<span class="flag-no">' + no + '</span>' : '') +
       (selected ? '<span class="flag-star">★</span>' : '') +
       (top ? '<span class="flag-crown">★</span>' : '') +
       (isBase ? '<span class="flag-base">住</span>' : '') +
@@ -50,6 +64,7 @@
   }
 
   // 远看的小圆点：色相认分类、明暗认评分（与旗子同一套色阶），悬停仍报名字与评分
+  // 在路线里的点带站号（圆点稍大一圈装得下数字）——远看一眼就知道先到哪儿、后到哪儿
   function dotHtml(poi, selected) {
     const SC = window.TravelScoreColor;
     const color = SC
@@ -58,11 +73,15 @@
     const top = SC ? SC.isTop(poi.rating) : false;
     const noRating = !poi.rating;
     const isBase = isBaseId(poi.id) || isBaseId(poi.poi_id);
+    const no = orderNo(poi);
     return (
       '<div class="poi-dot' + (selected ? ' selected' : '') + (top ? ' top' : '') +
-      (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + '" data-category="' +
+      (noRating ? ' no-rating' : '') + (isBase ? ' base' : '') + (no ? ' has-no' : '') +
+      '" data-category="' +
       esc(poi.category) + '" ' +
-      'style="--flag-color:' + esc(color) + '" title="' + esc(flagTitle(poi, top, isBase)) + '"></div>'
+      'style="--flag-color:' + esc(color) + '" title="' + esc(flagTitle(poi, top, isBase)) + '">' +
+      (no ? '<span class="poi-dot-no">' + no + '</span>' : '') +
+      '</div>'
     );
   }
 
@@ -71,8 +90,12 @@
     return mode === 'dot' ? dotHtml(poi, selected) : flagHtml(poi, selected);
   }
 
-  function offsetFor(mode) {
-    return mode === 'dot' ? new AMap.Pixel(-6, -6) : new AMap.Pixel(-13, -34);
+  function offsetFor(mode, poi) {
+    if (mode === 'dot') {
+      // 带站号的圆点大一圈（20px），锚点跟着挪，别让它偏出真实坐标
+      return orderNo(poi) ? new AMap.Pixel(-10, -10) : new AMap.Pixel(-6, -6);
+    }
+    return new AMap.Pixel(-13, -34);
   }
 
   function loadSdk(cfg) {
@@ -168,7 +191,7 @@
     const marker = new AMap.Marker({
       position: [poi.lng, poi.lat],
       content: contentFor(poi, selected, renderMode),
-      offset: offsetFor(renderMode),
+      offset: offsetFor(renderMode, poi),
       extData: { poi, selected },
       zIndex: selected ? 200 : 100,
     });
@@ -188,7 +211,7 @@
     const marker = new AMap.Marker({
       position: [poi.lng, poi.lat],
       content: contentFor(poi, selected, renderMode),
-      offset: offsetFor(renderMode),
+      offset: offsetFor(renderMode, poi),
       extData: { poi, selected },
       zIndex: selected ? 200 : 100,
     });
@@ -431,6 +454,36 @@
 
   function markerCount() {
     return markers.size;
+  }
+
+  // 当前路线的站号（第 1 站…第 N 站）：把这份顺序交给地图编号。
+  // 只做两件事：记下序号表；已经在图上的点就地换个内容（不整屏重画 ⇒ 不闪）。
+  // 返回这轮真的重画了几个点（0 = 顺序没变，什么也没做）。
+  function setOrder(pins) {
+    const list = Array.isArray(pins) ? pins : [];
+    const keys = list.map(poiKey);
+    const sig = keys.join('|');
+    if (sig === orderSig) return 0;
+    orderSig = sig;
+    orderNos = new Map();
+    keys.forEach((k, i) => {
+      if (!orderNos.has(k)) orderNos.set(k, i + 1);
+    });
+    let touched = 0;
+    markers.forEach((m) => {
+      const ext = (typeof m.getExtData === 'function' && m.getExtData()) || {};
+      const poi = ext.poi;
+      if (!poi || typeof m.setContent !== 'function') return;
+      m.setContent(contentFor(poi, !!ext.selected, renderMode));
+      if (typeof m.setOffset === 'function') m.setOffset(offsetFor(renderMode, poi));
+      touched += 1;
+    });
+    return touched;
+  }
+
+  // 现在地图上有几个点带着站号（给页面/测试看的读数）
+  function orderCount() {
+    return orderNos.size;
   }
 
   // ---------- 城市外轮廓（P21）：先看清整座城市有多大，再往里慢选 ----------
@@ -759,6 +812,8 @@
       const line = new AMap.Polyline({
         path,
         ...style,
+        // 成功的那几段画方向箭头：地图上也能看出先到哪儿、后到哪儿
+        showDir: !failed,
         lineJoin: 'round',
         lineCap: 'round',
         zIndex: failed ? 40 : 60,
@@ -811,6 +866,8 @@
     addMarkers,
     syncMarkers,
     markerCount,
+    setOrder,
+    orderCount,
     markerLimit,
     limitForZoom,
     modeForZoom,
