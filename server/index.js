@@ -25,6 +25,7 @@ const authRoutes = require('./routes/auth');
 const homeRoutes = require('./routes/home');
 const sharesRoutes = require('./routes/shares');
 const legacyRoutes = require('./routes/legacy');
+const buddiesRoutes = require('./routes/buddies');
 const backupRoutes = require('./routes/backup');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
@@ -110,6 +111,7 @@ const PAGES = {
   '/app': 'index.html',
   '/trips': 'trips.html',
   '/shares': 'shares.html',
+  '/buddies': 'buddies.html',
   '/settings': 'settings.html',
   '/login': 'login.html',
 };
@@ -183,6 +185,7 @@ function createApp(opts = {}) {
     ...homeRoutes,
     ...sharesRoutes,
     ...legacyRoutes,
+    ...buddiesRoutes,
     ...backupRoutes,
   ];
 

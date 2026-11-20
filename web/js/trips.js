@@ -3,7 +3,7 @@
 (function () {
   const Site = window.TravelSite;
   const $ = (id) => document.getElementById(id);
-  const state = { trips: [], pins: {} };
+  const state = { trips: [], pins: {}, buddies: [] };
 
   function tripCard(t) {
     const pins = state.pins[t.id];
@@ -26,15 +26,113 @@
       ' · 建于 ' + Site.esc(Site.fmtDate(t.created_at)) +
       (t.note ? ' · 备注：' + Site.esc(t.note) : '') +
       '</div>' +
+      buddyLine(t) +
       '</div>' +
       '<div class="acts">' + acts + '</div>' +
       '</div>'
     );
   }
 
+  // ---- 同行搭子：名单在「旅游搭子」页维护，这里只是挑人 ----
+  function buddyName(id) {
+    const b = state.buddies.find((x) => Number(x.id) === Number(id));
+    return b ? b.name : '搭子 ' + id;
+  }
+
+  function buddyLine(t) {
+    const chips = (t.buddyIds || [])
+      .map((id) => '<span class="tag-pill">' + Site.esc(buddyName(id)) + '</span>')
+      .join('');
+    return (
+      '<div class="s" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<span class="muted">同行</span>' +
+      (chips || '<span class="muted">还没选搭子</span>') +
+      '<button class="btn small ghost" type="button" data-act="buddies" data-id="' + t.id + '">挑搭子</button>' +
+      '</div>'
+    );
+  }
+
+  function ensureBuddyDialog() {
+    let mask = $('buddy-mask');
+    if (mask) return mask;
+    mask = document.createElement('div');
+    mask.id = 'buddy-mask';
+    mask.className = 'mask hidden';
+    mask.innerHTML =
+      '<div class="dialog" role="dialog" aria-label="同行搭子">' +
+      '<div class="dhead"><h3 id="buddy-title">这趟跟谁一起</h3><div style="flex:1"></div>' +
+      '<button class="icobtn" type="button" id="buddy-close" aria-label="关闭">×</button></div>' +
+      '<div class="dbody" id="buddy-body"></div>' +
+      '<div class="dfoot"><button class="btn primary" type="button" id="buddy-save">保存</button>' +
+      '<button class="btn ghost" type="button" id="buddy-cancel">取消</button></div>' +
+      '</div>';
+    document.body.appendChild(mask);
+    mask.onclick = (e) => {
+      if (e.target === mask) mask.classList.add('hidden');
+    };
+    $('buddy-close').onclick = () => mask.classList.add('hidden');
+    $('buddy-cancel').onclick = () => mask.classList.add('hidden');
+    return mask;
+  }
+
+  function pickBuddies(trip) {
+    const mask = ensureBuddyDialog();
+    const chosen = new Set((trip.buddyIds || []).map(Number));
+    $('buddy-title').textContent = '这趟跟谁一起：' + trip.title;
+    if (!state.buddies.length) {
+      $('buddy-body').innerHTML =
+        '<div class="empty-box">名单还是空的，先去 <a href="/buddies">旅游搭子</a> 里加几个人</div>';
+      $('buddy-save').disabled = true;
+    } else {
+      $('buddy-save').disabled = false;
+      $('buddy-body').innerHTML =
+        '<p class="hint" style="margin-bottom:10px">勾上这趟一起走的人（可以一个不勾，表示自己去）</p>' +
+        state.buddies
+          .map(
+            (b) =>
+              '<label class="row" style="align-items:center;gap:9px;padding:8px 6px;border-radius:10px;cursor:pointer">' +
+              '<input type="checkbox" data-bid="' + b.id + '"' + (chosen.has(Number(b.id)) ? ' checked' : '') + ' />' +
+              '<b>' + Site.esc(b.name) + '</b>' +
+              (b.relation ? '<span class="badge">' + Site.esc(b.relation) + '</span>' : '') +
+              ((b.tags || []).map((x) => '<span class="tag-pill">' + Site.esc(x) + '</span>').join('')) +
+              (b.note ? '<span class="muted small">' + Site.esc(b.note) + '</span>' : '') +
+              '</label>'
+          )
+          .join('');
+    }
+    $('buddy-save').onclick = async () => {
+      const ids = [];
+      $('buddy-body')
+        .querySelectorAll('input[data-bid]')
+        .forEach((cb) => {
+          if (cb.checked) ids.push(Number(cb.dataset.bid));
+        });
+      $('buddy-save').disabled = true;
+      try {
+        await Site.api.updateTrip(trip.id, { buddyIds: ids });
+        mask.classList.add('hidden');
+        Site.toast(ids.length ? '已记下：' + ids.map(buddyName).join('、') : '已清空同行搭子', true);
+        await reload();
+      } catch (err) {
+        Site.toast(err.message || '保存失败');
+      } finally {
+        $('buddy-save').disabled = false;
+      }
+    };
+    mask.classList.remove('hidden');
+  }
+
+  async function loadBuddies() {
+    try {
+      const data = await Site.api.buddies();
+      state.buddies = (data && data.buddies) || [];
+    } catch (err) {
+      state.buddies = [];
+    }
+  }
+
   function render() {
-    const box = $('main');
-    if (!state.trips.length) {
+    const box = $('main');    if (!state.trips.length) {
       box.innerHTML = '<div class="empty-box">还没有行程：上面新建一趟，或直接去 <a href="/app">地图</a> 里挑点</div>';
       return;
     }
@@ -46,6 +144,7 @@
       if (b.dataset.act === 'rename') b.onclick = () => rename(trip);
       else if (b.dataset.act === 'theme') b.onclick = () => theme(trip);
       else if (b.dataset.act === 'del') b.onclick = () => remove(trip);
+      else if (b.dataset.act === 'buddies') b.onclick = () => pickBuddies(trip);
     });
   }
 
@@ -191,6 +290,7 @@
       return;
     }
     $('tp-create').onclick = create;
+    await loadBuddies();
     await reload();
     await loadPending(me.user);
   })();

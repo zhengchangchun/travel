@@ -68,6 +68,7 @@
     return (
       '<nav>' +
       item('/trips', '我的行程') +
+      item('/buddies', '旅游搭子') +
       item('/shares', '分享列表') +
       '</nav>'
     );
@@ -94,6 +95,7 @@
       '<div class="menu" id="head-menu">' +
       '<a href="/settings">个人设置</a>' +
       '<a href="/trips">我的行程</a>' +
+      '<a href="/buddies">旅游搭子</a>' +
       '<a href="/shares">分享列表</a>' +
       '<div class="sep"></div>' +
       '<button type="button" id="head-logout">退出登录</button>' +

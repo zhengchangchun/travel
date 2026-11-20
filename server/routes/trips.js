@@ -206,7 +206,10 @@ module.exports = [
     handler(ctx) {
       const user = me(ctx);
       const city = ctx.query && ctx.query.city;
-      return ctx.db.listTrips(user.id, city ? String(city).trim() : undefined);
+      const trips = ctx.db.listTrips(user.id, city ? String(city).trim() : undefined);
+      // 每趟跟谁一起（一次查完，别一趟一个查询）
+      const map = ctx.db.tripBuddiesOfUser(user.id);
+      return trips.map((t) => ({ ...t, buddyIds: map[Number(t.id)] || [] }));
     },
   },
   {
@@ -253,7 +256,7 @@ module.exports = [
     method: 'PATCH',
     path: '/api/trips/:id',
     handler(ctx) {
-      const { trip: owned } = tripOfUser(ctx, ctx.params.id);
+      const { user, trip: owned } = tripOfUser(ctx, ctx.params.id);
       const id = owned.id;
       let trip = owned;
       const b = ctx.body || {};
@@ -264,6 +267,20 @@ module.exports = [
       }
       if (b.note !== undefined) trip = ctx.db.updateTripNote(id, b.note).trip;
       if (b.theme !== undefined) trip = ctx.db.updateTripTheme(id, b.theme);
+      // 同行搭子：整组替换（页面上是多选）；不是自己的搭子直接拒，别静默丢掉
+      if (b.buddyIds !== undefined) {
+        if (!Array.isArray(b.buddyIds)) throw new ctx.HttpError(400, 'BAD_REQUEST', 'buddyIds 要是数组');
+        const ids = [];
+        b.buddyIds.forEach((raw) => {
+          const bid = Number(raw);
+          if (!Number.isInteger(bid) || bid <= 0) throw new ctx.HttpError(400, 'BAD_REQUEST', '搭子 id 不合法');
+          if (!ctx.db.getBuddyOfUser(bid, user.id)) {
+            throw new ctx.HttpError(400, 'BAD_REQUEST', `搭子 ${bid} 不在你的名单里`);
+          }
+          if (!ids.includes(bid)) ids.push(bid);
+        });
+        trip = { ...trip, buddyIds: ctx.db.setTripBuddies(id, ids) };
+      }
       return trip;
     },
   },

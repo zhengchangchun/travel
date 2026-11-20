@@ -68,6 +68,26 @@ CREATE TABLE IF NOT EXISTS pins (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- 旅游搭子（同行的人）：一个人一条，随身带上关系/口味/习惯这类“约他出去玩要知道的事”
+CREATE TABLE IF NOT EXISTS buddies (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL,
+  name       TEXT NOT NULL,
+  relation   TEXT,
+  tags       TEXT,
+  contact    TEXT,
+  note       TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT
+);
+
+-- 这趟行程跟谁一起（一个搭子可以出现在多趟里）
+CREATE TABLE IF NOT EXISTS trip_buddies (
+  trip_id  INTEGER NOT NULL,
+  buddy_id INTEGER NOT NULL,
+  PRIMARY KEY (trip_id, buddy_id)
+);
+
 CREATE TABLE IF NOT EXISTS notes (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   pin_id      INTEGER REFERENCES pins(id),
@@ -225,6 +245,23 @@ function parseShareRow(row) {
 }
 
 // 幂等迁移：先查 pragma table_info，缺列才 ALTER（重复启动不报错）
+function toNullableText(value) {
+  if (value === undefined || value === null) return null;
+  const s = String(value).trim();
+  return s ? s : null;
+}
+
+function mapBuddyRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    id: toNumber(row.id),
+    user_id: toNumber(row.user_id),
+    tags: parseJsonArray(row.tags),
+    tripCount: toNumber(row.trip_count || 0),
+  };
+}
+
 function ensureColumn(db, table, column, ddl) {
   const cols = db
     .prepare(`PRAGMA table_info(${table})`)
@@ -483,6 +520,28 @@ function createDb(filePath) {
     listShares: db.prepare('SELECT * FROM shares ORDER BY id DESC LIMIT ?'),
     listSharesByUser: db.prepare('SELECT * FROM shares WHERE user_id = ? ORDER BY id DESC LIMIT ?'),
     claimTrips: db.prepare('UPDATE trips SET user_id = ? WHERE user_id IS NULL'),
+    // ---- 旅游搭子 ----
+    listBuddies: db.prepare(
+      `SELECT b.*, (SELECT COUNT(*) FROM trip_buddies tb JOIN trips t ON t.id = tb.trip_id
+                    WHERE tb.buddy_id = b.id AND t.user_id = b.user_id) AS trip_count
+       FROM buddies b WHERE b.user_id = ? ORDER BY b.name COLLATE NOCASE, b.id`
+    ),
+    getBuddy: db.prepare('SELECT * FROM buddies WHERE id = ?'),
+    getBuddyOfUser: db.prepare('SELECT * FROM buddies WHERE id = ? AND user_id = ?'),
+    insertBuddy: db.prepare(
+      'INSERT INTO buddies (user_id, name, relation, tags, contact, note) VALUES (?, ?, ?, ?, ?, ?)'
+    ),
+    updateBuddy: db.prepare(
+      "UPDATE buddies SET name = ?, relation = ?, tags = ?, contact = ?, note = ?, updated_at = datetime('now') WHERE id = ?"
+    ),
+    deleteBuddy: db.prepare('DELETE FROM buddies WHERE id = ?'),
+    tripBuddyIds: db.prepare('SELECT buddy_id FROM trip_buddies WHERE trip_id = ? ORDER BY buddy_id'),
+    tripBuddiesOfUser: db.prepare(
+      'SELECT tb.trip_id, tb.buddy_id FROM trip_buddies tb JOIN trips t ON t.id = tb.trip_id WHERE t.user_id = ?'
+    ),
+    insertTripBuddy: db.prepare('INSERT OR IGNORE INTO trip_buddies (trip_id, buddy_id) VALUES (?, ?)'),
+    deleteTripBuddies: db.prepare('DELETE FROM trip_buddies WHERE trip_id = ?'),
+    deleteBuddyLinks: db.prepare('DELETE FROM trip_buddies WHERE buddy_id = ?'),
     claimNotes: db.prepare('UPDATE notes SET user_id = ? WHERE user_id IS NULL'),
     countUnownedNotes: db.prepare('SELECT COUNT(*) AS c FROM notes WHERE user_id IS NULL'),
     claimShares: db.prepare('UPDATE shares SET user_id = ? WHERE user_id IS NULL'),
@@ -514,6 +573,7 @@ function createDb(filePath) {
       db.exec('BEGIN');
       try {
         stmts.deletePinsOfTrip.run(id);
+        stmts.deleteTripBuddies.run(id);   // 顺手把「这趟跟谁一起」也清掉
         const info = stmts.deleteTrip.run(id);
         db.exec('COMMIT');
         return { changes: info.changes };
@@ -539,6 +599,90 @@ function createDb(filePath) {
         db.exec('ROLLBACK');
         throw err;
       }
+    },
+    // ---- 旅游搭子：一个人一条；一律只看得到自己的 ----
+    listBuddies(userId) {
+      if (userId == null) return [];
+      return stmts.listBuddies.all(Number(userId)).map(mapBuddyRow);
+    },
+    getBuddyOfUser(id, userId) {
+      if (userId == null) return null;
+      return mapBuddyRow(stmts.getBuddyOfUser.get(Number(id), Number(userId)));
+    },
+    createBuddy({ userId, name, relation, tags, contact, note }) {
+      const info = stmts.insertBuddy.run(
+        Number(userId),
+        String(name),
+        toNullableText(relation),
+        Array.isArray(tags) && tags.length ? JSON.stringify(tags) : null,
+        toNullableText(contact),
+        toNullableText(note)
+      );
+      return mapBuddyRow(stmts.getBuddyOfUser.get(toNumber(info.lastInsertRowid), Number(userId)));
+    },
+    // 只传要改的那几个字段（没传的保持原样）
+    updateBuddyOfUser(id, userId, fields) {
+      const cur = stmts.getBuddyOfUser.get(Number(id), Number(userId));
+      if (!cur) return null;
+      const b = fields || {};
+      const pick = (key, fallback) => (b[key] === undefined ? fallback : b[key]);
+      const tags =
+        b.tags === undefined
+          ? cur.tags
+          : Array.isArray(b.tags) && b.tags.length
+            ? JSON.stringify(b.tags)
+            : null;
+      const name = String(pick('name', cur.name) == null ? cur.name : pick('name', cur.name)).trim();
+      stmts.updateBuddy.run(
+        name,
+        toNullableText(pick('relation', cur.relation)),
+        tags,
+        toNullableText(pick('contact', cur.contact)),
+        toNullableText(pick('note', cur.note)),
+        cur.id
+      );
+      return mapBuddyRow(stmts.getBuddy.get(cur.id));
+    },
+    deleteBuddyOfUser(id, userId) {
+      const cur = stmts.getBuddyOfUser.get(Number(id), Number(userId));
+      if (!cur) return { deleted: 0 };
+      db.exec('BEGIN');
+      try {
+        stmts.deleteBuddyLinks.run(cur.id);   // 从各趟行程里也移掉，别留半条引用
+        stmts.deleteBuddy.run(cur.id);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return { deleted: toNumber(cur.id) };
+    },
+    tripBuddyIds(tripId) {
+      return stmts.tripBuddyIds.all(Number(tripId)).map((r) => toNumber(r.buddy_id));
+    },
+    // 整组替换（页面上是多选，点保存一次提交）
+    setTripBuddies(tripId, buddyIds) {
+      db.exec('BEGIN');
+      try {
+        stmts.deleteTripBuddies.run(Number(tripId));
+        (buddyIds || []).forEach((bid) => stmts.insertTripBuddy.run(Number(tripId), Number(bid)));
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return stmts.tripBuddyIds.all(Number(tripId)).map((r) => toNumber(r.buddy_id));
+    },
+    // 列表用：一次把我每趟分别跟谁拉出来，别一趟一个查询
+    tripBuddiesOfUser(userId) {
+      if (userId == null) return {};
+      const out = {};
+      stmts.tripBuddiesOfUser.all(Number(userId)).forEach((r) => {
+        const tripId = toNumber(r.trip_id);
+        if (!out[tripId]) out[tripId] = [];
+        out[tripId].push(toNumber(r.buddy_id));
+      });
+      return out;
     },
     addPin(pin) {
       const info = stmts.insertPin.run(

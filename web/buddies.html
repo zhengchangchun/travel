@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>旅游搭子 · 旅迹</title>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body class="site">
+  <div id="headbar"></div>
+
+  <main class="wrap">
+    <h1 class="page">旅游搭子</h1>
+    <p class="hint">
+      常一起出门的人，一人一条：关系、口味与习惯、联系方式。出发前挑人时想得起来谁合适，
+      挑好的搭子会挂在对应的行程上（在「我的行程」里能看见）。
+    </p>
+
+    <div class="card">
+      <h2>加一个搭子 <span class="note" id="form-title">新的一条</span></h2>
+      <div class="row" style="align-items:flex-start">
+        <div class="field" style="flex:1 1 180px;margin-bottom:0">
+          <label for="bd-name">名字 <span class="muted">（必填，≤24 字）</span></label>
+          <input id="bd-name" placeholder="如 老王" autocomplete="off" />
+        </div>
+        <div class="field" style="flex:1 1 150px;margin-bottom:0">
+          <label for="bd-relation">关系 <span class="muted">（如 同事 / 老婆 / 球友）</span></label>
+          <input id="bd-relation" placeholder="选填" autocomplete="off" />
+        </div>
+        <div class="field" style="flex:1 1 190px;margin-bottom:0">
+          <label for="bd-tags">标签 <span class="muted">（用逗号隔开，最多 8 个）</span></label>
+          <input id="bd-tags" placeholder="早起, 能吃辣, 会开车" autocomplete="off" />
+        </div>
+      </div>
+      <div class="row" style="align-items:flex-start;margin-top:12px">
+        <div class="field" style="flex:1 1 220px;margin-bottom:0">
+          <label for="bd-contact">联系方式 <span class="muted">（手机 / 微信，选填）</span></label>
+          <input id="bd-contact" placeholder="选填" autocomplete="off" />
+        </div>
+        <div class="field" style="flex:2 1 320px;margin-bottom:0">
+          <label for="bd-note">备注 <span class="muted">（选填，如 怕晒、爱爬山、不吃香菜）</span></label>
+          <input id="bd-note" placeholder="选填" autocomplete="off" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" type="button" id="bd-save">保存</button>
+        <button class="btn ghost hidden" type="button" id="bd-cancel">取消编辑</button>
+        <span class="form-msg" id="bd-msg"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>我的搭子 <span class="note" id="bd-count">—</span></h2>
+      <div id="main"></div>
+    </div>
+  </main>
+
+  <footer class="site">旅迹 · 搭子名单只存在本机（跟着账号走，别人看不到）</footer>
+
+  <script src="/js/site.js"></script>
+  <script src="/js/headbar.js"></script>
+  <script src="/js/buddies.js"></script>
+</body>
+</html>

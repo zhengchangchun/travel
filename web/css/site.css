@@ -126,6 +126,9 @@ body.site .card h2 { font-size: 16px; margin: 0 0 12px; display: flex; align-ite
 body.site .card h2 .note { font-size: 12.5px; color: var(--ink-3); font-weight: 400; }
 .muted { color: var(--ink-2); }
 .small { font-size: 13px; }
+/* 站点页只引 site.css，所以 .hidden / .tags 得在这里也定义一份（style.css 那份只服务规划页） */
+body.site .hidden { display: none !important; }
+body.site .tags { display: flex; flex-wrap: wrap; gap: 5px; }
 body.site .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grid { display: grid; gap: 12px; }
 
