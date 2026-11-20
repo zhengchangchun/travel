@@ -1,5 +1,9 @@
 module.exports = async ({ page }) => {
-  const KEY = 'REDACTED';
+  // key 不进仓：从 config/local.json 读（推送前把这里原来写死的 key 清掉了）
+  const path = require('node:path');
+  const cfg = require(path.join(__dirname, '..', '..', '..', 'config', 'local.json'));
+  const KEY = cfg.amap && cfg.amap.jsApiKey;
+  if (!KEY) throw new Error('config/local.json 里没有 amap.jsApiKey');
   const html = `<!doctype html><meta charset=utf-8>
   <div id="map" style="width:1200px;height:800px"></div>
   <script src="https://webapi.amap.com/maps?v=2.0&key=${KEY}"></script>
