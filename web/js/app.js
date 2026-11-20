@@ -2680,6 +2680,8 @@
   }
 
   // ---- 每个点下面的小清单：到了这地方「必去/要做的事」----
+  let decorateToken = 0;
+
   function mapSearchUrl(name) {
     return (
       'https://uri.amap.com/search?keyword=' + encodeURIComponent(name) +
@@ -2741,6 +2743,13 @@
         try {
           await API.updateItem(id, { done: ev.target.checked });
           row.classList.toggle('done', ev.target.checked);
+          // 计数就地刷一下（不然勾了还是显示 0/N，要等重载）
+          const cnt = box.querySelector('.pi-count');
+          if (cnt) {
+            const total = box.querySelectorAll('.pi-item').length;
+            const dn = box.querySelectorAll('.pi-item.done').length;
+            cnt.textContent = dn + '/' + total + ' 已去';
+          }
         } catch (err) {
           UI.setStatus('改不了：' + human(err));
           ev.target.checked = !ev.target.checked;
@@ -2764,7 +2773,9 @@
   async function decoratePinItems(trip, pins) {
     const list = $('trip-list');
     if (!list || !trip) return;
-    list.querySelectorAll('.poi-items').forEach((el) => el.remove());
+    // 并发保护：refreshTrips 可能被同时调两次（切城市 + 重载选中集），
+    // 不挡就会「删了又贴、贴两份」⇒ 只有最后一次算数
+    const token = ++decorateToken;
     let items = [];
     try {
       const data = await API.listTripItems(trip.id);
@@ -2772,6 +2783,10 @@
     } catch (err) {
       items = [];
     }
+    if (token !== decorateToken) return;
+    if (!list.isConnected) return;
+    if (state.trip && Number(state.trip.id) !== Number(trip.id)) return;   // 已经切到别的趟
+    list.querySelectorAll('.poi-items').forEach((el) => el.remove());
     state.pinItems = items;
     const byPin = {};
     items.forEach((it) => {
@@ -2782,6 +2797,8 @@
     (pins || []).forEach((pin) => {
       const li = list.querySelector('li.poi-item[data-pin-id="' + pin.id + '"]');
       if (!li) return;
+      // 每次贴之前先把这一行里已有的清掉：不管这个函数被并发调了几次，一行最多只有一块
+      li.querySelectorAll('.poi-items').forEach((el) => el.remove());
       li.appendChild(itemsBlock(pin, byPin[pin.id] || []));
       added += 1;
     });
