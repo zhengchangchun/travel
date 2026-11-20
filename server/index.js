@@ -374,8 +374,11 @@ function createApp(opts = {}) {
 function start(overrides = {}) {
   const app = createApp(overrides);
   const { port } = app.config;
-  app.server.listen(port, '127.0.0.1', () => {
-    console.log(`服务已启动: http://127.0.0.1:${port}`);
+  // 默认只听本机；要给手机/同事看就 HOST=0.0.0.0（同网段可直接打开，数据仍要登录才看得到）
+  const host = process.env.HOST || '127.0.0.1';
+  app.server.listen(port, host, () => {
+    console.log(`服务已启动: http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`);
+    if (host === '0.0.0.0') console.log(`同一 Wi-Fi 下也能开: http://<本机局域网IP>:${port}`);
   });
   return app;
 }
