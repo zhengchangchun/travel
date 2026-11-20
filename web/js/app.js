@@ -2676,6 +2676,116 @@
         }
       }
     );
+    await decoratePinItems(state.trip, pins);
+  }
+
+  // ---- 每个点下面的小清单：到了这地方「必去/要做的事」----
+  function mapSearchUrl(name) {
+    return (
+      'https://uri.amap.com/search?keyword=' + encodeURIComponent(name) +
+      (state.city ? '&city=' + encodeURIComponent(state.city) : '')
+    );
+  }
+
+  function itemsBlock(pin, items) {
+    const box = document.createElement('div');
+    box.className = 'poi-items';
+    const done = items.filter((i) => i.done).length;
+    box.innerHTML =
+      '<div class="pi-head">' +
+      '<span class="pi-title">必去 / 记事</span>' +
+      (items.length ? '<span class="pi-count">' + done + '/' + items.length + ' 已去</span>' : '') +
+      '<button type="button" class="pi-toggle" title="加一条">＋</button>' +
+      '</div>' +
+      '<ul class="pi-list">' +
+      items
+        .map(
+          (it) =>
+            '<li class="pi-item' + (it.done ? ' done' : '') + '" data-id="' + it.id + '">' +
+            '<label class="pi-check"><input type="checkbox"' + (it.done ? ' checked' : '') + ' /><span>' + UI.esc(it.text) + '</span></label>' +
+            '<a class="pi-nav" href="' + mapSearchUrl(it.text) + '" target="_blank" rel="noreferrer" title="在高德搜这个">地图</a>' +
+            '<button type="button" class="pi-del" title="删掉这一条">×</button>' +
+            '</li>'
+        )
+        .join('') +
+      '</ul>' +
+      '<form class="pi-add hidden"><input type="text" maxlength="80" placeholder="到了' + UI.esc(pin.name) + '，必须去的地方 / 要做的事" /><button type="submit">加</button></form>';
+
+    const form = box.querySelector('.pi-add');
+    box.querySelector('.pi-toggle').onclick = (e) => {
+      e.stopPropagation();
+      form.classList.toggle('hidden');
+      if (!form.classList.contains('hidden')) form.querySelector('input').focus();
+    };
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = form.querySelector('input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.disabled = true;
+      try {
+        await API.addPinItem(pin.id, text);
+        UI.setStatus('已记下：' + text);
+        await reloadSelection();   // 清单/地图/计数一次对齐
+      } catch (err) {
+        UI.setStatus('记不下来：' + human(err));
+      } finally {
+        input.disabled = false;
+      }
+    };
+
+    box.querySelectorAll('.pi-item').forEach((row) => {
+      const id = Number(row.dataset.id);
+      row.querySelector('input[type=checkbox]').onchange = async (ev) => {
+        ev.stopPropagation();
+        try {
+          await API.updateItem(id, { done: ev.target.checked });
+          row.classList.toggle('done', ev.target.checked);
+        } catch (err) {
+          UI.setStatus('改不了：' + human(err));
+          ev.target.checked = !ev.target.checked;
+        }
+      };
+      row.querySelector('.pi-del').onclick = async (ev) => {
+        ev.stopPropagation();
+        try {
+          await API.deleteItem(id);
+          await reloadSelection();
+        } catch (err) {
+          UI.setStatus('删不掉：' + human(err));
+        }
+      };
+    });
+    // 点这一块不肉到地图上（行的点击是「飞到这个点」）
+    box.onclick = (e) => e.stopPropagation();
+    return box;
+  }
+
+  async function decoratePinItems(trip, pins) {
+    const list = $('trip-list');
+    if (!list || !trip) return;
+    list.querySelectorAll('.poi-items').forEach((el) => el.remove());
+    let items = [];
+    try {
+      const data = await API.listTripItems(trip.id);
+      items = (data && data.items) || [];
+    } catch (err) {
+      items = [];
+    }
+    state.pinItems = items;
+    const byPin = {};
+    items.forEach((it) => {
+      if (!byPin[it.pin_id]) byPin[it.pin_id] = [];
+      byPin[it.pin_id].push(it);
+    });
+    let added = 0;
+    (pins || []).forEach((pin) => {
+      const li = list.querySelector('li.poi-item[data-pin-id="' + pin.id + '"]');
+      if (!li) return;
+      li.appendChild(itemsBlock(pin, byPin[pin.id] || []));
+      added += 1;
+    });
+    return added;
   }
 
   // 切到另一趟（同一城市）：点、行程卡、路线、分享全部换成那一趟的

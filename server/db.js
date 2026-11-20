@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS trip_buddies (
   PRIMARY KEY (trip_id, buddy_id)
 );
 
+-- 每个点下面的小清单：到了这个地方「必去/要做的事」（一个点可以多条）
+CREATE TABLE IF NOT EXISTS pin_items (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  pin_id     INTEGER NOT NULL,
+  user_id    INTEGER,
+  text       TEXT NOT NULL,
+  done       INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  done_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pin_items_pin ON pin_items (pin_id);
+
 CREATE TABLE IF NOT EXISTS notes (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   pin_id      INTEGER REFERENCES pins(id),
@@ -245,6 +258,18 @@ function parseShareRow(row) {
 }
 
 // 幂等迁移：先查 pragma table_info，缺列才 ALTER（重复启动不报错）
+function mapItemRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    id: toNumber(row.id),
+    pin_id: toNumber(row.pin_id),
+    user_id: row.user_id == null ? null : toNumber(row.user_id),
+    done: !!toNumber(row.done),
+    sort_order: toNumber(row.sort_order),
+  };
+}
+
 function toNullableText(value) {
   if (value === undefined || value === null) return null;
   const s = String(value).trim();
@@ -542,6 +567,38 @@ function createDb(filePath) {
     insertTripBuddy: db.prepare('INSERT OR IGNORE INTO trip_buddies (trip_id, buddy_id) VALUES (?, ?)'),
     deleteTripBuddies: db.prepare('DELETE FROM trip_buddies WHERE trip_id = ?'),
     deleteBuddyLinks: db.prepare('DELETE FROM trip_buddies WHERE buddy_id = ?'),
+    // ---- 每个点下面的小清单（pin_items）----
+    itemsOfPin: db.prepare('SELECT * FROM pin_items WHERE pin_id = ? ORDER BY sort_order, id'),
+    itemsOfTrip: db.prepare(
+      `SELECT i.* FROM pin_items i JOIN pins p ON p.id = i.pin_id
+       WHERE p.trip_id = ? ORDER BY p.sort_order, p.id, i.sort_order, i.id`
+    ),
+    itemsOfUser: db.prepare(
+      `SELECT i.* FROM pin_items i
+       JOIN pins p ON p.id = i.pin_id JOIN trips t ON t.id = p.trip_id
+       WHERE t.user_id = ? ORDER BY i.id`
+    ),
+    getItem: db.prepare('SELECT * FROM pin_items WHERE id = ?'),
+    // 这一条是不是他的：一路走到 trips.user_id（不是自己的当不存在）
+    itemOfUser: db.prepare(
+      `SELECT i.* FROM pin_items i JOIN pins p ON p.id = i.pin_id JOIN trips t ON t.id = p.trip_id
+       WHERE i.id = ? AND t.user_id = ?`
+    ),
+    countItemsOfPin: db.prepare('SELECT COUNT(*) AS c FROM pin_items WHERE pin_id = ?'),
+    insertItem: db.prepare(
+      'INSERT INTO pin_items (pin_id, user_id, text, sort_order) VALUES (?, ?, ?, ?)'
+    ),
+    nextItemOrder: db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM pin_items WHERE pin_id = ?'),
+    updateItemText: db.prepare('UPDATE pin_items SET text = ? WHERE id = ?'),
+    setItemDone: db.prepare(
+      "UPDATE pin_items SET done = ?, done_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END WHERE id = ?"
+    ),
+    deleteItem: db.prepare('DELETE FROM pin_items WHERE id = ?'),
+    deleteItemsOfPin: db.prepare('DELETE FROM pin_items WHERE pin_id = ?'),
+    deleteItemsOfTrip: db.prepare('DELETE FROM pin_items WHERE pin_id IN (SELECT id FROM pins WHERE trip_id = ?)'),
+    deleteItemsOfUserCity: db.prepare(
+      'DELETE FROM pin_items WHERE pin_id IN (SELECT p.id FROM pins p JOIN trips t ON t.id = p.trip_id WHERE t.city = ? AND t.user_id = ?)'
+    ),
     claimNotes: db.prepare('UPDATE notes SET user_id = ? WHERE user_id IS NULL'),
     countUnownedNotes: db.prepare('SELECT COUNT(*) AS c FROM notes WHERE user_id IS NULL'),
     claimShares: db.prepare('UPDATE shares SET user_id = ? WHERE user_id IS NULL'),
@@ -572,6 +629,7 @@ function createDb(filePath) {
     deleteTrip(id) {
       db.exec('BEGIN');
       try {
+        stmts.deleteItemsOfTrip.run(id);   // 点下面的小清单跟着点走
         stmts.deletePinsOfTrip.run(id);
         stmts.deleteTripBuddies.run(id);   // 顺手把「这趟跟谁一起」也清掉
         const info = stmts.deleteTrip.run(id);
@@ -587,6 +645,7 @@ function createDb(filePath) {
       if (userId == null) return { city, trips: 0, pins: 0 };
       db.exec('BEGIN');
       try {
+        stmts.deleteItemsOfUserCity.run(String(city), Number(userId));
         const pins = stmts.deleteCityPinsOfUser.run(city, Number(userId));
         const trips = stmts.deleteCityTripsOfUser.run(city, Number(userId));
         db.exec('COMMIT');
@@ -684,6 +743,39 @@ function createDb(filePath) {
       });
       return out;
     },
+    // ---- 每个点下面的小清单：一律只看得到自己行程里的 ----
+    listTripItems(tripId) {
+      return stmts.itemsOfTrip.all(Number(tripId)).map(mapItemRow);
+    },
+    listPinItems(pinId) {
+      return stmts.itemsOfPin.all(Number(pinId)).map(mapItemRow);
+    },
+    getItemOfUser(itemId, userId) {
+      if (userId == null) return null;
+      return mapItemRow(stmts.itemOfUser.get(Number(itemId), Number(userId)));
+    },
+    countItemsOfPin(pinId) {
+      return toNumber(stmts.countItemsOfPin.get(Number(pinId)).c);
+    },
+    createItem({ pinId, userId, text }) {
+      const order = toNumber(stmts.nextItemOrder.get(Number(pinId)).n);
+      const info = stmts.insertItem.run(Number(pinId), userId == null ? null : Number(userId), String(text), order);
+      return mapItemRow(stmts.getItem.get(toNumber(info.lastInsertRowid)));
+    },
+    updateItemOfUser(itemId, userId, fields) {
+      const cur = mapItemRow(stmts.itemOfUser.get(Number(itemId), Number(userId)));
+      if (!cur) return null;
+      const b = fields || {};
+      if (b.text !== undefined) stmts.updateItemText.run(String(b.text), cur.id);
+      if (b.done !== undefined) stmts.setItemDone.run(b.done ? 1 : 0, b.done ? 1 : 0, cur.id);
+      return mapItemRow(stmts.getItem.get(cur.id));
+    },
+    deleteItemOfUser(itemId, userId) {
+      const cur = mapItemRow(stmts.itemOfUser.get(Number(itemId), Number(userId)));
+      if (!cur) return { deleted: 0 };
+      stmts.deleteItem.run(cur.id);
+      return { deleted: toNumber(cur.id) };
+    },
     addPin(pin) {
       const info = stmts.insertPin.run(
         pin.trip_id,
@@ -708,6 +800,7 @@ function createDb(filePath) {
       return stmts.getPin.get(id);
     },
     deletePin(id) {
+      stmts.deleteItemsOfPin.run(Number(id));   // 点没了，它下面的小清单也一起没
       const info = stmts.deletePin.run(id);
       return { changes: info.changes };
     },

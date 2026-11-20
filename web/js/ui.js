@@ -291,6 +291,7 @@
       const color = window.TravelCategories.colorOf(pin.category);
       const li = document.createElement('li');
       li.className = 'poi-item';
+      li.dataset.pinId = String(pin.id);   // 小清单要挂在对应的行上
       li.innerHTML =
         '<div class="poi-head">' +
         '<span class="dot" style="background:' + esc(color) + '"></span>' +

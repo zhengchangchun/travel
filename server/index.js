@@ -26,6 +26,7 @@ const homeRoutes = require('./routes/home');
 const sharesRoutes = require('./routes/shares');
 const legacyRoutes = require('./routes/legacy');
 const buddiesRoutes = require('./routes/buddies');
+const itemsRoutes = require('./routes/items');
 const backupRoutes = require('./routes/backup');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
@@ -186,6 +187,7 @@ function createApp(opts = {}) {
     ...sharesRoutes,
     ...legacyRoutes,
     ...buddiesRoutes,
+    ...itemsRoutes,
     ...backupRoutes,
   ];
 

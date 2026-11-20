@@ -84,6 +84,11 @@
     getCityPhotos: (city) => request('/api/photos?' + qs({ city })),
     createTrip: (payload) => request('/api/trips', post(payload)),
     listPins: (tripId) => request('/api/trips/' + tripId + '/pins'),
+    // 每个点下面的小清单（到了这地方必去/要做的事）
+    listTripItems: (tripId) => request('/api/trips/' + tripId + '/items'),
+    addPinItem: (pinId, text) => request('/api/pins/' + pinId + '/items', post({ text })),
+    updateItem: (itemId, payload) => request('/api/items/' + itemId, patch(payload || {})),
+    deleteItem: (itemId) => request('/api/items/' + itemId, { method: 'DELETE' }),
     // 行程改内容：标题 / 整条行程的备注
     updateTrip: (tripId, payload) =>
       request('/api/trips/' + tripId, patch(payload || {})),

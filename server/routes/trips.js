@@ -75,10 +75,17 @@ function sharePayload(ctx, tripId) {
     .map((bid) => ctx.db.getBuddyOfUser(bid, user.id))
     .filter(Boolean)
     .map((b) => ({ name: b.name, relation: b.relation || '' }));
+  // 每个点下面的小清单（必去/记事）按点分组，跟着分享包一起走
+  const itemsByPin = {};
+  ctx.db.listTripItems(trip.id).forEach((it) => {
+    if (!itemsByPin[it.pin_id]) itemsByPin[it.pin_id] = [];
+    itemsByPin[it.pin_id].push(it);
+  });
   return share.buildPayload({
     trip,
     city: trip.city,
     buddies,
+    itemsByPin,
     // order（可选）：页面上「按距离」排出来的点序随请求带过来，分享包 / 静态路线图跟着它排
     // 按天分段：分享包也按「天 → 顺序」排
     stops: applyPoiOrder(ctx.db.getTripPinsOrdered(id), ctx.body && ctx.body.order),

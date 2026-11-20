@@ -125,7 +125,7 @@ function categoryLabel(labels, key) {
 }
 
 // 载荷：路由从库里读出行程 + 有序点，再补上统计与链接；这里只做纯变换
-function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors, buddies }) {
+function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors, buddies, itemsByPin }) {
   const list = (stops || []).map((s, i) => ({
     seq: i + 1,
     // 按天分段：第几天（默认 1）
@@ -141,6 +141,8 @@ function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors, 
     tel: s.tel || '',
     photo: s.photo || '',
     note: s.note || '',
+    // 这个点下面的小清单（到了这地方必去/要做的事）
+    items: (((itemsByPin || {})[Number(s.id)]) || []).map((it) => ({ text: it.text, done: !!it.done })),
     url: markerUrl(s),
   }));
   const withBase = list.slice();
@@ -229,6 +231,9 @@ function buildText(payload) {
     if (s.address) lines.push(`   ${s.address}`);
     if (s.tel) lines.push(`   ☎ ${s.tel}`);
     if (s.note) lines.push(`   备注：${s.note}`);
+    if (s.items && s.items.length) {
+      lines.push('   要去的：' + s.items.map((i) => (i.done ? '✓ ' : '· ') + i.text).join('，'));
+    }
     lines.push(`   高德：${s.url}`);
   });
   if (p.links.firstToLast) {
@@ -376,6 +381,13 @@ function buildHtml(payload) {
         (s.address ? `<div class="addr">${escHtml(s.address)}</div>` : '') +
         (s.tel ? `<div class="addr">☎ ${escHtml(s.tel)}</div>` : '') +
         (s.note ? `<div class="note">${escHtml(s.note)}</div>` : '') +
+        (s.items && s.items.length
+          ? `<ul class="items">` +
+            s.items
+              .map((it) => `<li class="${it.done ? 'done' : ''}">${it.done ? '✓' : '·'} ${escHtml(it.text)}</li>`)
+              .join('') +
+            `</ul>`
+          : '') +
         `<div class="acts"><a href="${escHtml(s.url)}" target="_blank" rel="noreferrer">在高德打开 ↗</a></div>` +
         `</div>${thumb}` +
         `</li>`
@@ -469,6 +481,10 @@ function buildHtml(payload) {
   .meta { color:var(--ink2); font-size:12px; margin-top:2px; }
   .addr { color:var(--ink2); font-size:12.5px; margin-top:4px; }
   .note { color:var(--ink3); font-size:12.5px; margin-top:4px; }
+  /* 这个点下面的小清单（必去/记事） */
+  .items { list-style:none; margin:5px 0 0; padding:0; }
+  .items li { font-size:12.5px; color:var(--ink2); line-height:1.6; }
+  .items li.done { color:var(--ink3); text-decoration:line-through; }
   .acts { margin-top:6px; }
   .acts a { color:var(--accent); font-size:12.5px; text-decoration:none; }
   .thumb { flex:none; width:76px; height:76px; border-radius:8px; object-fit:cover; background:#eceef2; }
