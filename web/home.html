@@ -6,14 +6,15 @@
   <title>旅迹 · 按笔记找地方，一屏把行程排出来</title>
   <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
   <link rel="stylesheet" href="/css/site.css" />
+  <script>document.documentElement.classList.add('anim');</script>
 </head>
 <body class="site">
   <div id="headbar"></div>
 
   <main class="wrap">
-    <section class="hero">
+    <section class="hero" data-reveal>
       <div class="hero-copy">
-        <span class="kick">本机自用 · 数据都留在这台机器</span>
+        <span class="kick"><i></i>本机自用 · 数据都留在这台机器</span>
         <h1>按笔记找地方<br />一屏把行程排出来</h1>
         <p>
           把小红书、抖音里刷到的店和景点丢进来，在地图上挑点、看实时耗时，
@@ -21,39 +22,91 @@
         </p>
         <div class="row hero-cta">
           <a class="btn primary big" href="/app" id="start-btn">开始规划</a>
-          <a class="btn ghost big" href="#routes">看看推荐路程</a>
+          <a class="btn ghost big" href="#showcase">看精选线路</a>
         </div>
         <div class="where" id="where-line">正在认你所在的城市…</div>
       </div>
       <figure class="hero-shot">
         <img src="/img/home-hero.png" alt="旅迹的规划页：地图上带序号的站点与连线，右侧是行程清单与实时耗时" />
+        <span class="hud tl"></span><span class="hud tr"></span>
+        <span class="hud bl"></span><span class="hud br"></span>
+        <span class="hero-live"><i></i>实时耗时</span>
         <figcaption>地图上带序号的路线 · 每站写清多久、多远、累计</figcaption>
       </figure>
     </section>
 
-    <section class="block" id="regions-block">
+    <section class="showcase" id="showcase" data-reveal>
+      <div class="sc-top">
+        <div class="sc-top-copy">
+          <span class="sc-kicker"><b>01</b>精选线路</span>
+          <h2>挑一条现成线路，照着走就行</h2>
+          <p class="sc-lead">左边是这条线路上各站的实景，会自动轮转；右边是每一天按顺序的站点。只看，不动你的行程。</p>
+        </div>
+        <div class="sc-tabs" id="sc-tabs" role="tablist" aria-label="精选线路"></div>
+      </div>
+
+      <div class="sc-stage" id="sc-stage">
+        <div class="sc-visual">
+          <div class="sc-photo" id="sc-photo">
+            <div class="sc-layer" data-layer="0"></div>
+            <div class="sc-layer" data-layer="1"></div>
+            <span class="sc-corner tl"></span><span class="sc-corner tr"></span>
+            <span class="sc-corner bl"></span><span class="sc-corner br"></span>
+            <span class="sc-badge" id="sc-badge">ROUTE 01</span>
+            <span class="sc-pill" id="sc-photo-city">—</span>
+            <span class="sc-count"><b id="sc-count-i">01</b><i>/</i><span id="sc-count-n">01</span></span>
+            <button class="sc-arrow prev" type="button" id="sc-prev" aria-label="上一张">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
+            </button>
+            <button class="sc-arrow next" type="button" id="sc-next" aria-label="下一张">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
+            </button>
+            <div class="sc-cap">
+              <div class="sc-cap-txt">
+                <b id="sc-cap-name">—</b>
+                <span id="sc-cap-note"></span>
+              </div>
+              <div class="sc-cap-credit" id="sc-cap-credit"></div>
+            </div>
+            <div class="sc-bar"><i id="sc-bar-fill"></i></div>
+          </div>
+          <div class="sc-thumbs" id="sc-thumbs"></div>
+        </div>
+
+        <div class="sc-spec">
+          <div class="sc-spec-head">
+            <h3 id="sc-title">—</h3>
+            <div class="sc-meta" id="sc-meta"></div>
+          </div>
+          <div class="sc-chips" id="sc-chips"></div>
+          <ol class="sc-stops" id="sc-stops"></ol>
+          <div class="sc-actions">
+            <a class="btn primary" id="sc-plan" href="/app">按这条线路开始规划</a>
+            <button class="btn ghost" type="button" id="sc-detail">看完整详情</button>
+          </div>
+          <p class="sc-credit">实景图来自 Wikimedia Commons（CC 授权）</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="regions-block" data-reveal>
       <div class="section-head">
+        <span class="sec-no">02</span>
         <h2>推荐地区</h2>
         <span class="note" id="regions-note">按你所在地区排</span>
       </div>
       <div class="grid region-grid" id="regions"></div>
     </section>
 
-    <section class="block" id="routes">
+    <section class="block" data-reveal>
       <div class="section-head">
-        <h2>推荐路程</h2>
-        <span class="note">精选路线，点开看每一站（只浏览，不动你的行程）</span>
-      </div>
-      <div class="grid route-grid" id="route-list"></div>
-    </section>
-
-    <section class="block">
-      <div class="section-head">
+        <span class="sec-no">03</span>
         <h2>它能帮你做什么</h2>
         <span class="note">四步：从刷到的笔记，到能发给朋友的行程</span>
       </div>
       <div class="grid features">
         <div class="feature">
+          <span class="feat-no">01</span>
           <span class="feat-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H14l6 6v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />
@@ -64,6 +117,7 @@
           <span>贴一条小红书 / 抖音链接，自动抓下标题正文与图，从正文里提出地名并落到地图上。</span>
         </div>
         <div class="feature">
+          <span class="feat-no">02</span>
           <span class="feat-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" />
@@ -73,6 +127,7 @@
           <span>按分类与评分挑，选中就看实时耗时与距离，先知道「这几个点顺不顺」。</span>
         </div>
         <div class="feature">
+          <span class="feat-no">03</span>
           <span class="feat-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="6" cy="18" r="2.4" /><circle cx="18" cy="6" r="2.4" />
@@ -83,6 +138,7 @@
           <span>从住宿出发按整体里程最短排序，少走回头路；每站写明从上一站过来多久、多远、累计多少。</span>
         </div>
         <div class="feature">
+          <span class="feat-no">04</span>
           <span class="feat-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" />
