@@ -78,6 +78,8 @@
     nearbyPoi: (params) => request('/api/poi/nearby?' + qs(params)),
     poiDetail: (id) => request('/api/poi/detail?' + qs({ id })),
     listTrips: (city) => request('/api/trips' + (city ? '?' + qs({ city }) : '')),
+    // 旅游搭子（名单在 /buddies 维护，这里只读来显示「这趟跟谁一起」）
+    listBuddies: () => request('/api/buddies'),
     // 该城的实景图索引（点位名 → 图）：清单里的小图用
     getCityPhotos: (city) => request('/api/photos?' + qs({ city })),
     createTrip: (payload) => request('/api/trips', post(payload)),

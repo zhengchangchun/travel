@@ -2601,6 +2601,31 @@
     }
   }
 
+  // 这趟跟谁一起：只读显示（改名单/挑人去「我的行程」或「旅游搭子」页）
+  async function renderTripBuddies() {
+    const box = $('trip-buddies');
+    if (!box) return;
+    const ids = (state.trip && state.trip.buddyIds) || [];
+    if (!ids.length) {
+      box.innerHTML = '<a class="buddy-empty" href="/trips" title="在「我的行程」里挑搭子">同行：还没选搭子</a>';
+      return;
+    }
+    try {
+      if (!state.buddies) state.buddies = (await API.listBuddies()).buddies || [];
+      const names = ids.map((id) => {
+        const b = state.buddies.find((x) => Number(x.id) === Number(id));
+        return b ? (b.relation ? b.name + '（' + b.relation + '）' : b.name) : '搭子 ' + id;
+      });
+      box.innerHTML =
+        '<span class="buddy-label">同行</span>' +
+        '<span class="buddy-chip" title="这趟跟谁一起">' +
+        names.map((n) => UI.esc(n)).join('、') +
+        '</span>';
+    } catch (err) {
+      box.innerHTML = '';
+    }
+  }
+
   async function refreshTrips() {
     // 该城我所有的行程（一城多趟）：切换器 + 当前一趟的点清单
     const trips = state.city ? await API.listTrips(state.city).catch(() => []) : [];
@@ -2632,6 +2657,7 @@
     $('trip-name').textContent = state.trip
       ? '#' + state.trip.id + ' ' + state.trip.title
       : '未创建';
+    renderTripBuddies();
     const pins = state.trip ? await API.listPins(state.trip.id) : [];
     UI.renderTripPins(
       $('trip-list'),

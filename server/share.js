@@ -125,7 +125,7 @@ function categoryLabel(labels, key) {
 }
 
 // 载荷：路由从库里读出行程 + 有序点，再补上统计与链接；这里只做纯变换
-function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors }) {
+function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors, buddies }) {
   const list = (stops || []).map((s, i) => ({
     seq: i + 1,
     // 按天分段：第几天（默认 1）
@@ -167,6 +167,10 @@ function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors }
     title,
     // 整条行程的备注（「周三到，先吃饭再逛」这类）—— 每条地点的备注在 stops[].note
     tripNote,
+    // 同行搭子：只带名字与关系（联系方式、备注属私人，不进分享包）
+    buddies: (buddies || [])
+      .filter((b) => b && b.name)
+      .map((b) => ({ name: String(b.name), relation: b.relation ? String(b.relation) : '' })),
     stops: list,
     base: base ? { name: base.name || '住宿', lng: Number(base.lng), lat: Number(base.lat) } : null,
     stats: { count: list.length, byCategory: byCat, hasBase: !!base },
@@ -184,6 +188,11 @@ function buildText(payload) {
   const lines = [`${p.title}（${p.stats.count} 个点${p.base ? ' + 住宿' : ''}）`];
   lines.push(`生成于 ${day} · 由旅迹导出 · 链接可直接跳高德`);
   if (p.tripNote) lines.push(`行程备注：${p.tripNote}`);
+  if (p.buddies && p.buddies.length) {
+    lines.push(
+      '同行：' + p.buddies.map((b) => (b.relation ? `${b.name}（${b.relation}）` : b.name)).join('、')
+    );
+  }
   const modes = Object.keys(p.maps || {}).filter((m) => p.maps[m]);
   if (modes.length) {
     lines.push('');
@@ -379,6 +388,12 @@ function buildHtml(payload) {
   const tripNoteLine = p.tripNote
     ? `<div class="tripnote"><b>行程备注</b> ${escHtml(p.tripNote)}</div>`
     : '';
+  const buddiesLine =
+    p.buddies && p.buddies.length
+      ? `<div class="tripnote"><b>同行</b> ${escHtml(
+          p.buddies.map((b) => (b.relation ? `${b.name}（${b.relation}）` : b.name)).join('、')
+        )}</div>`
+      : '';
   const nav = p.links.firstToLast
     ? `<a class="btn" href="${escHtml(p.links.firstToLast)}" target="_blank" rel="noreferrer">全程驾车路线 ↗</a>` +
       (p.links.walkFirstToLast
@@ -474,6 +489,7 @@ function buildHtml(payload) {
       .join('')}</div>
   </header>
   ${tripNoteLine}
+  ${buddiesLine}
   <div class="sketch">${svg}</div>
   ${baseLine}
   <ol>${items}</ol>

@@ -226,6 +226,36 @@ test('挂到行程上：整组替换、只认自己的搭子、删搭子/删行�
   }
 });
 
+test('搭子不泄露到分享包里：只带名字与关系，联系方式/备注不外发', async () => {
+  const s = await start();
+  try {
+    const cookie = await signUp(s.base, 'zhangcc');
+    const wang = (await call(s.base, 'POST', '/api/buddies', {
+      name: '老王', relation: '同事', contact: '13800000000', note: '怕晒', tags: ['早起'],
+    }, cookie)).body.data;
+    const trip = (await call(s.base, 'POST', '/api/trips', { city: '三亚', title: '三亚 · 海边' }, cookie)).body.data;
+    await call(s.base, 'PATCH', `/api/trips/${trip.id}`, { buddyIds: [wang.id] }, cookie);
+
+    const shared = await call(s.base, 'POST', `/api/trips/${trip.id}/share`, {}, cookie);
+    assert.equal(shared.status, 200);
+    const payload = shared.body.data.payload;
+    assert.deepEqual(payload.buddies, [{ name: '老王', relation: '同事' }], '分享载荷里带同行（名字＋关系）');
+    const json = JSON.stringify(payload);
+    assert.ok(!json.includes('13800000000'), '联系方式不出去');
+    assert.ok(!json.includes('怕晒'), '备注不出去');
+    assert.ok(!json.includes('早起'), '标签不出去');
+    assert.match(shared.body.data.text, /同行：老王（同事）/, '文本里也写一行同行');
+
+    // 没搭子的行程：payload.buddies 是空数组，文本不出现「同行：」
+    const t2 = (await call(s.base, 'POST', '/api/trips', { city: '杭州', title: '杭州 · 一个人' }, cookie)).body.data;
+    const plain = await call(s.base, 'POST', `/api/trips/${t2.id}/share`, {}, cookie);
+    assert.deepEqual(plain.body.data.payload.buddies, []);
+    assert.ok(!/同行：/.test(plain.body.data.text));
+  } finally {
+    await s.close();
+  }
+});
+
 test('搭子接线：页面在 /buddies，头部有入口，行程页能挑人', () => {
   const fs = require('node:fs');
   const path = require('node:path');
@@ -240,4 +270,9 @@ test('搭子接线：页面在 /buddies，头部有入口，行程页能挑人',
   assert.match(trips, /bulkBuddy|buddyIds/);
   assert.match(trips, /pickBuddies/);
   assert.match(read('server/routes/trips.js'), /buddyIds/);
+  // 分享包里也带同行（名字＋关系），规划页右栏只读显示
+  assert.match(read('server/share.js'), /buddies/);
+  const app = read('web/js/app.js');
+  assert.match(app, /renderTripBuddies/);
+  assert.match(read('web/index.html'), /id="trip-buddies"/);
 });

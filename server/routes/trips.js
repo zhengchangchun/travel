@@ -69,9 +69,16 @@ function sharePayload(ctx, tripId) {
   (ctx.categories || []).forEach((c) => {
     labels[c.key] = { label: c.label };
   });
+  // 同行搭子（只给名字与关系，联系方式/备注不外发）
+  const buddies = ctx.db
+    .tripBuddyIds(id)
+    .map((bid) => ctx.db.getBuddyOfUser(bid, user.id))
+    .filter(Boolean)
+    .map((b) => ({ name: b.name, relation: b.relation || '' }));
   return share.buildPayload({
     trip,
     city: trip.city,
+    buddies,
     // order（可选）：页面上「按距离」排出来的点序随请求带过来，分享包 / 静态路线图跟着它排
     // 按天分段：分享包也按「天 → 顺序」排
     stops: applyPoiOrder(ctx.db.getTripPinsOrdered(id), ctx.body && ctx.body.order),

@@ -997,6 +997,15 @@ button:disabled { opacity: .45; }
 .poi-tag.src { background: rgba(94, 230, 168, .14); color: #5ee6a8; }
 .poi-item .del { color: var(--danger); }
 .trip-name { color: var(--ink-3); }
+/* 这趟跟谁一起（同行搭子，只读展示；挑人去「我的行程」） */
+.trip-buddies { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; flex-wrap: wrap; }
+.trip-buddies:empty { display: none; }
+.buddy-label { font-size: 12px; color: var(--ink-3); }
+.buddy-chip {
+  font-size: 12px; color: var(--ink); padding: 2px 8px; border-radius: 999px;
+  background: rgba(53, 208, 192, .12); border: 1px solid rgba(53, 208, 192, .34);
+}
+.buddy-empty { font-size: 12px; color: var(--ink-3); text-decoration: underline dotted; }
 .poi-list .empty, .note-empty { color: var(--ink-3); }
 
 /* 地图区：底图用亮色（用户 2026-11-09），两侧保持暗色与地图形成对比 */
