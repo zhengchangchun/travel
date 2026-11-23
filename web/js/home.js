@@ -170,7 +170,9 @@
 
     const chips = $('sc-chips');
     if (chips) {
-      chips.innerHTML = (rt.highlights || [])
+      // 精选库里写的热度是示意值（带上「示意」字样），标在亮点前面
+      const hot = rt.hot ? '<span class="tag-pill hot">' + esc(rt.hot) + '</span>' : '';
+      chips.innerHTML = hot + (rt.highlights || [])
         .map((h) => '<span class="tag-pill">' + esc(h) + '</span>')
         .join('');
     }
@@ -310,45 +312,131 @@
     }
   }
 
-  /* ================= 首屏：底图轮转 + 读数条 ================= */
-  // 底图取精选线路里的实景（当前城市的优先），最多 3 张交替淡入；
-  // 同一批图不重启那套动画，免得城市一刷新就闪
-  function renderHeroBg(d) {
-    const box = $('hero-bg');
+  /* ================= 首屏：实景面板 + 读数条 ================= */
+  // 面板只取实景图（当前城市的优先）。候选先预载量一遍尺寸：
+  // 横构图优先、分辨率大的优先 —— 竖图铺满面板会糊，宁可不选。
+  function renderHeroPanel(d) {
+    const box = $('hero-shot');
     if (!box) return;
     const routes = (d && d.routes) || [];
     const cur = (d && d.current && d.current.city) || state.city || '';
     const pool = [];
+    const seen = {};
     const push = (rt) =>
       (rt.stops || []).forEach((s) => {
-        if (s.photo && pool.indexOf(s.photo) < 0) pool.push(s.photo);
+        if (s.photo && !seen[s.photo]) {
+          seen[s.photo] = 1;
+          pool.push({ src: s.photo, name: s.name, city: rt.city, credit: s.photoCredit || '' });
+        }
       });
     routes.filter((r) => r.city === cur).forEach(push);
     if (pool.length < 3) routes.forEach(push);
-    const shots = pool.slice(0, 3);
-    if (!shots.length) return;
-    const sig = shots.join('|');
-    const layers = Array.prototype.slice.call(box.querySelectorAll('i'));
+    if (!pool.length) return;
+    const poolSig = pool.map((x) => x.src).join('|');
+    if (box.dataset.pool === poolSig) return; // 同一批候选不重挑，免得城市一刷新就闪
+    box.dataset.pool = poolSig;
+    pickHeroShots(pool).then((list) => {
+      if (list.length) applyHeroPanel(box, list);
+    });
+  }
+
+  // 先预载量尺寸再排：只要能横过来看的（宽高比 ≥ 1.15），掉队就退到全部按面积排
+  function pickHeroShots(pool) {
+    const probe = (item) =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(Object.assign({}, item, { w: img.naturalWidth, h: img.naturalHeight }));
+        img.onerror = () => resolve(null);
+        img.src = item.src;
+      });
+    const byArea = (a, b) => b.w * b.h - a.w * a.h;
+    return Promise.all(pool.slice(0, 12).map(probe)).then((rows) => {
+      const ok = rows.filter((r) => r && r.w && r.h);
+      const land = ok.filter((r) => r.w / r.h >= 1.15).sort(byArea);
+      return (land.length ? land : ok.slice().sort(byArea)).slice(0, 3);
+    });
+  }
+
+  // 最多三层交替淡入 + 底下一条进度；同一批图不重启动画
+  function applyHeroPanel(box, shots) {
+    const sig = shots.map((s) => s.src).join('|');
     if (box.dataset.sig === sig) return;
     box.dataset.sig = sig;
-    if (box._t) {
-      clearInterval(box._t);
-      box._t = 0;
-    }
-    layers.forEach((el, k) => {
+    const layers = Array.prototype.slice.call(box.querySelectorAll('.hs-layer'));
+    const bar = $('hs-bar');
+    const n = shots.length;
+    let i = 0;
+    let layer = 0;
+    const setText = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    setText('hs-n', pad2(n));
+
+    const runBar = () => {
+      if (!bar) return;
+      bar.style.transition = 'none';
+      bar.style.transform = 'scaleX(0)';
+      void bar.offsetWidth;
+      bar.style.transition = 'transform ' + HERO_DUR + 'ms linear';
+      bar.style.transform = 'scaleX(1)';
+    };
+
+    const show = (k) => {
+      i = ((Number(k) % n) + n) % n;
+      const s = shots[i];
+      const incoming = layers[layer ^ 1];
+      const outgoing = layers[layer];
+      if (incoming && outgoing) {
+        incoming.style.backgroundImage = 'url("' + String(s.src).replace(/"/g, '%22') + '")';
+        incoming.classList.remove('on');
+        void incoming.offsetWidth;
+        incoming.classList.add('on');
+        outgoing.classList.remove('on');
+        layer ^= 1;
+      }
+      setText('hs-i', pad2(i + 1));
+      setText('hs-name', s.name || '');
+      setText('hs-city', s.city || '');
+      setText('hs-credit', s.credit ? '图：' + s.credit : '');
+      runBar();
+    };
+
+    if (box._t) clearInterval(box._t);
+    box._t = 0;
+    layers.forEach((el) => {
       el.classList.remove('on');
-      el.style.backgroundImage = shots[k] ? 'url("' + String(shots[k]).replace(/"/g, '%22') + '")' : '';
+      el.style.backgroundImage = '';
     });
-    let k = 0;
-    layers[0].classList.add('on');
-    if (shots.length > 1 && !reduce) {
-      box._t = setInterval(() => {
-        layers[k].classList.remove('on');
-        k = (k + 1) % shots.length;
-        layers[k].classList.add('on');
-      }, HERO_DUR);
-    }
+    show(0);
+    if (n > 1 && !reduce) box._t = setInterval(() => show(i + 1), HERO_DUR);
   }
+
+  // 04 用过的人怎么说：整块都是示意数据（config/showcase.json），页面上标明了
+  function renderQuotes(d) {
+    const sc = (d && d.showcase) || {};
+    const markBox = $('marks');
+    const quoteBox = $('quotes');
+    if (markBox) {
+      markBox.innerHTML = (sc.marks || [])
+        .map(
+          (m) =>
+            '<div class="mark"><span class="n">' + esc(m.n) + '</span><span class="l">' + esc(m.l) + '</span></div>'
+        )
+        .join('');
+    }
+    if (quoteBox) {
+      quoteBox.innerHTML = (sc.quotes || [])
+        .map(
+          (q) =>
+            '<figure class="quote"><p>' + esc(q.text) + '</p><figcaption class="who">' + esc(q.who) + '</figcaption></figure>'
+        )
+        .join('');
+    }
+    const block = $('quotes-block');
+    if (block) block.hidden = !((sc.marks || []).length || (sc.quotes || []).length);
+  }
+
 
   // 读数条：数字全部取自当前载荷，不编
   function renderStats(d) {
@@ -409,6 +497,7 @@
       '<div class="tag">' + esc(r.tagline || '') + '</div>' +
       '<div class="tags">' + tags + '</div>' +
       '<div class="count">' + count + '</div>' +
+      (r.coverCredit ? '<div class="ph-credit">图：' + esc(r.coverCredit) + '</div>' : '') +
       '<div class="foot">' + actions + '</div>' +
       '</div>' +
       '</div>'
@@ -417,8 +506,9 @@
 
   function render() {
     const d = state.data || { regions: [], routes: [] };
-    renderHeroBg(d);
+    renderHeroPanel(d);
     renderStats(d);
+    renderQuotes(d);
     const box = $('regions');
     if (box) box.innerHTML = d.regions.map((r, i) => regionCard(r, i)).join('') || '<div class="empty-box">精选库里还没有地区</div>';
     mountShowcase(d.routes || []);
@@ -509,7 +599,8 @@
     const mask = $('route-mask');
     $('rd-title').textContent = rt.title;
     $('rd-sub').textContent =
-      rt.city + ' · ' + rt.days + ' 天 · ' + rt.stopCount + ' 个点' + (rt.theme ? ' · ' + rt.theme : '');
+      rt.city + ' · ' + rt.days + ' 天 · ' + rt.stopCount + ' 个点' +
+      (rt.theme ? ' · ' + rt.theme : '') + (rt.hot ? ' · ' + rt.hot : '');
     const days = {};
     rt.stops.forEach((s, i) => {
       const d = s.day || 1;

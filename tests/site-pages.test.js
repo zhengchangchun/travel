@@ -450,14 +450,20 @@ test('首页配图：静态地图缩略图（地区俯瞰 / 路线图）会生�
   }
 });
 
-test('推荐载荷带封面地址；坐标底稿只在服务端（接口里仍然没有坐标）', async () => {
+test('推荐载荷带实景封面；路线封面不再是地图；接口里仍然没有坐标', async () => {
+  // 2026-11-23 起：首页不放地图 —— 地区封面改成实景照片，路线不再带 cover 字段（详情页原本也不用它）
   const s = await start();
   try {
     const r = await call(s.base, 'GET', '/api/featured?city=三亚');
     const d = r.body.data;
-    assert.match(d.regions[0].cover, /^\/home-img\/region-/);
-    assert.match(d.routes[0].cover, /^\/home-img\/route-/);
+    assert.match(d.regions[0].cover, /^\/photo\//, '地区封面要是实景照片');
+    assert.ok(!('cover' in d.routes[0]), '路线不再带 cover 字段');
     assert.ok(!/"lng"|"lat"/.test(JSON.stringify(d)), '推荐载荷里不该出现坐标');
+    // 封面出处与示意热度：页面读这两样
+    assert.ok(d.regions[0].coverCredit, '带图的地区要标摄影者/许可');
+    assert.ok(d.routes[0].hot, '路线要带示意热度');
+    assert.ok(d.showcase && Array.isArray(d.showcase.quotes), '要有示意口碑块');
+    assert.ok(/示意|待真实/.test(JSON.stringify(d.showcase)), '示意数据要有自我宣告');
     const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/featured-geo.json'), 'utf8'));
     assert.ok(Object.keys(geo.cities || {}).length >= 5, '坐标底稿要有城市中心');
     assert.ok(Object.keys(geo.routes || {}).length >= 4, '坐标底稿要有路线站点');

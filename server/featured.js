@@ -14,7 +14,27 @@ const { shortCity } = require('./geo-locate');
 const photos = require('./featured-photos');
 
 function emptyFeatured() {
-  return { updatedAt: null, note: '', regions: [], routes: [] };
+  return { updatedAt: null, note: '', regions: [], routes: [], showcase: emptyShowcase() };
+}
+
+function emptyShowcase() {
+  return { updatedAt: null, note: '', marks: [], quotes: [] };
+}
+
+// 「用过的人怎么说」那块：**示意数据**（config/showcase.json，页面上标明了）
+function loadShowcase(root) {
+  const file = path.join(root || path.join(__dirname, '..'), 'config', 'showcase.json');
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return {
+      updatedAt: raw.updatedAt || null,
+      note: raw.note || '',
+      marks: Array.isArray(raw.marks) ? raw.marks.filter((m) => m && m.n && m.l) : [],
+      quotes: Array.isArray(raw.quotes) ? raw.quotes.filter((q) => q && q.text) : [],
+    };
+  } catch (err) {
+    return emptyShowcase();
+  }
 }
 
 function loadFeatured(root) {
@@ -41,7 +61,9 @@ function loadFeatured(root) {
   }
 }
 
-// 首页缩略图（静态地图，服务端生成缓存）：推荐地区一张城市俯瞰图，推荐路线一张路线图
+// 首页缩略图（静态地图，服务端生成缓存）：2026-11-23 起首页不再展示地图
+// （用户：「地图的…在首页都不要展示」）—— 地区封面改成实景照片，路线封面直接不发。
+// 这个接口与 server/home-img.js 仍保留（静态地图缩略图本身是个有用能力，单测也钉着它）。
 function coverFor(kind, key) {
   return '/home-img/' + kind + '-' + encodeURIComponent(String(key)) + '.png';
 }
@@ -66,11 +88,11 @@ function routeCard(route, extra) {
     theme: route.theme || '',
     days: Number(route.days) || 1,
     note: route.note || '',
+    hot: route.hot || '',   // 「本周 N 人收藏」这类热度：精选库里写的是示意值，页面会标明
     highlights: route.highlights,
     stops,
     stopCount: route.stops.length,
     photoCount: stops.filter((s) => s.photo).length,
-    cover: coverFor('route', route.id),
     ...(extra || {}),
   };
 }
@@ -86,6 +108,8 @@ function buildFeatured({ featured, db, city, current }) {
     } catch (err) {
       collected = 0;
     }
+    // 封面用该城的实景照片（不再用静态地图缩略图）；没有图就空着，页面露出深色底板
+    const photo = photos.firstForCity(r.city);
     return {
       city: r.city,
       district: r.district || '',
@@ -94,7 +118,8 @@ function buildFeatured({ featured, db, city, current }) {
       featured: !!r.featured,
       collected,
       trips,
-      cover: coverFor('region', r.city),
+      cover: photo ? photo.url : '',
+      coverCredit: photo ? photo.credit : '',
       current: !!cur && r.city === cur,
     };
   });
@@ -118,8 +143,9 @@ function buildFeatured({ featured, db, city, current }) {
     current: current || null,
     regions,
     routes,
+    showcase: loadShowcase(),
     photoCredits: photos.credits(),
   };
 }
 
-module.exports = { loadFeatured, buildFeatured, routeCard, coverFor, emptyFeatured };
+module.exports = { loadFeatured, buildFeatured, loadShowcase, routeCard, coverFor, emptyFeatured };

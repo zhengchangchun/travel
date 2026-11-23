@@ -50,12 +50,15 @@ function load() {
 // 一张图给页面用的形状：地址 + 出处（作者 / 许可 / 原页面）
 function photoOf(entry) {
   if (!entry) return null;
+  // 有的条目把「作者」写成了网页地址（Commons 偶见）：这种不往页面上放，只留许可
+  const rawAuthor = String(entry.author || '').trim();
+  const author = /https?:\/\//i.test(rawAuthor) ? '' : rawAuthor;
   return {
     url: '/photo/' + encodeURIComponent(entry.file),
-    author: entry.author || '',
+    author,
     license: entry.license || '',
     source: entry.filePage || entry.source || '',
-    credit: [entry.author, entry.license].filter(Boolean).join(' · '),
+    credit: [author, entry.license].filter(Boolean).join(' · '),
   };
 }
 
@@ -94,4 +97,11 @@ function credits() {
   return load().credits;
 }
 
-module.exports = { photoFor, photosForCity, credits, dir, indexPath };
+// 一座城的第一张实景图（首页地区卡的封面用；按索引顺序＝人工挑过的那张）
+function firstForCity(city) {
+  const all = photosForCity(city);
+  const first = Object.keys(all)[0];
+  return first ? all[first] : null;
+}
+
+module.exports = { photoFor, photosForCity, firstForCity, credits, dir, indexPath };
