@@ -209,7 +209,7 @@ test('当前地区：高德两条都挂了也不报错，回退默认城市', as
   }
 });
 
-test('推荐：精选库是真源，当前城市排第一，地区带真实已收录点数', async () => {
+test('推荐：精选库是真源，当前城市排第一，并带上本地库的真实点数', async () => {
   const s = await start();
   try {
     s.db.upsertPoi({ poi_id: 'p1', city: '杭州', category: 'sight', name: '西湖', lng: 120.1, lat: 30.2, fetchedAt: new Date().toISOString() });
@@ -343,7 +343,7 @@ test('前端接线：头部共用、首页只浏览推荐、分享列表给的�
   assert.match(head, /当前地区/);
   const homeJs = read('web/js/home.js');
   assert.match(homeJs, /api\.featured\(/);
-  assert.match(homeJs, /旅行|收录|collect/i);
+  assert.match(homeJs, /data-act="plan"/, '地区卡要能给「去规划」');
   assert.match(homeJs, /只会浏览|只浏览|不会动你的行程/);
   const shares = read('web/js/shares.js');
   assert.match(shares, /打开网页版/);

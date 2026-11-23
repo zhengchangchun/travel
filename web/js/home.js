@@ -1,6 +1,7 @@
 /* 首页：精选线路展示台（左轮转实景 / 右线路明细）+ 推荐地区 + 推荐路程详情
     - 默认地区＝浏览器定位 → 后端认城市 → IP 兜底（headbar 负责认，这里只管展示与联动）
-    - 地区卡一律「去规划」：**收录不是规划的前置**（用户 2026-11-23：「不用收录也能规划，大家规划的多了，自然而然就收录了」）
+    - 地区卡一律「去规划」（2026-11-23）：「收录」不是一个概念 —— 地方本来都有数据，只是本地还没缓存；
+      所以界面上不再出现「已收录 / 还没收录」之类的字样
     - 推荐路程只浏览（用户 2026-11-19 定），点开看每一站并给高德搜索链接 */
 (function () {
   const Site = window.TravelSite;
@@ -496,7 +497,6 @@
     if (!box || !d || !d.routes || !d.routes.length) return;
     const regions = d.regions || [];
     const routes = d.routes;
-    const collected = regions.reduce((n, r) => n + (Number(r.collected) || 0), 0);
     const stops = routes.reduce((n, r) => n + (Number(r.stopCount) || 0), 0);
     const photos = routes.reduce((n, r) => n + (Number(r.photoCount) || 0), 0);
     const cells = [
@@ -504,7 +504,6 @@
       [routes.length, '条精选线路'],
       [stops, '个推荐站点'],
       [photos, '张实景照片'],
-      [collected, '个点已收录'],
     ];
     box.innerHTML =
       '<div class="row-in">' +
@@ -533,10 +532,7 @@
     const tags = (r.highlights || [])
       .map((h) => '<span class="tag-pill">' + esc(h) + '</span>')
       .join('');
-    const count = r.collected
-      ? '已收录 ' + r.collected.toLocaleString('zh-CN') + ' 个点'
-      : '还没收录 · 进去搜就有';
-    // 不收也能规划：自己造点/搜索都行，规划中的采集自然会把库填满
+    // 「收录」不作为概念出现（用户 2026-11-23）：所有地方本来就有数据，只是本地还没缓存
     const actions =
       '<button class="btn small' + (r.current ? ' primary' : '') + '" type="button" data-act="plan" data-city="' +
       esc(r.city) + '">去规划</button>';
@@ -549,8 +545,6 @@
       '<div class="body">' +
       '<div class="tag">' + esc(r.tagline || '') + '</div>' +
       '<div class="tags">' + tags + '</div>' +
-      '<div class="count">' + count + '</div>' +
-      (r.coverAuthor ? '<div class="ph-credit">图：' + esc(r.coverAuthor + (r.coverLicense ? ' · ' + r.coverLicense : '')) + '</div>' : '') +
       '<div class="foot">' + actions + '</div>' +
       '</div>' +
       '</div>'
