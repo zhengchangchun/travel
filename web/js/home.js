@@ -412,6 +412,18 @@
     if (n > 1 && !reduce) box._t = setInterval(() => show(i + 1), HERO_DUR);
   }
 
+  // 星级：底下一层淡星、上面一层亮星按分数裁宽（只有样子，分数写在旁边）
+  function starHtml(n) {
+    const v = Number(n);
+    if (!(v > 0)) return '';
+    const pct = Math.max(0, Math.min(100, (v / 5) * 100));
+    return (
+      '<span class="q-stars" aria-label="' + esc(String(v)) + ' 分">' +
+      '<span class="on" style="width:' + pct.toFixed(0) + '%">★★★★★</span>★★★★★</span>' +
+      '<i class="q-score">' + v.toFixed(1) + '</i>'
+    );
+  }
+
   // 04 用过的人怎么说：整块都是示意数据（config/showcase.json），页面上标明了
   function renderQuotes(d) {
     const sc = (d && d.showcase) || {};
@@ -427,10 +439,21 @@
     }
     if (quoteBox) {
       quoteBox.innerHTML = (sc.quotes || [])
-        .map(
-          (q) =>
-            '<figure class="quote"><p>' + esc(q.text) + '</p><figcaption class="who">' + esc(q.who) + '</figcaption></figure>'
-        )
+        .map((q) => {
+          const who = [q.city, q.when].filter(Boolean).join(' · ');
+          return (
+            '<figure class="quote">' +
+            '<div class="q-top">' +
+            '<span class="q-av" aria-hidden="true">' + esc(String(q.name || '?').slice(0, 1)) + '</span>' +
+            '<span class="q-who"><b>' + esc(q.name || '') + '</b>' +
+            (who ? '<i>' + esc(who) + '</i>' : '') + '</span>' +
+            starHtml(q.stars) +
+            '</div>' +
+            '<p>' + esc(q.text) + '</p>' +
+            (q.route ? '<figcaption class="q-route">走过 · ' + esc(q.route) + '</figcaption>' : '') +
+            '</figure>'
+          );
+        })
         .join('');
     }
     const block = $('quotes-block');
