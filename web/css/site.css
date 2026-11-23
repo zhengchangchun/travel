@@ -24,6 +24,11 @@
   --gold: #c9925f;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --label: 400 10.5px/1 var(--mono);
+  /* 字体三件套（2026-11-23 用户「字体也要艺术点的感觉」）：
+     标题吃系统宋体（Songti SC 有 Black），数字吃 Didot（高对比衬线，比等宽更“编辑”），
+     微标签仍吃等宽字。全部是 macOS 自带字体，断网也在。 */
+  --display: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif CJK SC", serif;
+  --latin: "Didot", "Bodoni 72", "Iowan Old Style", Georgia, serif;
 }
 
 * { box-sizing: border-box; }
@@ -50,8 +55,8 @@ body.site .wrap, body.site footer.site { position: relative; z-index: 1; }
   -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px);
   border-bottom: 1px solid var(--hair);
 }
-.head .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 500; letter-spacing: .3em; text-transform: uppercase; white-space: nowrap; }
-.head .brand img { width: 22px; height: 22px; display: block; filter: grayscale(1) brightness(1.5) contrast(.92); }
+.head .brand { display: flex; align-items: center; gap: 11px; font-family: var(--display); font-size: 17px; font-weight: 900; letter-spacing: .34em; white-space: nowrap; font-feature-settings: "palt" 1; }
+.head .brand img { width: 22px; height: 22px; display: block; filter: sepia(1) hue-rotate(-18deg) saturate(2.6) brightness(1.02); }
 .head .spacer { flex: 1; }
 .head nav { display: flex; align-items: center; gap: 2px; }
 .head nav a {
@@ -111,7 +116,7 @@ body.site .wrap, body.site footer.site { position: relative; z-index: 1; }
    免得和规划页（/app 的 style.css）同名的 .card / .row 撞车 */
 body.site .wrap { max-width: 1120px; margin: 0 auto; padding: 34px 22px 72px; }
 body.site .wrap.narrow { max-width: 720px; }
-body.site h1.page { font-size: 30px; font-weight: 600; letter-spacing: .01em; margin: 0 0 8px; }
+body.site h1.page { font-family: var(--display); font-size: 34px; font-weight: 900; letter-spacing: .03em; font-feature-settings: "palt" 1; margin: 0 0 10px; }
 body.site p.hint { color: var(--ink-2); font-size: 13.5px; line-height: 1.8; margin: 0 0 24px; }
 body.site .card {
   background: transparent; border: 1px solid var(--hair); border-radius: 0;

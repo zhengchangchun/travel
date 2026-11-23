@@ -6,7 +6,7 @@
    ⑤ 右栏「我的选择」与「我的行程」不再撞脸
    ⑥ 「搜索地点」高德不可用时回退本地已收录
    ⑦ 0 个点时「规划行程」置灰
-   ⑧ 次要文字对比度（--ink-3 提亮）
+   ⑧ 次要文字对比度（--ink-3 提亮；2026-11-23 换成暖色后改为实测对比度）
    纯结构约束 + 少量可跑的行为（错误人话化、空态 CTA、落旗上限、服务端回退）。 */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -222,9 +222,42 @@ test('app.js：0 个点时「规划行程 / 自动成线」置灰并给原因', 
 
 // ---------- ⑧ 次要文字对比度 ----------
 
-test('CSS：次要文字色提亮（--ink-3 不再是 #6f7887）', () => {
+// 相对亮度（WCAG）与对比度：只吃 #rrggbb
+function relLum(hex) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || '').trim());
+  if (!m) return null;
+  const c = [0, 2, 4].map((i) => {
+    const v = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
+function contrastRatio(a, b) {
+  const x = relLum(a);
+  const y = relLum(b);
+  if (x === null || y === null) return 0;
+  const [hi, lo] = x > y ? [x, y] : [y, x];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// 同一套 token 可能定义多遍（style.css 有两段 :root）：取最后一段（真正生效的那份）
+function lastToken(css, name) {
+  const re = new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})', 'g');
+  let m;
+  let out = null;
+  while ((m = re.exec(css))) out = m[1];
+  return out;
+}
+
+test('CSS：次要文字色够亮（--ink-3 不退回旧暗色，且对 --bg 至少 AA 4.5:1）', () => {
+  // 2026-11-23 整套换暖色后不再钉死旧色值，改成量对比度 —— 以后再换色也不会假绿也不会误报
   assert.ok(!/--ink-3:\s*#6f7887/.test(CSS), '--ink-3 太暗（实测 ~3.9:1），应提亮');
-  assert.match(CSS, /--ink-3:\s*#9aa3b2/, '--ink-3 应提到 #9aa3b2 一档');
+  const ink3 = lastToken(CSS, 'ink-3');
+  const bg = lastToken(CSS, 'bg');
+  assert.ok(ink3 && bg, 'style.css 里要能读到 --ink-3 与 --bg');
+  const ratio = contrastRatio(ink3, bg);
+  assert.ok(ratio >= 4.5, '--ink-3 (' + ink3 + ') 对 --bg (' + bg + ') 只有 ' + ratio.toFixed(2) + ':1，要 ≥ 4.5');
 });
 
 // ---------- ⑥ 「搜索地点」本地回退 ----------

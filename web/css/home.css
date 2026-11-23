@@ -31,8 +31,9 @@ body.home footer.site { margin-top: 72px; }
 }
 @keyframes kick-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 .hero h1 {
-  font-size: clamp(36px, 4.6vw, 66px); line-height: 1.1; margin: 0 0 24px;
-  font-weight: 600; letter-spacing: .01em; color: var(--ink);
+  font-family: var(--display); font-feature-settings: "palt" 1;
+  font-size: clamp(38px, 5vw, 72px); line-height: 1.16; margin: 0 0 26px;
+  font-weight: 900; letter-spacing: .04em; color: var(--ink);
 }
 .hero p { color: var(--ink-2); font-size: 15px; line-height: 1.95; margin: 0 0 30px; max-width: 46ch; }
 .hero-cta { gap: 12px; }
@@ -75,7 +76,7 @@ body.home footer.site { margin-top: 72px; }
 .hs-count i { color: rgba(232, 228, 220, .3); font-style: normal; }
 .hs-count span { color: rgba(232, 228, 220, .62); }
 .hs-cap { position: absolute; z-index: 3; left: 18px; right: 18px; bottom: 18px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.hs-cap b { font-size: 20px; font-weight: 600; letter-spacing: .02em; text-shadow: 0 2px 14px rgba(0, 0, 0, .85); }
+.hs-cap b { font-family: var(--display); font-feature-settings: "palt" 1; font-size: 23px; font-weight: 900; letter-spacing: .04em; text-shadow: 0 2px 14px rgba(0, 0, 0, .85); }
 .hs-cap span { font: var(--label); letter-spacing: .18em; text-transform: uppercase; color: rgba(232, 228, 220, .7); }
 .hs-cap .hs-credit { margin-left: auto; font: 400 10px/1.6 var(--mono); letter-spacing: .1em; text-transform: none; color: rgba(232, 228, 220, .5); }
 .hs-bar { position: absolute; z-index: 4; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(232, 228, 220, .14); }
@@ -90,8 +91,9 @@ body.home footer.site { margin-top: 72px; }
 .hero-stats .cell { display: flex; flex-direction: column; padding: 24px 22px 30px 0; border-right: 1px solid var(--hair); }
 .hero-stats .cell:last-child { border-right: 0; }
 .hero-stats .n {
-  font: 500 44px/1 var(--mono); letter-spacing: -.01em; color: var(--ink);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--latin); font-weight: 400;
+  font-size: 50px; line-height: 1; letter-spacing: .01em; color: var(--ink);
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .hero-stats .l {
   display: block; margin-top: 14px;
@@ -109,7 +111,7 @@ body.home .sec-no {
   padding: 0; border: 0; background: none; border-radius: 0;
   font: 400 10.5px/1 var(--mono); letter-spacing: .22em; color: var(--accent);
 }
-body.home .section-head h2 { margin: 0; font-size: clamp(26px, 3vw, 38px); font-weight: 600; letter-spacing: .01em; }
+body.home .section-head h2 { margin: 0; font-family: var(--display); font-feature-settings: "palt" 1; font-size: clamp(28px, 3.2vw, 42px); font-weight: 900; letter-spacing: .03em; }
 body.home .section-head .rule { display: block; height: 1px; background: var(--hair); }
 body.home .section-head .note { font: 400 11.5px/1.6 var(--mono); letter-spacing: .04em; color: var(--ink-3); text-align: right; }
 
@@ -133,7 +135,7 @@ body.home .section-head .note { font: 400 11.5px/1.6 var(--mono); letter-spacing
 }
 .sc-visual { background: var(--bg); min-width: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .sc-spec { background: var(--bg); min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px 22px 22px; }
-.sc-spec-head h3 { font-size: 22px; line-height: 1.35; margin: 0 0 10px; font-weight: 600; letter-spacing: .01em; }
+.sc-spec-head h3 { font-family: var(--display); font-feature-settings: "palt" 1; font-size: 24px; line-height: 1.4; margin: 0 0 10px; font-weight: 900; letter-spacing: .03em; }
 .sc-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font: 400 11.5px/1.6 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
 .sc-meta i { font-style: normal; color: rgba(232, 228, 220, .22); }
 .sc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -274,7 +276,8 @@ body.home .region .cover::after {
 body.home .region .cover .name {
   position: absolute; z-index: 2; left: 16px; bottom: 12px;
   display: flex; align-items: center; gap: 9px;
-  font-size: 21px; font-weight: 600; letter-spacing: .02em;
+  font-family: var(--display); font-feature-settings: "palt" 1;
+  font-size: 23px; font-weight: 900; letter-spacing: .04em;
 }
 body.home .region .cover .here {
   display: inline-flex; align-items: center; border-radius: 0; padding: 3px 7px;
@@ -311,7 +314,7 @@ body.home .feat-ico {
   background: none; border: 1px solid var(--hair-2);
 }
 body.home .feat-ico svg { width: 17px; height: 17px; }
-body.home .feature b { display: block; margin: 18px 0 10px; font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+body.home .feature b { display: block; margin: 18px 0 10px; font-family: var(--display); font-feature-settings: "palt" 1; font-size: 18px; font-weight: 900; letter-spacing: .03em; }
 body.home .feature span:not(.feat-no):not(.feat-ico) { display: inline; font-size: 13px; line-height: 1.82; color: var(--ink-2); }
 
 /* ---------- 窄屏 ---------- */
@@ -368,7 +371,7 @@ body.home .marks {
   background: var(--hair); border: 1px solid var(--hair);
 }
 body.home .mark { background: var(--bg); padding: 24px 22px 28px; display: flex; flex-direction: column; }
-body.home .mark .n { font: 500 40px/1 var(--mono); letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
+body.home .mark .n { font-family: var(--latin); font-weight: 400; font-size: 44px; line-height: 1; letter-spacing: .01em; color: var(--ink); font-variant-numeric: lining-nums tabular-nums; }
 body.home .mark .l { margin-top: 14px; font: var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--ink-3); }
 body.home .quotes {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px;
@@ -376,7 +379,7 @@ body.home .quotes {
 }
 body.home .quote { background: var(--bg); padding: 28px 26px 30px; display: flex; flex-direction: column; gap: 18px; transition: background .16s ease; }
 body.home .quote:hover { background: var(--surface); }
-body.home .quote p { margin: 0; font-size: 15px; line-height: 1.95; color: var(--ink); }
+body.home .quote p { margin: 0; font-family: var(--display); font-feature-settings: "palt" 1; font-size: 16.5px; line-height: 2; letter-spacing: .02em; color: var(--ink); }
 body.home .quote p::before { content: '「'; color: var(--accent); }
 body.home .quote p::after { content: '」'; color: var(--accent); }
 body.home .quote .who { margin-top: auto; font: var(--label); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); }
