@@ -1,6 +1,6 @@
 /* 首页：精选线路展示台（左轮转实景 / 右线路明细）+ 推荐地区 + 推荐路程详情
     - 默认地区＝浏览器定位 → 后端认城市 → IP 兜底（headbar 负责认，这里只管展示与联动）
-    - 未收录的城市卡片上给「现在收录」：现场按城市采集（4 个分类），进度实时刷
+    - 地区卡一律「去规划」：**收录不是规划的前置**（用户 2026-11-23：「不用收录也能规划，大家规划的多了，自然而然就收录了」）
     - 推荐路程只浏览（用户 2026-11-19 定），点开看每一站并给高德搜索链接 */
 (function () {
   const Site = window.TravelSite;
@@ -8,7 +8,7 @@
 
   const DUR = 5200; // 每张实景停留多久（毫秒）；进度条与换图共用一个时钟
   const HERO_DUR = 9000; // 首屏底图每张停留多久
-  const state = { city: '', data: null, collecting: null };
+  const state = { city: '', data: null };
   const sc = { routes: [], route: null, shots: [], i: 0, layer: 0, paused: false, remain: DUR, last: 0, raf: 0, hover: false };
   const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -506,13 +506,14 @@
       .join('');
     const count = r.collected
       ? '已收录 ' + r.collected.toLocaleString('zh-CN') + ' 个点'
-      : '还没收录地点';
-    const actions = r.collected
-      ? '<button class="btn small primary" type="button" data-act="plan" data-city="' + esc(r.city) + '">去规划</button>'
-      : '<button class="btn small" type="button" data-act="collect" data-city="' + esc(r.city) + '">收录这一带</button>';
+      : '还没收录 · 进去搜就有';
+    // 不收也能规划：自己造点/搜索都行，规划中的采集自然会把库填满
+    const actions =
+      '<button class="btn small' + (r.current ? ' primary' : '') + '" type="button" data-act="plan" data-city="' +
+      esc(r.city) + '">去规划</button>';
     return (
       '<div class="region' + (r.current ? ' current' : '') + '" data-city="' + esc(r.city) + '">' +
-      '<div class="cover">' + coverHtml(r.cover, r.city + ' 地图') +
+      '<div class="cover">' + coverHtml(r.cover, r.city + ' 实景') +
       '<span class="r-no">' + pad2(Number(idx) + 1) + '</span>' +
       '<div class="name">' + esc(r.city) + (r.current ? '<span class="here">当前</span>' : '') + '</div>' +
       '</div>' +
@@ -541,78 +542,12 @@
       box.querySelectorAll('[data-act="plan"]').forEach((b) => {
         b.onclick = () => goPlan(b.dataset.city);
       });
-      box.querySelectorAll('[data-act="collect"]').forEach((b) => {
-        b.onclick = () => startCollect(b.dataset.city, b);
-      });
     }
   }
 
   function goPlan(city) {
     if (city && Head && Head.setCity) Head.setCity(city, 'pick');
     window.location.href = '/app' + (city ? '?city=' + encodeURIComponent(city) : '');
-  }
-
-  // 现场采集：4 个分类一起跑（后端已有的按城市采集），进度实时刷
-  async function startCollect(city, btn) {
-    if (!city) return;
-    if (state.collecting) {
-      Site.toast('已经在收录 ' + state.collecting + ' 了，等它跑完');
-      return;
-    }
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '正在收录…';
-    }
-    state.collecting = city;
-    try {
-      const started = await Site.api.collect(city);
-      const ids = started.runIds || [];
-      Site.toast('开始收录 ' + city + '（4 个分类），跑完这页会自动刷新', true);
-      await pollRuns(ids, city, btn);
-    } catch (err) {
-      Site.toast(err.message || '收录失败');
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = '现在收录这一带';
-      }
-      state.collecting = null;
-    }
-  }
-
-  async function pollRuns(runIds, city, btn) {
-    const deadline = Date.now() + 15 * 60 * 1000;
-    let last = '';
-    for (;;) {
-      if (Date.now() > deadline) {
-        Site.toast('收录还在后台跑，稍后回来看「已收录」的数字');
-        break;
-      }
-      let rows = [];
-      try {
-        rows = await Promise.all((runIds || []).map((id) => Site.api.collectStatus(id)));
-      } catch (err) {
-        rows = [];
-      }
-      const done = rows.filter((r) => r && r.run && r.run.status && r.run.status !== 'running').length;
-      const inserted = rows.reduce((n, r) => n + Number((r && r.run && r.run.n_inserted) || 0), 0);
-      const line = '收录 ' + city + '：' + done + '/' + (runIds || []).length + ' 个分类跑完，已入库 ' + inserted + ' 个点';
-      if (line !== last) {
-        last = line;
-        if (btn) btn.textContent = line;
-      }
-      const failed = rows.find((r) => r && r.run && r.run.status === 'failed');
-      if (done >= (runIds || []).length) {
-        if (failed) {
-          Site.toast('收录结束但有分类失败：' + ((failed.run && failed.run.detail) || '看状态里的说明'));
-        } else {
-          Site.toast('收录完成，已入库 ' + inserted + ' 个点', true);
-        }
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-    state.collecting = null;
-    await load(state.city);
   }
 
   // 推荐路程：只浏览（按天分组 + 每站给高德搜索链接）
