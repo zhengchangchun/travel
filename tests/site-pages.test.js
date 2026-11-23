@@ -462,8 +462,12 @@ test('推荐载荷带实景封面；路线封面不再是地图；接口里仍�
     // 封面出处与示意热度：页面读这两样
     assert.ok(d.regions[0].coverCredit, '带图的地区要标摄影者/许可');
     assert.ok(d.routes[0].hot, '路线要带示意热度');
-    assert.ok(d.showcase && Array.isArray(d.showcase.quotes), '要有示意口碑块');
-    assert.ok(/示意|待真实/.test(JSON.stringify(d.showcase)), '示意数据要有自我宣告');
+    assert.ok(d.showcase && Array.isArray(d.showcase.quotes), '要有示例口碑块');
+    // 示例数据必须在 note 里自我宣告（词面放宽，但必须是这个意思）
+    assert.ok(
+      /(示意|示例|编的|不是真实)/.test(String(d.showcase.note || '')),
+      '示例口碑的 note 要写明这是编的：' + String(d.showcase.note || '').slice(0, 40)
+    );
     const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/featured-geo.json'), 'utf8'));
     assert.ok(Object.keys(geo.cities || {}).length >= 5, '坐标底稿要有城市中心');
     assert.ok(Object.keys(geo.routes || {}).length >= 4, '坐标底稿要有路线站点');
