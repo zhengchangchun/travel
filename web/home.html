@@ -6,13 +6,18 @@
   <title>旅迹 · 按笔记找地方，一屏把行程排出来</title>
   <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
   <link rel="stylesheet" href="/css/site.css" />
+  <link rel="stylesheet" href="/css/home.css" />
   <script>document.documentElement.classList.add('anim');</script>
 </head>
-<body class="site">
+<body class="site home">
   <div id="headbar"></div>
 
-  <main class="wrap">
-    <section class="hero" data-reveal>
+  <!-- 首屏：整幅实景 + 超大标题 + 底下一排真实读数（城市 / 线路 / 站点 / 实景 / 已收录） -->
+  <section class="hero" data-reveal>
+    <div class="hero-bg" id="hero-bg" aria-hidden="true">
+      <i></i><i></i><i></i>
+    </div>
+    <div class="hero-inner">
       <div class="hero-copy">
         <span class="kick"><i></i>本机自用 · 数据都留在这台机器</span>
         <h1>按笔记找地方<br />一屏把行程排出来</h1>
@@ -33,15 +38,21 @@
         <span class="hero-live"><i></i>实时耗时</span>
         <figcaption>地图上带序号的路线 · 每站写清多久、多远、累计</figcaption>
       </figure>
-    </section>
+    </div>
+    <div class="hero-stats" id="hero-stats" aria-label="当前读数"></div>
+  </section>
 
-    <section class="showcase" id="showcase" data-reveal>
+  <main class="wrap">
+    <section class="block" id="showcase" data-reveal>
+      <div class="section-head">
+        <span class="sec-no">01</span>
+        <h2>精选线路</h2>
+        <i class="rule"></i>
+        <span class="note">只看，不动你的行程</span>
+      </div>
+
       <div class="sc-top">
-        <div class="sc-top-copy">
-          <span class="sc-kicker"><b>01</b>精选线路</span>
-          <h2>挑一条现成线路，照着走就行</h2>
-          <p class="sc-lead">左边是这条线路上各站的实景，会自动轮转；右边是每一天按顺序的站点。只看，不动你的行程。</p>
-        </div>
+        <p class="sc-lead">挑一条现成线路照着走就行。左边是这条线路上各站的实景，会自动轮转；右边是每一天按顺序的站点。</p>
         <div class="sc-tabs" id="sc-tabs" role="tablist" aria-label="精选线路"></div>
       </div>
 
@@ -93,6 +104,7 @@
       <div class="section-head">
         <span class="sec-no">02</span>
         <h2>推荐地区</h2>
+        <i class="rule"></i>
         <span class="note" id="regions-note">按你所在地区排</span>
       </div>
       <div class="grid region-grid" id="regions"></div>
@@ -102,6 +114,7 @@
       <div class="section-head">
         <span class="sec-no">03</span>
         <h2>它能帮你做什么</h2>
+        <i class="rule"></i>
         <span class="note">四步：从刷到的笔记，到能发给朋友的行程</span>
       </div>
       <div class="grid features">

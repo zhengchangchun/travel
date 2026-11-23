@@ -7,6 +7,7 @@
   const Head = window.TravelHead;
 
   const DUR = 5200; // 每张实景停留多久（毫秒）；进度条与换图共用一个时钟
+  const HERO_DUR = 9000; // 首屏底图每张停留多久
   const state = { city: '', data: null, collecting: null };
   const sc = { routes: [], route: null, shots: [], i: 0, layer: 0, paused: false, remain: DUR, last: 0, raf: 0, hover: false };
   const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -309,6 +310,75 @@
     }
   }
 
+  /* ================= 首屏：底图轮转 + 读数条 ================= */
+  // 底图取精选线路里的实景（当前城市的优先），最多 3 张交替淡入；
+  // 同一批图不重启那套动画，免得城市一刷新就闪
+  function renderHeroBg(d) {
+    const box = $('hero-bg');
+    if (!box) return;
+    const routes = (d && d.routes) || [];
+    const cur = (d && d.current && d.current.city) || state.city || '';
+    const pool = [];
+    const push = (rt) =>
+      (rt.stops || []).forEach((s) => {
+        if (s.photo && pool.indexOf(s.photo) < 0) pool.push(s.photo);
+      });
+    routes.filter((r) => r.city === cur).forEach(push);
+    if (pool.length < 3) routes.forEach(push);
+    const shots = pool.slice(0, 3);
+    if (!shots.length) return;
+    const sig = shots.join('|');
+    const layers = Array.prototype.slice.call(box.querySelectorAll('i'));
+    if (box.dataset.sig === sig) return;
+    box.dataset.sig = sig;
+    if (box._t) {
+      clearInterval(box._t);
+      box._t = 0;
+    }
+    layers.forEach((el, k) => {
+      el.classList.remove('on');
+      el.style.backgroundImage = shots[k] ? 'url("' + String(shots[k]).replace(/"/g, '%22') + '")' : '';
+    });
+    let k = 0;
+    layers[0].classList.add('on');
+    if (shots.length > 1 && !reduce) {
+      box._t = setInterval(() => {
+        layers[k].classList.remove('on');
+        k = (k + 1) % shots.length;
+        layers[k].classList.add('on');
+      }, HERO_DUR);
+    }
+  }
+
+  // 读数条：数字全部取自当前载荷，不编
+  function renderStats(d) {
+    const box = $('hero-stats');
+    if (!box || !d || !d.routes || !d.routes.length) return;
+    const regions = d.regions || [];
+    const routes = d.routes;
+    const collected = regions.reduce((n, r) => n + (Number(r.collected) || 0), 0);
+    const stops = routes.reduce((n, r) => n + (Number(r.stopCount) || 0), 0);
+    const photos = routes.reduce((n, r) => n + (Number(r.photoCount) || 0), 0);
+    const cells = [
+      [regions.length, '座城市可挑'],
+      [routes.length, '条精选线路'],
+      [stops, '个推荐站点'],
+      [photos, '张实景照片'],
+      [collected, '个点已收录'],
+    ];
+    box.innerHTML =
+      '<div class="row-in">' +
+      cells
+        .map(
+          (cell) =>
+            '<div class="cell"><span class="n">' +
+            Number(cell[0]).toLocaleString('zh-CN') +
+            '</span><span class="l">' + esc(cell[1]) + '</span></div>'
+        )
+        .join('') +
+      '</div>';
+  }
+
   /* ================= 推荐地区 ================= */
   // 卡片头图：静态地图缩略图（服务端生成）；拿不到就让它自己消失，露出渐变底
   function coverHtml(src, alt) {
@@ -319,7 +389,7 @@
     );
   }
 
-  function regionCard(r) {
+  function regionCard(r, idx) {
     const tags = (r.highlights || [])
       .map((h) => '<span class="tag-pill">' + esc(h) + '</span>')
       .join('');
@@ -332,6 +402,7 @@
     return (
       '<div class="region' + (r.current ? ' current' : '') + '" data-city="' + esc(r.city) + '">' +
       '<div class="cover">' + coverHtml(r.cover, r.city + ' 地图') +
+      '<span class="r-no">' + pad2(Number(idx) + 1) + '</span>' +
       '<div class="name">' + esc(r.city) + (r.current ? '<span class="here">当前</span>' : '') + '</div>' +
       '</div>' +
       '<div class="body">' +
@@ -346,8 +417,10 @@
 
   function render() {
     const d = state.data || { regions: [], routes: [] };
+    renderHeroBg(d);
+    renderStats(d);
     const box = $('regions');
-    if (box) box.innerHTML = d.regions.map(regionCard).join('') || '<div class="empty-box">精选库里还没有地区</div>';
+    if (box) box.innerHTML = d.regions.map((r, i) => regionCard(r, i)).join('') || '<div class="empty-box">精选库里还没有地区</div>';
     mountShowcase(d.routes || []);
     const note = $('regions-note');
     if (note && state.city) note.textContent = '按你所在地区排（当前 ' + state.city + '）';
