@@ -18,7 +18,7 @@ function emptyFeatured() {
 }
 
 function emptyShowcase() {
-  return { updatedAt: null, note: '', marks: [], quotes: [] };
+  return { updatedAt: null, note: '', marks: [], quotes: [], recent: [] };
 }
 
 // 「用过的人怎么说」那块：**示意数据**（config/showcase.json，页面上标明了）
@@ -31,6 +31,8 @@ function loadShowcase(root) {
       note: raw.note || '',
       marks: Array.isArray(raw.marks) ? raw.marks.filter((m) => m && m.n && m.l) : [],
       quotes: Array.isArray(raw.quotes) ? raw.quotes.filter((q) => q && q.text) : [],
+      // 「此刻」滚动带：网名 + 刚排完的线路 + 多久前（同样是示例数据）
+      recent: Array.isArray(raw.recent) ? raw.recent.filter((r) => r && r.name && r.route) : [],
     };
   } catch (err) {
     return emptyShowcase();

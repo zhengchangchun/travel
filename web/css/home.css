@@ -415,3 +415,46 @@ body.home .tag-pill.hot { color: var(--accent-2); border-color: rgba(201, 146, 9
   .hs-layer.on { animation: none !important; }
   .hs-bar i { transition: none !important; }
 }
+
+/* ---------- 此刻：头像滚动带 ---------- */
+.ticker {
+  display: flex; align-items: center; gap: 20px; height: 58px; padding: 0 22px;
+  border-bottom: 1px solid var(--hair); background: #141412; overflow: hidden;
+}
+.ticker[hidden] { display: none; }
+.ticker-label {
+  flex: none; display: inline-flex; align-items: center; gap: 8px;
+  font: var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--ink-3);
+}
+.ticker-label i { width: 5px; height: 5px; flex: none; background: var(--accent); animation: kick-blink 2.6s ease-in-out infinite; }
+.ticker-label .tk-demo {
+  color: var(--ink-3); border: 1px solid var(--hair-2); padding: 2px 5px;
+  font-size: 9px; letter-spacing: .16em;
+}
+.ticker-view {
+  flex: 1; min-width: 0; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent 100%);
+}
+.ticker-track { display: flex; width: max-content; animation: ticker-run 64s linear infinite; }
+.ticker:hover .ticker-track { animation-play-state: paused; }
+.tk-set { display: flex; align-items: center; gap: 34px; padding-right: 34px; }
+@keyframes ticker-run { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tk { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
+.tk-av {
+  flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  background: rgba(168, 104, 60, .16); border: 1px solid rgba(168, 104, 60, .40); color: var(--accent-2);
+  font-family: var(--display); font-size: 12px; font-weight: 900; line-height: 1;
+}
+.tk-name { font-size: 13px; font-weight: 500; color: var(--ink); letter-spacing: .02em; }
+.tk-act { font: var(--label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.tk-when { font: 400 10px/1 var(--mono); letter-spacing: .06em; color: rgba(232, 228, 220, .34); }
+@media (max-width: 720px) {
+  .ticker { height: 50px; padding: 0 18px; gap: 12px; }
+  .tk-set { gap: 26px; padding-right: 26px; }
+  .tk-act { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+  .ticker-view { overflow-x: auto; }
+}

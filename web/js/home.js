@@ -424,6 +424,35 @@
     );
   }
 
+  // 「此刻」头像滚动带：一条动态＝头像（网名首字）+ 网名 + 刚排完哪条线 + 多久前
+  // 内容同样是示例数据（config/showcase.json 的 recent），标签上标「示例」
+  function renderTicker(d) {
+    const track = $('ticker-track');
+    const band = $('ticker');
+    if (!track) return;
+    const list = (d && d.showcase && d.showcase.recent) || [];
+    if (!list.length) {
+      if (band) band.hidden = true;
+      return;
+    }
+    const set = list
+      .map(
+        (it) =>
+          '<span class="tk">' +
+          '<span class="tk-av" aria-hidden="true">' + esc(String(it.name || '?').slice(0, 1)) + '</span>' +
+          '<b class="tk-name">' + esc(it.name || '') + '</b>' +
+          '<span class="tk-act">排完 · ' + esc(it.route || '') + '</span>' +
+          '<span class="tk-when">' + esc(it.when || '') + '</span>' +
+          '</span>'
+      )
+      .join('');
+    // 两份叠着放，-50% 刚好接上：每份自己带右内边距，接缝处的间距与里面一致
+    track.innerHTML =
+      '<div class="tk-set">' + set + '</div>' +
+      '<div class="tk-set" aria-hidden="true">' + set + '</div>';
+    if (band) band.hidden = false;
+  }
+
   // 04 用过的人怎么说：整块都是示意数据（config/showcase.json），页面上标明了
   function renderQuotes(d) {
     const sc = (d && d.showcase) || {};
@@ -532,6 +561,7 @@
     const d = state.data || { regions: [], routes: [] };
     renderHeroPanel(d);
     renderStats(d);
+    renderTicker(d);
     renderQuotes(d);
     const box = $('regions');
     if (box) box.innerHTML = d.regions.map((r, i) => regionCard(r, i)).join('') || '<div class="empty-box">精选库里还没有地区</div>';
