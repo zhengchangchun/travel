@@ -50,9 +50,9 @@ function load() {
 // 一张图给页面用的形状：地址 + 出处（作者 / 许可 / 原页面）
 function photoOf(entry) {
   if (!entry) return null;
-  // 有的条目把「作者」写成了网页地址（Commons 偶见）：这种不往页面上放，只留许可
+  // 有的条目把「作者」写成了网页地址或邮箱（Commons 偶见）：这种不往页面上放，只留许可
   const rawAuthor = String(entry.author || '').trim();
-  const author = /https?:\/\//i.test(rawAuthor) ? '' : rawAuthor;
+  const author = /https?:\/\//i.test(rawAuthor) || rawAuthor.includes('@') ? '' : rawAuthor;
   return {
     url: '/photo/' + encodeURIComponent(entry.file),
     author,

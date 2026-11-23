@@ -30,7 +30,8 @@ const WIDTH = 900;
 const ALLOW = /^(cc0|cc[ -]by([ -]sa)?([ -]\d(\.\d)?)?|public domain|pd[ -]|gfdl)/i;
 const RASTER = /\.(jpe?g|png|webp)$/i;
 // 这些标题一看就不是风景照：地铁口、纪念碑、大门、地图……宁可没图也别上错图
-const BAD = /metro|station|airport|subway|map|plan|planning|book|magazine|newspaper|scan|djvu|pdf|logo|diagram|chart|poster|stamp|painting|drawing|sketch|banknote|ticket|monument|statue|entrance|einstieg|eingang|satellite|from the air|[站口碑牌坊电梯]/i;
+// （2026-11-23 补：厦门曾厝垵那条拿到的就是「文创村地图」，导览图类的中文词也一并拦掉）
+const BAD = /metro|station|airport|subway|map|plan|planning|book|magazine|newspaper|scan|djvu|pdf|logo|diagram|chart|poster|stamp|painting|drawing|sketch|banknote|ticket|monument|statue|entrance|einstieg|eingang|satellite|from the air|地图|导览|平面图|示意图|手绘|[站口碑牌坊电梯]/i;
 // 人工判定过「维基首图不对题、得靠指名搜索」的站点：先用这些词搜 Commons
 const EXTRA = {
   '杭州|孤山 · 西泠印社': ['Xiling Seal Art Society', '西泠印社', 'Gushan West Lake'],
@@ -50,6 +51,7 @@ const EXTRA = {
 // 人工判定过「宁可不放图」的站点（搜出来都是错的，或全是不相关的）
 const REJECT = new Set([
   '杭州|武林门码头',
+  '厦门|曾厝垵',   // 2026-11-23：Commons 搜到的是一张「文创村地图」，直接不要
 ]);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

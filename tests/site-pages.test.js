@@ -550,6 +550,15 @@ test('实景图：推荐路程每站带图与出处，/photo/ 能取到图，/ap
   }
 });
 
+test('实景图索引里不许混进地图 / 导览图（首页不放地图）', () => {
+  // 2026-11-23：厦门曾厝垵那条拿到的是一张「文创村地图」，看着像实景图其实是一张地图
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/featured-photos.json'), 'utf8'));
+  const bad = (idx.entries || []).filter((e) =>
+    /地图|导览|平面图|示意图|手绘图|\bmap\b/i.test([e.name, e.file, e.filePage, e.source].join(' '))
+  );
+  assert.deepEqual(bad.map((e) => e.city + '|' + e.name), [], '这些「实景图」其实是地图，不能上首页');
+});
+
 test('实景图接线：首页卡与详情、行程清单都要用上（且带出处）', () => {
   const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
   const homeJs = read('web/js/home.js');

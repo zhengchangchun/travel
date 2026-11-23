@@ -108,8 +108,9 @@ function buildFeatured({ featured, db, city, current }) {
     } catch (err) {
       collected = 0;
     }
-    // 封面用该城的实景照片（不再用静态地图缩略图）；没有图就空着，页面露出深色底板
-    const photo = photos.firstForCity(r.city);
+    // 封面用该城的实景照片（不再用静态地图缩略图），可指名（coverPhoto）；
+    // 没指名就用该城第一张（按索引顺序＝人工挑过的那张）；都没有就空着，页面露出深色底板
+    const photo = (r.coverPhoto && photos.photoFor(r.city, r.coverPhoto)) || photos.firstForCity(r.city);
     return {
       city: r.city,
       district: r.district || '',
