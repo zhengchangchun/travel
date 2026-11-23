@@ -550,7 +550,7 @@
       '<div class="tag">' + esc(r.tagline || '') + '</div>' +
       '<div class="tags">' + tags + '</div>' +
       '<div class="count">' + count + '</div>' +
-      (r.coverCredit ? '<div class="ph-credit">图：' + esc(r.coverCredit) + '</div>' : '') +
+      (r.coverAuthor ? '<div class="ph-credit">图：' + esc(r.coverAuthor + (r.coverLicense ? ' · ' + r.coverLicense : '')) + '</div>' : '') +
       '<div class="foot">' + actions + '</div>' +
       '</div>' +
       '</div>'

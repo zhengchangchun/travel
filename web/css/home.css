@@ -458,3 +458,9 @@ body.home .tag-pill.hot { color: var(--accent-2); border-color: rgba(201, 146, 9
   .ticker-track { animation: none; }
   .ticker-view { overflow-x: auto; }
 }
+
+/* 地区卡外面的总出处：单个没作者就不写，许可统一交代在这里 */
+body.home .regions-credit {
+  margin: 14px 0 0; text-align: left;
+  font: 400 9.5px/1.6 var(--mono); letter-spacing: .1em; color: rgba(232, 228, 220, .32);
+}

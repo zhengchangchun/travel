@@ -459,8 +459,9 @@ test('推荐载荷带实景封面；路线封面不再是地图；接口里仍�
     assert.match(d.regions[0].cover, /^\/photo\//, '地区封面要是实景照片');
     assert.ok(!('cover' in d.routes[0]), '路线不再带 cover 字段');
     assert.ok(!/"lng"|"lat"/.test(JSON.stringify(d)), '推荐载荷里不该出现坐标');
-    // 封面出处与示意热度：页面读这两样
-    assert.ok(d.regions[0].coverCredit, '带图的地区要标摄影者/许可');
+    // 封面出处与示例热度：页面读这几样
+    assert.ok(d.regions[0].coverLicense, '带图的地区要带上许可（作者可能为空）');
+    assert.ok('coverAuthor' in d.regions[0], '作者单开一个字段：没作者时页面不显示那行');
     assert.ok(d.routes[0].hot, '路线要带示意热度');
     assert.ok(d.showcase && Array.isArray(d.showcase.quotes), '要有示例口碑块');
     // 示例数据必须在 note 里自我宣告（词面放宽，但必须是这个意思）

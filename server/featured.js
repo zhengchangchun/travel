@@ -122,7 +122,9 @@ function buildFeatured({ featured, db, city, current }) {
       collected,
       trips,
       cover: photo ? photo.url : '',
-      coverCredit: photo ? photo.credit : '',
+      // 分开给：没作者时页面就不显示那行（只写个「CC BY 3.0」对读者没信息量）
+      coverAuthor: photo ? photo.author : '',
+      coverLicense: photo ? photo.license : '',
       current: !!cur && r.city === cur,
     };
   });
