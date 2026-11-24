@@ -224,6 +224,15 @@ body.site .item .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-conten
   body.site h1.page { font-size: 26px; }
 }
 
+@media (max-width: 720px) {
+  /* 手机：能点的一律 ≥44px（指头点得中）；头部不跳高矮，--head-h 仍是 56 */
+  .head .btn, .head button, .head .chip, .head .who { min-height: 40px; }
+  .head .brand a { min-height: 40px; display: inline-flex; align-items: center; }
+  body.site .btn, body.site button { min-height: 44px; }
+  body.site .reel-tab { padding: 14px 0 0; }
+  ol.stops li .row .btn, ol.stops li .row button { min-height: 38px; }
+}
+
 @media (max-width: 560px) {
   .head { gap: 6px; padding: 0 12px; }
   .head .brand span { display: none; }
@@ -239,3 +248,17 @@ body.site .item .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-conten
   flex: none; width: 34px; height: 34px; object-fit: cover;
   border-radius: 2px; border: 1px solid var(--hair); background: var(--surface-2);
 }
+
+/* ---------- 手机访问卡（个人设置）：地址一行 + 现画的二维码 ---------- */
+.phone-row { gap: 10px; flex-wrap: wrap; }
+.phone-url {
+  font: 400 15px/1.5 var(--mono); color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--hair-2); border-radius: 2px;
+  padding: 11px 13px; letter-spacing: .02em; word-break: break-all;
+}
+.phone-qr { margin-top: 14px; }
+.phone-qr svg {
+  width: 176px; height: 176px; display: block;
+  background: #fff; padding: 8px; border-radius: 2px; border: 1px solid var(--hair-2);
+}
+.phone-qr .small { color: var(--ink-3); }

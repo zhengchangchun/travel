@@ -15,6 +15,23 @@
     <p class="hint">账号、昵称头像是站点的；默认城市与默认出行方式会带到规划页。</p>
     <div id="main"></div>
 
+    <!-- 手机访问（2026-11-24 用户「手机也能用」）：同一 Wi-Fi 下手机/平板直接打开；
+         地址在这儿，怕输错就扫右边那个码（码是页面现画的，不连外部服务） -->
+    <div class="card" id="phone-card">
+      <h2>手机也能用</h2>
+      <p class="hint">
+        服务默认管理局域网（启动时只在 0.0.0.0 监听），同一 Wi-Fi 下手机或平板用下面这个地址打开，就是同一份行程。
+        手机上得用同一个账号登录；只想本机用，就用 <code>HOST=127.0.0.1</code> 再起服务。
+      </p>
+      <div class="row phone-row">
+        <span class="phone-url" id="phone-url">—</span>
+        <button class="btn" type="button" id="phone-copy">复制地址</button>
+        <span class="form-msg" id="phone-msg"></span>
+      </div>
+      <div class="phone-qr" id="phone-qr"></div>
+      <p class="hint" id="phone-note"></p>
+    </div>
+
     <!-- 备份：数据库快照 + 分享包 + 实景图 打成一个 zip（data/backups/） -->
     <div class="card" id="backup-card" style="display:none">
       <h2>备份</h2>
@@ -31,6 +48,7 @@
 
   <script src="/js/site.js"></script>
   <script src="/js/headbar.js"></script>
+  <script src="/js/qr.js"></script>
   <script src="/js/settings.js"></script>
 </body>
 </html>

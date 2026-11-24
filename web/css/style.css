@@ -584,6 +584,36 @@ button.danger:hover { background: #ad2102; }
   .infocard { width: auto; left: 12px; right: 12px; }
 }
 
+/* ---------- 手机（<720px）：地图钉在上半屏，卡片在下面滚（2026-11-24 用户「手机也能用」） ----------
+   原来窄屏（<1100）是「左栏 42vh / 地图 56vh / 右栏 60vh」各自内部滚动 ——
+   手机上等于一进来先看到一摞卡片、地图要往下翻，挑完点也看不见线（实测 390×844：地图落在首屏之外）。
+   改成：① 地图置顶、sticky 钉在头部下面，一直看得见；② 左右两栏取消内部滚动、正常往下排；
+   ③ 能点的一律抬到 ≥44px（Apple 建议值）—— 原来输入框/卡片头只有 19px，手指点不准。 */
+@media (max-width: 720px) {
+  #app { display: flex; flex-direction: column; height: auto; min-height: 100svh; overflow: visible; }
+  #map-wrap {
+    order: -1; position: sticky; top: var(--head-h, 56px); z-index: 6;
+    flex: none; height: 46svh; min-height: 260px; max-height: 460px;
+    border-top: 1px solid var(--line-2); box-shadow: 0 10px 26px rgba(0, 0, 0, .3);
+  }
+  #sidebar.col-left, #right-panel.col-right {
+    width: 100%; min-width: 0; height: auto; max-height: none; overflow: visible;
+    border: 0; border-top: 1px solid var(--line);
+  }
+  #sidebar.collapsed, #right-panel.collapsed { max-height: none; }
+  .right-body { overflow-y: visible; }
+  /* 手指尺寸 */
+  button, .btn, .chip, input, select, .poi-item, .city-item, .base-box select { min-height: 44px; }
+  #chips { overflow-x: auto; }
+  #chips .chip { min-height: 34px; }
+  .sidebar-toggle, .panel-toggle { width: 44px; height: 44px; }
+  .tip { width: 24px; height: 24px; }
+  .infocard { top: 8px; left: 8px; right: 8px; max-height: 72svh; overflow-y: auto; }
+  .map-status, .view-count, .view-hint { font-size: 11.5px; padding: 5px 8px; max-width: 74%; }
+  .map-status { bottom: 26px; }   /* 让开地图左下角的高德标记 */
+  .view-hint { top: 46px; }
+}
+
 /* ---------- 详情面板：图集 / 招牌菜 / 诚实标注（T5） ---------- */
 .gallery { position: relative; margin-bottom: 8px; }
 .gallery-main {
@@ -1472,3 +1502,12 @@ button:disabled { cursor: not-allowed; }
 .card h2,
 .modal-box h3 { font-family: var(--display, "Songti SC"), "STSong", serif; font-weight: 900; letter-spacing: .03em; font-feature-settings: "palt" 1; }
 #sidebar .brand h1 { font-size: 20px; }
+
+/* ---------- 手机收口（放文件最后，才盖得住前面那些桌面规则）----------
+   .card-bar（整条可点）与两个收展按钮在文件中部另有尺寸定义 ⇒ 这里再抬一次。 */
+@media (max-width: 720px) {
+  section.card[data-card] > .card-bar { min-height: 44px; }
+  .sidebar-toggle, #sidebar.collapsed .sidebar-toggle,
+  .panel-toggle, #right-panel.collapsed .panel-toggle { width: 44px; height: 44px; }
+  .bar-note, .card-sub { font-size: 12px; }
+}

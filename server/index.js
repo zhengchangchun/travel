@@ -28,6 +28,7 @@ const legacyRoutes = require('./routes/legacy');
 const buddiesRoutes = require('./routes/buddies');
 const itemsRoutes = require('./routes/items');
 const backupRoutes = require('./routes/backup');
+const phoneRoutes = require('./routes/phone');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
 
@@ -189,6 +190,7 @@ function createApp(opts = {}) {
     ...buddiesRoutes,
     ...itemsRoutes,
     ...backupRoutes,
+    ...phoneRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));
@@ -379,11 +381,16 @@ function createApp(opts = {}) {
 function start(overrides = {}) {
   const app = createApp(overrides);
   const { port } = app.config;
-  // 默认只听本机；要给手机/同事看就 HOST=0.0.0.0（同网段可直接打开，数据仍要登录才看得到）
-  const host = process.env.HOST || '127.0.0.1';
+  // 默认开局域网（2026-11-24 用户「手机也能用」）：同一 Wi-Fi 的手机/平板能直接打开，
+  // 首页、登录、分享页以外的东西仍然要登录才看得到。只想本机用就 HOST=127.0.0.1。
+  const host = process.env.HOST || '0.0.0.0';
   app.server.listen(port, host, () => {
     console.log(`服务已启动: http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`);
-    if (host === '0.0.0.0') console.log(`同一 Wi-Fi 下也能开: http://<本机局域网IP>:${port}`);
+    if (host === '0.0.0.0') {
+      const lan = phoneRoutes.lanAddresses ? phoneRoutes.lanAddresses(port) : [];
+      if (lan.length) console.log(`手机也能开（同一 Wi-Fi）: ${lan.map((x) => x.url).join('  ')}`);
+      else console.log(`手机也能开：同一 Wi-Fi 下用本机局域网 IP，端口 ${port}（个人设置页有二维码）`);
+    }
   });
   return app;
 }

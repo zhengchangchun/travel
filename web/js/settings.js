@@ -128,7 +128,59 @@
     loadBackups();
   }
 
+  /* ---------- 手机访问：地址 + 现画的二维码（2026-11-24） ---------- */
+  async function wirePhone() {
+    const card = $('phone-card');
+    if (!card) return;
+    const urlEl = $('phone-url');
+    const noteEl = $('phone-note');
+    let info = null;
+    try {
+      info = await Site.api.request('/api/phone');
+    } catch (err) {
+      urlEl.textContent = '取不到地址：' + (err.message || '未知错误');
+      return;
+    }
+    if (!info.primary) {
+      urlEl.textContent = '没有找到可用的局域网地址';
+      noteEl.textContent = '这台机器现在没连 Wi-Fi / 网线？连上后刷新本页。';
+      return;
+    }
+    urlEl.textContent = info.primary;
+    noteEl.textContent = info.lanOpen
+      ? info.note + '；手机浏览器里打开这个地址就行。'
+      : '现在这里是「只本机」模式（HOST=127.0.0.1），手机连不上 —— 去掉这个环境变量再起服务。';
+    const other = (info.addresses || []).slice(1).map((a) => a.url);
+    if (other.length) noteEl.textContent += ' 多个网卡都可以：' + other.join('、');
+    const copy = $('phone-copy');
+    if (copy) {
+      copy.onclick = async () => {
+        const msg = $('phone-msg');
+        try {
+          await navigator.clipboard.writeText(info.primary);
+          msg.className = 'form-msg ok';
+          msg.textContent = '已复制';
+        } catch (err) {
+          msg.className = 'form-msg';
+          msg.textContent = '复制失败，手动选一下上面的地址';
+        }
+        setTimeout(() => {
+          msg.textContent = '';
+        }, 2400);
+      };
+    }
+    // 二维码：本地现画（web/js/qr.js），不连任何外部服务；地址太长就不画
+    const box = $('phone-qr');
+    if (box && window.TravelQR) {
+      const qr = info.lanOpen ? window.TravelQR.encode(info.primary) : null;
+      if (qr) box.innerHTML = window.TravelQR.toSvg(qr, { quiet: 3 });
+      else if (!info.lanOpen) box.innerHTML = '<span class="muted small">（只本机模式下没有可扫的码）</span>';
+      else box.innerHTML = '<span class="muted small">（地址太长，扫码请手动输）</span>';
+    }
+  }
+
   (async function init() {
+    wirePhone();
     let started = null;
     if (window.TravelHead) started = await window.TravelHead.start();
     else started = { user: (await Site.api.me()).user };
