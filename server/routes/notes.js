@@ -25,6 +25,7 @@ const {
   tidyText,
   nameOfType,
   kindOfType,
+  extractUrls,
 } = require('../note-share');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -186,6 +187,61 @@ async function fetchAndIngest(ctx, { url, city, save, hooks, userId }) {
   }
   const out = await ingestFetched(ctx, r, { city: city || null, save: !!save, userId: userId ?? null });
   return Object.assign({ fetch: { platform: r.platform, mode: r.mode, url: r.url } }, out);
+}
+
+// 一次粘多条链接（2026-11-24，对标圆周旅迹 5.0 的「多条整合解析」）：
+// 逐条抓、逐条落库，**一条失败不影响其他条**，最后把每条的结果如实报回去。
+// 上限 10 条（再多就是刷配额了）；同一条链接重复出现只抓一次。
+const FETCH_MANY_MAX = 10;
+
+async function fetchManyAndIngest(ctx, { urls, city, save, hooks, userId }) {
+  const list = (Array.isArray(urls) ? urls : []).map((u) => String(u || '').trim()).filter(Boolean);
+  const uniq = [];
+  const seen = new Set();
+  list.forEach((u) => {
+    if (seen.has(u)) return;
+    seen.add(u);
+    uniq.push(u);
+  });
+  const picked = uniq.slice(0, FETCH_MANY_MAX);
+  const items = [];
+  for (let i = 0; i < picked.length; i += 1) {
+    const url = picked[i];
+    if (hooks && hooks.isCanceled && hooks.isCanceled()) {
+      items.push({ url, ok: false, error: 'CANCELED', message: '已取消' });
+      break;
+    }
+    if (hooks && hooks.onProgress) hooks.onProgress('第 ' + (i + 1) + '/' + picked.length + ' 条');
+    try {
+      const r = await ctx.noteFetch.fetchNote({ url, hooks });
+      if (!r || r.ok !== true) {
+        const info = r || {};
+        items.push({ url, ok: false, error: info.error || 'FETCH_FAIL', message: info.message || '抓取失败' });
+        continue;
+      }
+      const out = await ingestFetched(ctx, r, { city: city || null, save: !!save, userId: userId ?? null });
+      const note = out && out.note;
+      items.push({
+        url,
+        ok: true,
+        note_id: note ? note.id : null,
+        title: note ? note.title : '',
+        images: note && Array.isArray(note.images) ? note.images.length : 0,
+        updated: !!(out && out.updated),
+        platform: r.platform || '',
+      });
+    } catch (err) {
+      items.push({ url, ok: false, error: (err && err.code) || 'FETCH_FAIL', message: (err && err.message) || '抓取失败' });
+    }
+  }
+  const okCount = items.filter((it) => it.ok).length;
+  return {
+    total: picked.length,
+    ok: okCount,
+    failed: items.length - okCount,
+    skipped: uniq.length - picked.length,
+    items,
+  };
 }
 
 // 搜一批候选：封面也下到本地（否则页面直连平台 CDN 会 403，且「下载后缓存到本地」不成立）
@@ -398,6 +454,15 @@ module.exports = [
         const url = urlFromBody(ctx, b);
         const job = ctx.noteJobs.start('fetch', { url }, (hooks) =>
           fetchAndIngest(ctx, { url, city: b.city || null, save: !!b.save, hooks, userId: me(ctx).id })
+        );
+        return ctx.noteJobs.view(job);
+      }
+      if (kind === 'fetch-many') {
+        const raw = String(b.share_text || b.text || b.urls || '').trim();
+        const urls = Array.isArray(b.urls) ? b.urls : extractUrls(raw);
+        if (!urls.length) throw new ctx.HttpError(400, 'BAD_REQUEST', '这段文字里没找到链接');
+        const job = ctx.noteJobs.start('fetch-many', { count: urls.length }, (hooks) =>
+          fetchManyAndIngest(ctx, { urls, city: b.city || null, save: !!b.save, hooks, userId: me(ctx).id })
         );
         return ctx.noteJobs.view(job);
       }

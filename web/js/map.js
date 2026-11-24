@@ -794,10 +794,20 @@
     routeSelected = null;
   }
 
+  // 按天配色（2026-11-24，对标圆周旅迹）：多天行程每天一种颜色，一眼看出「今天走哪条」。
+  // 单天行程不启用（保持按出行方式配色，那套颜色是图例语义）。
+  const DAY_COLORS = ['#1677ff', '#e8760c', '#22a06b', '#8a6cf0', '#d4380d', '#08979c', '#c41d7f', '#7cb305'];
+
+  function dayStyle(day) {
+    const i = Math.max(0, (Number(day) || 1) - 1) % DAY_COLORS.length;
+    return { strokeColor: DAY_COLORS[i], strokeWeight: 6, strokeStyle: 'solid' };
+  }
+
   function drawRoute(legs, mode, handlers) {
     clearRoute();
     if (!map || !AMap) return;
     const all = [];
+    const days = handlers && Array.isArray(handlers.days) ? handlers.days : null;
     (legs || []).forEach((leg) => {
       const failed = !leg.ok || leg.degraded;
       let path = Array.isArray(leg.polyline) ? leg.polyline : [];
@@ -808,7 +818,8 @@
         ];
       }
       const legMode = leg.mode || mode;
-      const style = failed ? FAILED_STYLE : routeStyle(legMode);
+      const day = days ? days[leg.index] : null;
+      const style = failed ? FAILED_STYLE : day ? dayStyle(day) : routeStyle(legMode);
       const line = new AMap.Polyline({
         path,
         ...style,

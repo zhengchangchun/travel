@@ -147,6 +147,18 @@
   }
 
   // ---------- ① 抓取（链接 / 分享文案） ----------
+  // 一次粘多条（2026-11-24，对标圆周旅迹 5.0）：文案里有几个链接就抓几个，逐条报结果。
+  function countUrls(text) {
+    const re = /https?:\/\/[^\s"'<>）)】\]\u4e00-\u9fa5，。、；：！？【】（）]+/gi;
+    const seen = new Set();
+    let m;
+    while ((m = re.exec(String(text || ''))) !== null) {
+      const u = m[0].replace(/[，。、；：！？,.!?;:'"）)】\]]+$/g, '');
+      if (u) seen.add(u);
+    }
+    return seen.size;
+  }
+
   async function onFetch() {
     if (st.busy) {
       setHint('上一个任务还在跑：等它跑完，或点「取消」', true);
@@ -156,6 +168,11 @@
     const raw = String((linkEl && linkEl.value) || $('note-share').value || '').trim();
     if (!raw) {
       setHint('先粘一条链接（小红书/抖音/快手/B站），或整段分享文案', true);
+      return;
+    }
+    const n = countUrls(raw);
+    if (n > 1) {
+      await onFetchMany(raw, n);
       return;
     }
     st.busy = true;
@@ -192,6 +209,46 @@
       }
       await refresh();
       await openDetail(note.id);
+    } finally {
+      st.busy = false;
+    }
+  }
+
+  // 多条一起抓：逐条报「第几条 / 成功几条」，失败的单独列出来（不因为一条失败就整批白跑）
+  async function onFetchMany(raw, n) {
+    st.busy = true;
+    setHint('一次抓 ' + n + ' 条：本机浏览器逐条跑，可能要几分钟');
+    try {
+      const r = await runJob('fetch-many', { share_text: raw, city: st.city, save: true }, '批量抓取');
+      if (r.canceled) {
+        setHint('已取消（已抓到的那些已经存下来了）');
+        return;
+      }
+      if (!r.ok) {
+        setHint('批量抓取失败：' + human(r.err), true);
+        return;
+      }
+      const res = r.result || {};
+      const items = Array.isArray(res.items) ? res.items : [];
+      const okItems = items.filter((it) => it.ok);
+      const badItems = items.filter((it) => !it.ok);
+      const bits = ['抓到 ' + okItems.length + ' / ' + (res.total || items.length) + ' 条'];
+      if (res.skipped) bits.push('（超出上限跳过 ' + res.skipped + ' 条）');
+      if (badItems.length) bits.push('· 失败 ' + badItems.length + ' 条：' + badItems.map((it) => (it.message || it.error || '').slice(0, 18)).join('、'));
+      setHint(bits.join(' '), badItems.length > 0);
+      const linkEl = $('note-link');
+      if (linkEl) linkEl.value = '';
+      // 抓完顺手给每条提地名（零调用）
+      for (const it of okItems) {
+        if (!it.note_id) continue;
+        try {
+          await API.notePlaces(it.note_id, {});
+        } catch (err) {
+          /* 单条提取失败不影响其他 */
+        }
+      }
+      await refresh();
+      if (okItems.length === 1 && okItems[0].note_id) await openDetail(okItems[0].note_id);
     } finally {
       st.busy = false;
     }

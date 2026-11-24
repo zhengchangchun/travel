@@ -162,11 +162,25 @@
       return;
     }
     const failed = lastData.failed || [];
+    // 多天行程：把「几天 / 每天几个点」也摆出来（对标圆周旅迹的行程总览）
+    const days = lastPins.map((p) => Number(p && p.day) || 1);
+    const dayCount = days.reduce((m, d) => Math.max(m, d), 1);
+    const perDay = {};
+    days.forEach((d) => {
+      perDay[d] = (perDay[d] || 0) + 1;
+    });
+    const dayBits =
+      dayCount > 1
+        ? '<span class="metric"><b>' + dayCount + ' 天</b><small>' +
+          Array.from({ length: dayCount }, (_, i) => (perDay[i + 1] || 0) + ' 点').join(' · ') +
+          '</small></span>'
+        : '';
     // 「出行方式」不再在这行里说一遍：上面那排 route-modes 芯片就是它，选中态一眼看得出
     el.innerHTML =
       '<div class="route-metrics">' +
       '<span class="metric"><b>' + esc(fmtDistance(lastData.totalDistance)) + '</b><small>总里程</small></span>' +
       '<span class="metric"><b>' + esc(fmtDuration(lastData.totalDuration)) + '</b><small>总耗时</small></span>' +
+      dayBits +
       '</div>' +
       (failed.length
         ? '<div class="route-warn">⚠ ' + failed.length + ' 段无法规划，已用虚线代替</div>'
@@ -386,9 +400,13 @@
       renderModesNote();
       // 挑点视图里只想看这条线，别把用户的镜头拽走（fit=false 时 lastFitKey 不动，进行程视图还会自动取景）
       const fit = handlers.fit !== false && key !== lastFitKey;
+      // 多天行程：把「这一段属于第几天」一起交给地图 —— 每天一种颜色（对标圆周旅迹的按天配色）
+      const dayOfLeg = lastPins.slice(0, Math.max(0, lastPins.length - 1)).map((p) => Number(p && p.day) || 1);
+      const multiDay = dayOfLeg.some((d) => d > 1);
       MapCtl.drawRoute(data.legs, mode, {
         onLegClick: (leg) => selectLeg(leg.index),
         fit,
+        days: multiDay ? dayOfLeg : null,
       });
       if (fit) lastFitKey = key;
       // 重画后把选中态补回去（clearRoute 会把地图那边清掉）

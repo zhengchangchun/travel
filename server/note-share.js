@@ -101,6 +101,22 @@ function extractUrl(text) {
   return m[0].replace(/[，。、；：！？,.!?;:'"）)】\]]+$/g, '');
 }
 
+// 取全部链接（2026-11-24：一次粘多条攻略一起解析 —— 对标圆周旅迹 5.0 的「多条整合解析」）。
+// 去重、保序；同一篇笔记的短链与长链算两条（各自抓，抓回来按 url 去重由上层处理）。
+function extractUrls(text) {
+  const re = /https?:\/\/[^\s"'<>）)】\]\u4e00-\u9fa5，。、；：！？【】（）]+/gi;
+  const out = [];
+  const seen = new Set();
+  let m;
+  while ((m = re.exec(String(text || ''))) !== null) {
+    const url = m[0].replace(/[，。、；：！？,.!?;:'"）)】\]]+$/g, '');
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
 const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{2BFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu;
 
 // 分享文案里的引导语（认出平台用的，不是内容）
@@ -384,6 +400,7 @@ module.exports = {
   extractPlaceNames,
   cleanContent,
   extractUrl,
+  extractUrls,
   extractTitle,
   extractAuthor,
   sourceOfUrl,
