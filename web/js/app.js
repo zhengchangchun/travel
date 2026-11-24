@@ -33,7 +33,9 @@
   const DEFAULT_RATING_FILTER = '4.0';
 
   // P8 操作便利：侧栏卡片折叠状态（localStorage）+「筛选 · 结果」分页
-  const CARDS_KEY = 'travel.cards';
+  // v2（2026-11-24）：默认显隐改了（我的行程默认收起等）——升版让浏览器里存的旧状态不再生效，
+  // 否则新默认永远看不见。用户手动折叠过的状态照旧会被记下来。
+  const CARDS_KEY = 'travel.cards.v2';
   const RESULT_PAGE = 300; // 一次渲染多少条（其余用「显示更多」按钮放）
 
   // 点的顺序（用户 2026-11-17）：「默认顺序先按地点之间的距离计算」
@@ -134,7 +136,12 @@
   }
 
   // ---------- P8 操作便利：侧栏卡片可折叠（点标题条；状态记 localStorage） ----------
-  // 默认：城市 / 笔记收起（低频、占地方），搜索 / 筛选展开；住宿锚点看有没有设锚点
+  // 默认按「使用流程里的位置 + 操作频率」定（2026-11-24 用户：「按照使用流程 每个的操作频率
+  // 合理修改显示和隐藏」）：
+  //   高频 = 常显：搜索、筛选·结果（挑点主战场）、我的选择（排行程主战场）
+  //   中频 = 常显但排在后：住宿锚点（有锚点才展开，没设过时收起）
+  //   低频 = 默认收起，点标题条展开：城市（每趟设一次，且顶栏另有入口）、
+  //          笔记 → 找地方（只在想从笔记加地方时用）、我的行程（建趟/切趟/分享各一次）
   const cardState = {};
 
   function loadCardState() {
@@ -167,8 +174,10 @@
   function cardExpanded(name) {
     if (Object.prototype.hasOwnProperty.call(cardState, name)) return cardState[name];
     if (name === 'base') return state.bases.length > 0;
-    if (name === 'city') return narrowScreen(); // 只在窄屏默认展开（宽屏保持收起，侧栏短）
+    // 城市：使用流程的第一步 ⇒ 窄屏默认展开（输入框得看得见；宽屏顶部有「当前地区」入口，收起省地方）
+    if (name === 'city') return narrowScreen();
     if (name === 'note') return false;
+    if (name === 'trip') return false; // 一城多趟的管理入口：低频，摘要行就够
     return true; // search / filter
   }
 
@@ -2711,11 +2720,12 @@
         : '<option value="">（还没有行程）</option>';
       sel.disabled = trips.length === 0;
     }
-    $('trip-name').textContent = state.trip
-      ? '#' + state.trip.id + ' ' + state.trip.title
-      : '未创建';
+    // 摘要行只放趟名（#17 这种编号对读者没用，还会把「几个点」挤掉）
+    $('trip-name').textContent = state.trip ? state.trip.title : '未创建';
     renderTripBuddies();
     const pins = state.trip ? await API.listPins(state.trip.id) : [];
+    const tripCount = $('trip-count');
+    if (tripCount) tripCount.textContent = String(pins.length);
     UI.renderTripPins(
       $('trip-list'),
       pins,

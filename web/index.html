@@ -162,25 +162,6 @@
             </div>
           </div>
         </section>
-
-        <section class="card trip-card">
-          <h2>我的行程</h2>
-          <p class="card-sub">一座城市可以有多趟：上面切换，下面这趟的清单（与地图上的旗子无关）</p>
-          <div class="row trip-switch-row">
-            <label class="trip-switch-label" for="trip-switch">当前一趟</label>
-            <select id="trip-switch" class="trip-switch" title="切到另一趟（该城别的行程）"></select>
-          </div>
-          <div class="row">
-            <button id="trip-new-btn" class="ghost">新建一趟</button>
-            <button id="trip-delete-btn" class="ghost" title="删除当前这一趟（别的趟不受影响）">删除这一趟</button>
-            <button id="trip-share-btn" class="ghost" title="生成可发给别人的分享包（网页＋文本）">分享</button>
-            <span id="trip-name" class="trip-name">未创建</span>
-            <span id="trip-buddies" class="trip-buddies"></span>
-          </div>
-          <ul id="trip-list" class="poi-list"></ul>
-          <div id="share-result" class="share-result hidden"></div>
-        </section>
-
         <section class="card" id="note-card" data-card="note">
           <h2 class="card-bar">笔记 → 找地方 <span class="bar-right"><span class="bar-note">本地 <b id="note-count">0</b></span><span class="tip" data-tip="粘链接（小红书 / 抖音 / 快手 / B站）或整段分享文案，本机自己抓（用已登录的浏览器 profile）" tabindex="0" aria-label="用法说明">i</span><span class="chev">⌄</span></span></h2>
           <div class="card-body">
@@ -218,6 +199,28 @@
             <div id="note-detail" class="note-detail hidden"></div>
           </div>
         </section>
+        <!-- 我的行程：一城多趟的「管理」入口 —— 属于低频（建趟/切趟/分享各一次），
+             默认收起成一行摘要（这一趟 + 几个点）；要动的时候点标题条展开。 -->
+        <section class="card trip-card" data-card="trip">
+          <h2 class="card-bar">我的行程 <span class="bar-right"><span class="bar-note"><b id="trip-count">0</b> 个点 · <b id="trip-name">未创建</b></span><span class="chev">⌄</span></span></h2>
+          <div class="card-body">
+            <p class="card-sub">一座城市可以有多趟：上面切换，下面这趟的清单（与地图上的旗子无关）</p>
+            <div class="row trip-switch-row">
+              <label class="trip-switch-label" for="trip-switch">当前一趟</label>
+              <select id="trip-switch" class="trip-switch" title="切到另一趟（该城别的行程）"></select>
+            </div>
+            <div class="row">
+              <button id="trip-new-btn" class="ghost">新建一趟</button>
+              <button id="trip-delete-btn" class="ghost" title="删除当前这一趟（别的趟不受影响）">删除这一趟</button>
+              <button id="trip-share-btn" class="ghost" title="生成可发给别人的分享包（网页＋文本）">分享</button>
+              <span id="trip-buddies" class="trip-buddies"></span>
+            </div>
+            <ul id="trip-list" class="poi-list"></ul>
+            <div id="share-result" class="share-result hidden"></div>
+          </div>
+        </section>
+
+
       </div>
     </aside>
   </div>

@@ -1523,3 +1523,8 @@ button:disabled { cursor: not-allowed; }
 .add-toggle.hidden { display: none; }
 .pin-card.add-collapsed #add-combo { display: none; }
 .pin-card.add-collapsed .card-sub { display: none; }
+
+/* 我的行程卡收起来时是一行摘要：趟名 + 几个点。
+   注意别用百分比 —— 这个 bar-note 的包含块是「按内容宽收缩」的 .bar-right，百分比会解成很窄的一截，
+   文案就被省略号切掉（实测 141px 的文案被压到 130px）。给个像素上限 + 不许缩，长趟名仍能省略。 */
+section.card[data-card].trip-card > .card-bar .bar-note { max-width: 210px; flex: 0 0 auto; min-width: 0; }
