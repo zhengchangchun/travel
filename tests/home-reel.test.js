@@ -15,7 +15,7 @@ const HTML = fs.readFileSync(path.join(ROOT, 'web/home.html'), 'utf8');
 const CSS = fs.readFileSync(path.join(ROOT, 'web/css/home.css'), 'utf8');
 const JS = fs.readFileSync(path.join(ROOT, 'web/js/home.js'), 'utf8');
 
-const KICKS = ['贴一条链接', '在地图上挑', '让它排顺序', '发出去'];
+const KICKS = ['贴一条链接', '翻开看排行', '让它排顺序', '发给同行的人'];
 
 function slides() {
   return HTML.split('<article class="reel-slide').slice(1);
@@ -28,7 +28,9 @@ test('03 卷轴：四条重点，各带小标签 / 主张 / 一句话', () => {
     const body = chunk.slice(0, chunk.indexOf('</article>'));
     assert.match(body, /class="reel-ico"/, `第 ${i + 1} 条缺图标`);
     assert.match(body, /class="reel-kick"/, `第 ${i + 1} 条缺小标签`);
-    assert.match(body, /class="reel-claim"[^>]*>不用再[^<]+<i>。<\/i>/, `第 ${i + 1} 条的主张要写成「不用再…」（痛点开头，好懂）`);
+    const claim = body.match(/class="reel-claim">([^<]+)<i>。<\/i>/);
+    assert.ok(claim, `第 ${i + 1} 条的主张要以铜色句号收尾`);
+    assert.ok(claim[1].length >= 4 && claim[1].length <= 9, `第 ${i + 1} 条的主张长度（${claim[1].length}）应在 4–9 字，否则卷轴里会折行`);
     assert.match(body, /class="reel-text">[^<]{10,}</, `第 ${i + 1} 条缺一句话说明`);
     assert.ok(body.includes(`class="reel-mark" aria-hidden="true">0${i + 1}<`), `第 ${i + 1} 条的水印编号应是 0${i + 1}`);
     assert.ok(body.includes(KICKS[i]), `第 ${i + 1} 条小标签应是「${KICKS[i]}」`);
