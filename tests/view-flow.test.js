@@ -9,15 +9,21 @@ const UI = fs.readFileSync(path.join(ROOT, 'web', 'js', 'ui.js'), 'utf8');
 const HTML = fs.readFileSync(path.join(ROOT, 'web', 'index.html'), 'utf8');
 const CSS = fs.readFileSync(path.join(ROOT, 'web', 'css', 'style.css'), 'utf8');
 
-test('切城市常量：CITY_ZOOM=13，MIN_MARKER_ZOOM=13', () => {
-  assert.match(APP, /const\s+CITY_ZOOM\s*=\s*13/, '缺 CITY_ZOOM=13');
+test('切城市常量：落在核心区（兜底 14 级），MIN_MARKER_ZOOM=13', () => {
+  // 2026-11-24 用户改口径：「打开时默认定点在核心区域，不是查看整个城市」⇒
+  // 原来的 CITY_ZOOM=13（整城视野）不再是默认，改成核心区 + 兜底 14 级。
+  assert.match(APP, /const\s+CORE_ZOOM_FALLBACK\s*=\s*14/, '缺 CORE_ZOOM_FALLBACK=14');
+  assert.ok(!/const\s+CITY_ZOOM/.test(APP), 'CITY_ZOOM 应已随整城默认一起退场');
   assert.match(APP, /const\s+MIN_MARKER_ZOOM\s*=\s*13/, '缺 MIN_MARKER_ZOOM=13');
 });
 
 test('先定位后加载：切城市用 setZoomAndCenter，并等 moveend', () => {
   assert.match(APP, /MapCtl\.setZoomAndCenter/, '未调用 setZoomAndCenter');
   assert.match(APP, /await\s+MapCtl\.setZoomAndCenter/, '未 await 相机落定（moveend）');
-  assert.match(APP, /定位中/, '缺「定位中」提示');
+  assert.ok(
+    /已定格在|定位到/.test(APP),
+    '缺落位提示（「已定格在 …核心区」或「定位到 …城区」）'
+  );
 });
 
 test('视野加载：onMoveEnd 注册 + bbox 请求 + getBounds', () => {
@@ -105,7 +111,11 @@ test('L12 筛选不得动地图：分类/评分/只看选中后不 fitView、不
   assert.match(APP, /function\s+onPickRating[\s\S]*?refresh\(\);/, '评分筛选不应触发 fit');
   assert.match(APP, /function\s+onToggleOnlySelected[\s\S]*?refresh\(\);/, '只看选中不应触发 fit');
   assert.ok(!/setFitView/.test(APP), 'app.js 不应调用 setFitView');
-  // 筛选路径不得出现 setZoomAndCenter：仅 setCity 允许
+  // 筛选路径不得出现 setZoomAndCenter：只允许出现在切城市那一段（核心区 + 兜底两条分支）
   const zoomCenterCalls = (APP.match(/setZoomAndCenter/g) || []).length;
-  assert.strictEqual(zoomCenterCalls, 1, 'app.js 只应在切城市处调用一次 setZoomAndCenter');
+  assert.strictEqual(zoomCenterCalls, 2, 'setZoomAndCenter 只该有两条：核心区落位 + 城市中心兜底');
+  const setCity = APP.match(/async function setCity[\s\S]*?\n  \}/);
+  assert.ok(setCity, '缺 setCity');
+  const inside = (setCity[0].match(/setZoomAndCenter/g) || []).length;
+  assert.strictEqual(inside, 2, '这两次都必须在切城市里，别处不许动相机');
 });

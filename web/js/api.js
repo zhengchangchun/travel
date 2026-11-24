@@ -74,6 +74,8 @@
     claimLegacy: () => request('/api/legacy/claim', post({})),
     searchCity: (q) => request('/api/city/search?' + qs({ q })),
     cityBoundary: (city) => request('/api/city/boundary?' + qs({ city })),
+    // 打开城市时先落在哪（核心区），见 server/routes/city.js 的 /api/city/core
+    cityCore: (city) => request('/api/city/core?' + qs({ city })),
     searchPoi: (params) => request('/api/poi/search?' + qs(params)),
     nearbyPoi: (params) => request('/api/poi/nearby?' + qs(params)),
     poiDetail: (id) => request('/api/poi/detail?' + qs({ id })),

@@ -142,19 +142,24 @@ test('map.fitOutline：按外接矩形收相机，moveend 后 resolve；没 bbox
   assert.strictEqual(h.stats.bounds.length, 1);
 });
 
-test('app.js：切城市先走「城市轮廓」路径，拿不到才退回主城区 + z13', () => {
-  assert.match(APP, /async function loadCityOutline\(city\)/, '缺 loadCityOutline');
-  assert.match(APP, /API\.cityBoundary\(/, '要走 /api/city/boundary');
-  assert.match(APP, /MapCtl\.drawCityOutline\(/, '拿到轮廓要画边框');
-  assert.match(APP, /await MapCtl\.fitOutline\(outline\.bbox\)/, '要把相机收到全城');
+test('app.js：切城市先落在核心区；整城轮廓改成「看全城」按需触发', () => {
+  // 2026-11-24 用户：「打开时默认定点在核心区域 不是地图上查看整个城市」
+  // ⇒ 切城市不再 fitOutline，而是 setZoomAndCenter 到核心点；轮廓留给 fitWholeCity。
+  assert.match(APP, /async function loadCityOutline\(city\)/, '缺 loadCityOutline（看全城要用）');
+  assert.match(APP, /API\.cityCore\(/, '切城市要先问 /api/city/core');
+  assert.match(APP, /async function fitWholeCity\(/, '缺「看全城」');
   const setCity = APP.match(/async function setCity[\s\S]*?\n  \}/);
   assert.ok(setCity, '缺 setCity');
-  const outlineAt = setCity[0].indexOf('loadCityOutline');
-  const fallbackAt = setCity[0].indexOf('setZoomAndCenter');
-  assert.ok(outlineAt >= 0 && fallbackAt > outlineAt, '轮廓路径要在主城区兜底之前');
-  assert.match(setCity[0], /else if \(center && MapCtl\.isReady\(\)\)/, '轮廓拿不到才退回老路径');
-  assert.match(APP, /state\.outline = null;/);
+  assert.ok(!/fitOutline/.test(setCity[0]), '切城市不该再把相机收到全城');
+  assert.ok(setCity[0].indexOf('cityCore') < setCity[0].indexOf('setZoomAndCenter'), '先取核心点再落相机');
+  const fit = APP.match(/async function fitWholeCity[\s\S]*?\n  \}/);
+  assert.ok(fit, '缺 fitWholeCity');
+  assert.match(fit[0], /loadCityOutline/, '看全城要能现取轮廓');
+  assert.match(fit[0], /fitOutline\(outline\.bbox\)/, '看全城要把相机收到全城');
+  assert.match(fit[0], /fetchPoisInView/, '收到全城后要让「低倍率不落点 + 全城精选」跑起来');
+  assert.match(APP, /state\.outline = null;/, '核心区下要把上一次的轮廓清掉');
   assert.match(API, /cityBoundary: \(city\)/, 'api.js 缺 cityBoundary');
+  assert.match(API, /cityCore: \(city\)/, 'api.js 缺 cityCore');
 });
 
 test('app.js：整城视野不落点（倍率门槛仍在），放大进城才落点', () => {

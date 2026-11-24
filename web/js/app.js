@@ -19,7 +19,20 @@
   const BASE_RADIUS_KEY = 'travel.baseRadiusM';
 
   // 切城市落主城区用的倍率；倍率阈值是「是否加载视野内地点」的唯一门控
-  const CITY_ZOOM = 13;
+  // 有没有可用坐标：null/undefined/'' 一律不算 —— Number(null) 是 0，不挡住就会把人送到 (0,0)
+  function hasLngLat(o) {
+    if (!o) return false;
+    const lng = o.lng;
+    const lat = o.lat;
+    if (lng === null || lng === undefined || lng === '' || lat === null || lat === undefined || lat === '') {
+      return false;
+    }
+    return Number.isFinite(Number(lng)) && Number.isFinite(Number(lat));
+  }
+
+  // 打开城市落在哪：核心区（/api/city/core）→ 拿不到就城市中心 + 14 级。
+  // 「整城视野」2026-11-24 起不是默认，改成地图右上角「看全城」按需触发。
+  const CORE_ZOOM_FALLBACK = 14;
   const MIN_MARKER_ZOOM = 13;
   // 按视野自动采集的最低倍率（默认 13）；与落点阈值同值
   const MIN_COLLECT_ZOOM = 13;
@@ -2028,7 +2041,7 @@
   }
 
 
-  // 切城市：清旧旗 → 提示「定位中…」→ 落主城区 + CITY_ZOOM → 等 moveend → 才请求 POI
+  // 切城市：清旧旗 → 落核心区（拿不到就城市中心 + 14 级）→ 等相机落定 → 才请求 POI
   async function setCity(city) {
     state.city = city.name || city;
     $('current-city').textContent = state.city;
@@ -2067,22 +2080,43 @@
         ? { lng: city.lng, lat: city.lat }
         : null;
 
-    // 先给「整座城市的轮廓」：画边框 + 把相机收到全城，这一屏不落点。
-    // 用户 2026-11-12：刚选一个城市，先看轮廓和范围，再进城慢慢选。
-    const outline = await loadCityOutline(state.city);
-    if (outline && MapCtl.isReady()) {
-      state.suppressView = true; // 收到全城引发的 moveend 不重复触发视野加载
-      await MapCtl.fitOutline(outline.bbox); // 等相机落定
+    // 打开一个城市：先落在它的「核心区」（用户 2026-11-24：「页面进入打开的时候默认每个城市
+    // 应该定点在核心区域 不是地图上查看整个城市」）。整城范围改成地图右上角「看全城」按需触发。
+    // 核心点的来源见 server/routes/city.js 的 /api/city/core（精选城市 → 行政区中心 → 无）。
+    let core = null;
+    try {
+      core = await API.cityCore(state.city);
+    } catch (err) {
+      core = null;
+    }
+    const hasCore = hasLngLat(core);
+    if (hasCore && MapCtl.isReady()) {
+      state.suppressView = true; // 落相机引发的 moveend 不重复触发视野加载
+      await MapCtl.setZoomAndCenter(Number(core.lng), Number(core.lat), Number(core.zoom) || 14);
       setTimeout(() => {
         state.suppressView = false;
       }, 700);
-    } else if (center && MapCtl.isReady()) {
-      UI.setStatus('定位中…');
-      state.suppressView = true; // 定位引发的 moveend 不重复触发视野加载
-      await MapCtl.setZoomAndCenter(center.lng, center.lat, CITY_ZOOM); // 等相机落定
-      setTimeout(() => {
-        state.suppressView = false;
-      }, 700);
+      state.outline = null;
+      MapCtl.clearCityOutline(); // 在核心区里，整城轮廓用不上；要看点「看全城」
+      UI.setStatus('已定格在 ' + (core.label || state.city) + ' · 想看整城点右上角「看全城」');
+    } else if (MapCtl.isReady()) {
+      // 核心点拿不到：退到「城市中心 + 14 级」（仍然不是整城视野）。
+      // 城市对象本身没带坐标（从 URL 直接进来就是这样）⇒ 现取一次城市轮廓，用它的行政区中心；
+      // 顺手把轮廓收进 state.outline，这样「看全城」就不用再等一次请求。
+      let fallback = center;
+      if (!hasLngLat(fallback)) {
+        const outline = await loadCityOutline(state.city);
+        const oc = outline && Array.isArray(outline.center) ? outline.center : null;
+        if (oc) fallback = { lng: oc[0], lat: oc[1] };
+      }
+      if (hasLngLat(fallback) && MapCtl.isReady()) {
+        state.suppressView = true;
+        await MapCtl.setZoomAndCenter(fallback.lng, fallback.lat, CORE_ZOOM_FALLBACK);
+        setTimeout(() => {
+          state.suppressView = false;
+        }, 700);
+        UI.setStatus('定位到 ' + state.city + ' 城区…');
+      }
     }
 
     // N20：按新城市重取行程（一城多趟：优先用 URL 指定的那趟，其次上次记住的，最后第一趟）
@@ -2181,6 +2215,25 @@
     state.outline = null;
     MapCtl.clearCityOutline();
     return null;
+  }
+
+  // 看全城（按需）：把镜头收到整座城市的范围，这一屏不落点，列表给「全城高分精选」。
+  // 2026-11-24 起这是显式动作 —— 打开城市不再默认全城。
+  async function fitWholeCity() {
+    if (!MapCtl.isReady()) return;
+    const outline = state.outline || (await loadCityOutline(state.city));
+    if (!outline) {
+      UI.setStatus('这个城市还没有轮廓数据，先放大地图看吧');
+      return;
+    }
+    state.suppressView = true;
+    await MapCtl.fitOutline(outline.bbox);
+    setTimeout(() => {
+      state.suppressView = false;
+    }, 700);
+    UI.setStatus('已框出 ' + (outline.name || state.city) + ' 的范围 · 放大地图看具体地点');
+    // 缩到整城后要让「低倍率不落点 + 全城精选」这套跑到
+    if (typeof fetchPoisInView === 'function') fetchPoisInView();
   }
 
   // ---------- 城市选择：输入框 + 下拉建议合成一个控件（P10） ----------
@@ -3017,6 +3070,8 @@
     }
     const addToggle = $('add-toggle');
     if (addToggle) addToggle.onclick = () => setAddBoxCollapsed(false);
+    const fitBtn = $('city-fit-btn');
+    if (fitBtn) fitBtn.onclick = fitWholeCity;
     $('only-selected-btn').onclick = onToggleOnlySelected;
     const clearFilterBtn = $('filter-clear-btn');
     // 评分滑块（P10）：拖 = 实时跟手，松手后重算一次；键盘/点轨道也走同一个入口

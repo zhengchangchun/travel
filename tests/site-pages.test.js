@@ -498,7 +498,12 @@ test('首页配图：坐标缺失（null）不能当成 0,0 —— 那会把取�
     const p = params[params.length - 1];
     assert.ok(!/0\.00000,0\.00000/.test(p.markers), 'marker 里不能出现 0,0：' + p.markers);
     assert.ok(!/0\.00000,0\.00000/.test(p.paths), '折线里不能出现 0,0');
-    assert.equal((p.markers.match(/\|/g) || []).length + 1, 7, '8 个站点里那个没坐标的要被跳过');
+    // 数量按真源算（2026-11-24 重跑了 geo-featured，三个新线路的站也补上坐标了）
+    const geoFile = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/featured-geo.json'), 'utf8'));
+    const stopsWithCoord = (geoFile.routes['hz-2d'] || []).filter(
+      (st) => typeof st.lng === 'number' && typeof st.lat === 'number'
+    ).length;
+    assert.equal((p.markers.match(/\|/g) || []).length + 1, stopsWithCoord, '有坐标的站才进 marker');
   } finally {
     await s.close();
     delete process.env.TRAVEL_HOME_IMG_DIR;

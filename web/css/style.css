@@ -1528,3 +1528,13 @@ button:disabled { cursor: not-allowed; }
    注意别用百分比 —— 这个 bar-note 的包含块是「按内容宽收缩」的 .bar-right，百分比会解成很窄的一截，
    文案就被省略号切掉（实测 141px 的文案被压到 130px）。给个像素上限 + 不许缩，长趟名仍能省略。 */
 section.card[data-card].trip-card > .card-bar .bar-note { max-width: 210px; flex: 0 0 auto; min-width: 0; }
+
+/* 地图右上角的小按钮（看全城）：默认落在核心区，整城范围改成按需 */
+.map-btn {
+  position: absolute; top: 12px; right: 12px; z-index: 12;
+  padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line-2, #cfc9bd);
+  background: rgba(255, 255, 255, .95); color: var(--ink-2, #55514a); font-size: 12.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+.map-btn:hover { border-color: var(--accent, #a8683c); color: var(--accent, #a8683c); }
+@media (max-width: 720px) { .map-btn { min-height: 40px; padding: 8px 12px; } }
