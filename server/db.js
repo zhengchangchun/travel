@@ -578,6 +578,9 @@ function createDb(filePath) {
     ),
     getShare: db.prepare('SELECT * FROM shares WHERE id = ?'),
     findShareByBase: db.prepare('SELECT * FROM shares WHERE base = ? ORDER BY id DESC LIMIT 1'),
+    // 同一趟行程只留最新一条分享（2026-11-24：实测同一趟导出 6 次就堆 6 行一模一样的）
+    deleteSharesOfTrip: db.prepare('DELETE FROM shares WHERE user_id = ? AND trip_id = ?'),
+    listSharesOfTrip: db.prepare('SELECT * FROM shares WHERE user_id = ? AND trip_id = ? ORDER BY id DESC'),
     listShares: db.prepare('SELECT * FROM shares ORDER BY id DESC LIMIT ?'),
     listSharesByUser: db.prepare('SELECT * FROM shares WHERE user_id = ? ORDER BY id DESC LIMIT ?'),
     claimTrips: db.prepare('UPDATE trips SET user_id = ? WHERE user_id IS NULL'),
@@ -1590,6 +1593,17 @@ function createDb(filePath) {
         Number.isFinite(Number(s.distanceM)) ? Number(s.distanceM) : null
       );
       return parseShareRow(stmts.getShare.get(toNumber(info.lastInsertRowid)));
+    },
+    // 同一趟行程只留最新一条：先删旧的再插新的（旧文件由调用方自己清）
+    replaceShareOfTrip(s) {
+      if (s.tripId == null || s.userId == null) return this.addShare(s);
+      const removed = stmts.deleteSharesOfTrip.run(Number(s.userId), Number(s.tripId));
+      const row = this.addShare(s);
+      return Object.assign(row, { replaced: toNumber(removed.changes) });
+    },
+    listSharesOfTrip(userId, tripId) {
+      if (userId == null || tripId == null) return [];
+      return stmts.listSharesOfTrip.all(Number(userId), Number(tripId)).map(parseShareRow);
     },
     listShares(limit) {
       return stmts.listShares.all(Number(limit) || 50).map(parseShareRow);

@@ -156,3 +156,35 @@ test('extractPlaceNames：标题里的地名也算（用户常把地名写标题
   assert.ok(names.includes('灵隐寺'));
   assert.ok(names.includes('西湖'));
 });
+
+// 2026-11-24：行程笔记里最常见的「时间前缀」不能当地名的一部分
+// （实测「第一天西湖断桥」拿去高德搜必然搜不到 ⇒ 补全全失败）
+test('extractPlaceNames：剥掉「第一天 / 上午 / 晚上 / D1」这类时间前缀', () => {
+  const cases = [
+    ['第一天西湖断桥', '西湖断桥'],
+    ['第二天西溪湿地', '西溪湿地'],
+    ['第三天宋城', '宋城'],
+    ['晚上河坊街', '河坊街'],
+    ['上午灵隐寺', '灵隐寺'],
+    ['下午良渚博物院', '良渚博物院'],
+    ['D1 西湖', '西湖'],
+    ['Day2 西溪', '西溪'],
+    ['第1天 西湖', '西湖'],
+  ];
+  cases.forEach(([input, want]) => {
+    const names = extractPlaceNames({ title: '', content: input }, { limit: 3 });
+    assert.ok(names.includes(want), input + ' 应抠出 ' + want + '，实际 ' + JSON.stringify(names));
+    assert.ok(
+      !names.some((n) => /^(第[一二三四五六七八九十\d]+天|上午|下午|晚上|中午|早上|傍晚|day|d\d)/i.test(n)),
+      input + ' 不该带时间前缀：' + JSON.stringify(names)
+    );
+  });
+});
+
+// 2026-11-24：词表漏了「院/潭/泉/岭…」⇒「良渚博物院」「日月潭」根本抠不出来
+test('extractPlaceNames：博物院 / 潭 / 楼 这类真地名能抠出来', () => {
+  ['良渚博物院', '日月潭', '楼外楼', '天目山', '浙江省博物院'].forEach((name) => {
+    const names = extractPlaceNames({ title: '', content: name }, { limit: 3 });
+    assert.ok(names.includes(name), name + ' 应被识别，实际 ' + JSON.stringify(names));
+  });
+});

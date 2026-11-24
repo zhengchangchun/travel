@@ -241,3 +241,27 @@ test('app.js：分享时把页面上那条线的每段方式带上（长度对�
   assert.match(TRIPS, /built\.maps\.plan = await routemap\.buildPlanMap/, '先画按我的安排');
   assert.match(SHARE, /leg-mode/, '分享页的分段行要能显示这一段的方式');
 });
+
+// 2026-11-24：整趟都是同一种方式时，「按我的安排」与那个方式算出来的是同一张图
+// ⇒ 分享页会出现两个一模一样的 tab（实测「驾车 177.8 km」×2）。按标签+里程+耗时去重。
+test('分享页：plan 与某个方式完全一样时只留一个 tab', async () => {
+  const amap = fakeAmap();
+  const s = await start(amap);
+  try {
+    const { trip, pins } = await seed(s.base);
+    const r = await post(s.base, '/api/trips/' + trip.id + '/share/export', {
+      order: keys(pins),
+      modes: ['driving'],
+      planModes: pins.slice(0, -1).map(() => 'driving'),
+    });
+    assert.equal(r.status, 200);
+    const out = r.body.data;
+    assert.ok(out.maps.some((m) => m.mode === 'plan'), 'plan 图照旧生成');
+    assert.ok(out.maps.some((m) => m.mode === 'driving'), 'driving 图照旧生成');
+    const html = require('fs').readFileSync(out.files.find((f) => f.kind === 'html').path, 'utf8');
+    const tabs = html.match(/class="tab[^"]*" data-mode="[^"]*"/g) || [];
+    assert.equal(tabs.length, 1, '两个一样的 tab 只该留一个，实际：' + JSON.stringify(tabs));
+  } finally {
+    await s.close();
+  }
+});

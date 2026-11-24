@@ -407,3 +407,35 @@ test('默认的 reveal 实现：macOS 走 /usr/bin/open -R，其它平台各走�
     assert.notEqual(r.status, 0, 'open -R 对不存在的文件应返回非 0（这是 REVEAL_FAILED 分支的依据）');
   }
 });
+
+// 2026-11-24：同一趟行程反复导出，分享列表不该堆成一屏重复项
+test('分享导出：同一趟只留最新一条记录（旧文件一并清掉）', async () => {
+  await withTmpShareDir(async () => {
+    const s = await start();
+    try {
+      const trip = (await req(s.base, '/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city: '杭州', title: '杭州行程' }),
+      })).body.data;
+      for (const name of ['西湖', '楼外楼']) {
+        await req(s.base, '/api/pins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trip_id: trip.id, name, lng: 120.14, lat: 30.24, category: 'sight' }),
+        });
+      }
+      const first = await req(s.base, `/api/trips/${trip.id}/share/export`, { method: 'POST' });
+      assert.equal(first.status, 200);
+      for (let i = 0; i < 3; i += 1) {
+        const again = await req(s.base, `/api/trips/${trip.id}/share/export`, { method: 'POST' });
+        assert.equal(again.status, 200);
+      }
+      const list = await req(s.base, '/api/shares?limit=50');
+      const mine = list.body.data.filter((r) => Number(r.trip_id) === Number(trip.id));
+      assert.equal(mine.length, 1, '同一趟只该留一条，实际 ' + mine.length);
+    } finally {
+      await s.close();
+    }
+  });
+});

@@ -304,7 +304,17 @@ function legRowsHtml(route) {
 
 // 分享页路线块：有真实路线图就 tab 切换（每个方式一屏：图 + 分段），没图退回自绘示意图
 function routeBlockHtml(p) {
-  const modes = Object.keys(p.maps || {}).filter((m) => p.maps[m] && p.maps[m].image);
+  // 2026-11-24：整趟都是同一种方式时，「按我的安排」与那个方式算出来的是同一张图
+  // ⇒ 分享页会出现两个一模一样的 tab（实测「驾车 177.8 km」×2）。按「标签+里程+耗时」去重。
+  const seen = new Set();
+  const modes = Object.keys(p.maps || {}).filter((m) => {
+    const r = p.maps[m];
+    if (!r || !r.image) return false;
+    const key = [r.modeLabel || m, Math.round(Number(r.distance) || 0), Math.round(Number(r.duration) || 0)].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   if (!modes.length) {
     return `<div class="sketch">${sketchSvg(p.sketchPoints)}</div>`;
   }

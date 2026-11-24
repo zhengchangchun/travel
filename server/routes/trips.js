@@ -157,12 +157,16 @@ module.exports = [
       payload.mapErrors = built.errors;
       const out = share.writePackage(SHARE_DIR(), payload);
       const text = share.buildText(payload);
-      // 记一笔到分享列表（首页/分享列表页要用）；记录失败不影响分享本身
+      // 记一笔到分享列表（首页/分享列表页要用）；记录失败不影响分享本身。
+      // 2026-11-24：同一趟行程只留最新一条 —— 实测同一趟导出 6 次就堆 6 行一模一样的，
+      // 分享列表页变成一屏重复项。旧记录对应的旧文件一并清掉（同名 base 的会被覆盖，不用管）。
       let shareRow = null;
       try {
         const user = me(ctx);
-        shareRow = ctx.db.addShare({
-          tripId: payload.tripId != null ? Number(payload.tripId) : Number(ctx.params.id) || null,
+        const tripId = payload.tripId != null ? Number(payload.tripId) : Number(ctx.params.id) || null;
+        const stale = tripId != null ? ctx.db.listSharesOfTrip(user.id, tripId) : [];
+        shareRow = ctx.db.replaceShareOfTrip({
+          tripId,
           userId: user.id,
           city: payload.city,
           title: payload.title,
@@ -171,6 +175,21 @@ module.exports = [
           text,
           stops: payload.stops.length,
           distanceM: payload.plan && payload.plan.distanceM,
+        });
+        // 旧记录里那些「这次没再生成」的文件（比如换了日期后缀的旧包）删掉，别在 share/ 里越堆越多
+        const keep = new Set(out.files.map((f) => f.name));
+        const dir = path.resolve(SHARE_DIR());
+        stale.forEach((row) => {
+          (row.files || []).forEach((f) => {
+            if (!f || !f.name || keep.has(f.name)) return;
+            const full = path.resolve(dir, path.basename(f.name));
+            if (path.dirname(full) !== dir) return;
+            try {
+              if (fs.existsSync(full)) fs.unlinkSync(full);
+            } catch (err) {
+              /* 删不掉就留着，记录已经换新了 */
+            }
+          });
         });
       } catch (err) {
         shareRow = null;
