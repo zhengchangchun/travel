@@ -120,56 +120,78 @@
       <div class="grid region-grid" id="regions"></div>
     </section>
 
-    <section class="block" data-reveal>
+    <section class="block" id="reel-block" data-reveal>
       <div class="section-head">
         <span class="sec-no">03</span>
         <h2>这四件事</h2>
         <i class="rule"></i>
         <span class="note">从刷到的那条笔记开始</span>
       </div>
-      <div class="grid features">
-        <div class="feature">
-          <span class="feat-no">01</span>
-          <span class="feat-ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H14l6 6v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />
-              <path d="M14 4v6h6" /><path d="M8 14l2.5 2.5L16 11" />
-            </svg>
-          </span>
-          <b>按笔记搜地方</b>
-          <span>贴一条小红书或抖音的链接，正文里提到的地方会一条条列出来，你挑要去的。</span>
-        </div>
-        <div class="feature">
-          <span class="feat-no">02</span>
-          <span class="feat-ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" />
-            </svg>
-          </span>
-          <b>地图上挑点</b>
-          <span>按分类和评分挑，点跟点之间要开多久，顺手就能看到。</span>
-        </div>
-        <div class="feature">
-          <span class="feat-no">03</span>
-          <span class="feat-ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="6" cy="18" r="2.4" /><circle cx="18" cy="6" r="2.4" />
-              <path d="M8 16.2c3.6-1.2 4.4-4.6 6.4-7.4" stroke-dasharray="3 3" />
-            </svg>
-          </span>
-          <b>自动成线</b>
-          <span>从住的地方出发按里程排一遍，少走回头路。每段多远、多久都标在上面。</span>
-        </div>
-        <div class="feature">
-          <span class="feat-no">04</span>
-          <span class="feat-ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" />
-              <path d="M8.2 10.8 15.8 6.4M8.2 13.2l7.6 4.4" />
-            </svg>
-          </span>
-          <b>发给朋友</b>
-          <span>排完生成一个网页，发给朋友点开就能看，不用装东西。</span>
+
+      <div class="reel" id="reel">
+        <div class="reel-stage">
+          <span class="reel-count"><b id="reel-idx">01</b><i>/</i>04</span>
+
+          <div class="reel-slides" id="reel-slides">
+            <article class="reel-slide is-on" data-i="0">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H14l6 6v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />
+                  <path d="M14 4v6h6" /><path d="M8 14l2.5 2.5L16 11" />
+                </svg>
+              </span>
+              <span class="reel-kick">按笔记搜地方</span>
+              <h3 class="reel-claim">贴一条链接<i>。</i></h3>
+              <p class="reel-text">小红书、抖音的链接贴进去，正文里提到的地方会一条条列出来，你挑要去的。</p>
+              <span class="reel-mark" aria-hidden="true">01</span>
+            </article>
+
+            <article class="reel-slide" data-i="1">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" />
+                </svg>
+              </span>
+              <span class="reel-kick">地图上挑点</span>
+              <h3 class="reel-claim">挑点，看距离<i>。</i></h3>
+              <p class="reel-text">按分类和评分挑，点跟点之间要开多久，顺手就能看到。</p>
+              <span class="reel-mark" aria-hidden="true">02</span>
+            </article>
+
+            <article class="reel-slide" data-i="2">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="6" cy="18" r="2.4" /><circle cx="18" cy="6" r="2.4" />
+                  <path d="M8 16.2c3.6-1.2 4.4-4.6 6.4-7.4" stroke-dasharray="3 3" />
+                </svg>
+              </span>
+              <span class="reel-kick">自动成线</span>
+              <h3 class="reel-claim">少走回头路<i>。</i></h3>
+              <p class="reel-text">从住的地方出发按里程排一遍，每段多远、多久都标在上面。</p>
+              <span class="reel-mark" aria-hidden="true">03</span>
+            </article>
+
+            <article class="reel-slide" data-i="3">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" />
+                  <path d="M8.2 10.8 15.8 6.4M8.2 13.2l7.6 4.4" />
+                </svg>
+              </span>
+              <span class="reel-kick">发给朋友</span>
+              <h3 class="reel-claim">发出去就能看<i>。</i></h3>
+              <p class="reel-text">排完生成一个网页，发给朋友点开就能看，不用装东西。</p>
+              <span class="reel-mark" aria-hidden="true">04</span>
+            </article>
+          </div>
+
+          <div class="reel-tabs" id="reel-tabs" aria-label="这四件事">
+            <button class="reel-tab is-on" type="button" data-i="0" aria-current="true"><b>01</b>按笔记搜地方</button>
+            <button class="reel-tab" type="button" data-i="1"><b>02</b>地图上挑点</button>
+            <button class="reel-tab" type="button" data-i="2"><b>03</b>自动成线</button>
+            <button class="reel-tab" type="button" data-i="3"><b>04</b>发给朋友</button>
+          </div>
+          <i class="reel-bar" aria-hidden="true"><b id="reel-bar"></b></i>
         </div>
       </div>
     </section>

@@ -297,26 +297,63 @@ body.home .region .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 body.home .region .foot { display: flex; align-items: center; gap: 10px; margin-top: auto; }
 body.home .region .foot .btn { font-size: 12.5px; letter-spacing: .04em; }
 
-/* ---------- 03 这四件事：同样发丝表格，四格 ---------- */
-body.home .features {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
-  background: var(--hair); border: 1px solid var(--hair);
+/* ---------- 03 这四件事：滚一段换一个重点（Apple 那种高亮卷轴，2026-11-24） ----------
+   外层按重点数撑高（4 × 88vh），舞台 sticky 钉在头部下面 ⇒ 每滚过约 5/8 屏换下一个重点。
+   一张只留一条主张：宋体 Black 放到最大、后面压一枚巨大的水印编号；底部四段是进度轨（可点）。
+   窄屏 / 系统开了「减少动态效果」⇒ 退回成一列普通卡片（文案与顺序完全一样）。 */
+body.home .reel { position: relative; height: calc(4 * 88vh); border-top: 1px solid var(--hair); }
+body.home .reel-stage {
+  position: sticky; top: var(--head-h); height: calc(100vh - var(--head-h));
+  display: flex; flex-direction: column; justify-content: center; overflow: hidden;
 }
-body.home .feature {
-  position: relative; border: 0; border-radius: 0; background: var(--bg);
-  padding: 26px 22px 32px; transition: background .16s ease;
+body.home .reel-count {
+  position: absolute; right: 0; top: 22px; display: flex; align-items: baseline; gap: 7px;
+  font: 400 10.5px/1 var(--mono); letter-spacing: .24em; color: var(--ink-3);
 }
-body.home .feature:hover { background: var(--surface); }
-body.home .feat-no { display: block; margin-bottom: 20px; font: 400 10.5px/1 var(--mono); letter-spacing: .22em; color: var(--accent); }
-body.home .feat-ico {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: 0; color: var(--accent-2);
-  background: none; border: 1px solid var(--hair-2);
-}
-body.home .feat-ico svg { width: 17px; height: 17px; }
-body.home .feature b { display: block; margin: 18px 0 10px; font-family: var(--display); font-feature-settings: "palt" 1; font-size: 18px; font-weight: 900; letter-spacing: .03em; }
-body.home .feature span:not(.feat-no):not(.feat-ico) { display: inline; font-size: 13px; line-height: 1.82; color: var(--ink-2); }
+body.home .reel-count b { font-family: var(--latin); font-size: 21px; font-weight: 400; letter-spacing: .06em; color: var(--ink); }
+body.home .reel-count i { font-style: normal; }
 
+body.home .reel-slides { position: relative; min-height: 44vh; }
+body.home .reel-slide {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+  opacity: 0; transform: translateY(18px); pointer-events: none;
+  transition: opacity .6s cubic-bezier(.22, .68, .2, 1), transform .8s cubic-bezier(.22, .68, .2, 1);
+}
+body.home .reel-slide.is-on { opacity: 1; transform: none; pointer-events: auto; }
+body.home .reel-slide.is-past { transform: translateY(-18px); }
+body.home .reel-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; margin-bottom: 26px; color: var(--accent-2); border: 1px solid var(--hair-2);
+}
+body.home .reel-ico svg { width: 20px; height: 20px; }
+body.home .reel-kick { font: var(--label); letter-spacing: .24em; color: var(--accent); margin-bottom: 16px; }
+body.home .reel-claim {
+  margin: 0 0 22px; font-family: var(--display); font-feature-settings: "palt" 1;
+  font-size: clamp(40px, 6.4vw, 94px); font-weight: 900; line-height: 1.08; letter-spacing: .03em; color: var(--ink);
+}
+body.home .reel-claim i { font-style: normal; color: var(--accent); }
+body.home .reel-text { margin: 0; max-width: 30ch; font-size: 15px; line-height: 1.95; color: var(--ink-2); }
+body.home .reel-mark {
+  position: absolute; right: 0; top: 50%; transform: translateY(-50%); pointer-events: none;
+  font-family: var(--latin); font-size: clamp(150px, 24vw, 360px); line-height: .78;
+  letter-spacing: -.02em; color: rgba(232, 228, 220, .05);
+}
+body.home .reel-tabs { position: absolute; left: 0; right: 0; bottom: 44px; display: flex; }
+body.home .reel-tab {
+  flex: 1; display: flex; align-items: baseline; gap: 9px; padding: 11px 0 0; text-align: left;
+  background: none; border: 0; border-top: 1px solid var(--hair); border-radius: 0;
+  font: 400 11px/1 var(--mono); letter-spacing: .14em; color: var(--ink-3);
+  transition: color .2s ease, border-color .2s ease;
+}
+body.home .reel-tab b { font-family: var(--latin); font-size: 13px; font-weight: 400; letter-spacing: .08em; }
+body.home .reel-tab.is-on { color: var(--ink); border-top-color: var(--accent); }
+body.home .reel-tab:hover { color: var(--ink-2); }
+body.home .reel-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--hair); }
+body.home .reel-bar b { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: 0 50%; }
+@supports (height: 1svh) {
+  body.home .reel { height: calc(4 * 88svh); }
+  body.home .reel-stage { height: calc(100svh - var(--head-h)); }
+}
 /* ---------- 窄屏 ---------- */
 @media (max-width: 1080px) {
   .hero-inner { grid-template-columns: 1fr; gap: 34px; min-height: 0; padding: 56px 22px 44px; }
@@ -329,7 +366,7 @@ body.home .feature span:not(.feat-no):not(.feat-ico) { display: inline; font-siz
   .hero h1 { font-size: clamp(32px, 7vw, 46px); }
   body.home .section-head { grid-template-columns: auto auto 1fr; }
   body.home .section-head .note, body.home .section-head .rule { display: none; }
-  body.home .region-grid, body.home .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.home .region-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   .hero-inner { padding: 42px 18px 34px; }
@@ -344,7 +381,22 @@ body.home .feature span:not(.feat-no):not(.feat-ico) { display: inline; font-siz
   body.home footer.site { margin-top: 52px; }
 }
 @media (max-width: 620px) {
-  body.home .region-grid, body.home .features { grid-template-columns: minmax(0, 1fr); }
+  body.home .region-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 03 卷轴的退路：窄屏、或系统开了「减少动态效果」⇒ 拆成一列普通卡片（内容一字不改） */
+@media (max-width: 860px), (prefers-reduced-motion: reduce) {
+  body.home .reel { height: auto; }
+  body.home .reel-stage { position: static; display: block; height: auto; overflow: visible; }
+  body.home .reel-slides { min-height: 0; display: grid; }
+  body.home .reel-slide {
+    position: static; opacity: 1; transform: none; pointer-events: auto;
+    padding: 26px 0 30px; border-bottom: 1px solid var(--hair);
+  }
+  body.home .reel-slide:first-child { padding-top: 8px; }
+  body.home .reel-ico { width: 32px; height: 32px; margin-bottom: 18px; }
+  body.home .reel-claim { font-size: clamp(26px, 6vw, 40px); margin-bottom: 14px; }
+  body.home .reel-count, body.home .reel-mark, body.home .reel-tabs, body.home .reel-bar { display: none; }
 }
 
 /* 滚到眼前再淡入：首屏自己不吃通用的那一下（否则整幅底图会跟着滑），改成里面两栏错开进场 */
@@ -362,7 +414,7 @@ html.anim [data-reveal].hero.in .hero-shot { transition-delay: .12s; }
   .hero .kick i { animation: none !important; }
   .hero .kick i { animation: none !important; }
   html.anim [data-reveal].hero .hero-copy, html.anim [data-reveal].hero .hero-shot { opacity: 1 !important; transform: none !important; transition: none !important; }
-  .region, .feature, .sc-tab, .shot-btn { transition: none !important; }
+  .region, .reel-slide, .reel-tab, .sc-tab, .shot-btn { transition: none !important; }
 }
 
 /* ---------- 04 用过的人怎么说（示意数据） ---------- */

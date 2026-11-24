@@ -739,10 +739,77 @@
     }
   }
 
+  /* ================= 03 这四件事：滚一段换一个重点（Apple 那种高亮卷轴） =================
+     外层撑高、舞台 sticky；每滚过 ~5/8 屏换下一张。窄屏 / 减少动效时 CSS 已退回堆叠，
+     这里也直接不接线（否则会去动一个静态列表的 class）。 */
+  let reelIdx = -1;
+  let reelRaf = 0;
+  const reelOff = () =>
+    window.innerWidth <= 860 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function reelCtx() {
+    const reel = $('reel');
+    const stage = reel && reel.querySelector('.reel-stage');
+    if (!reel || !stage) return null;
+    const slides = reel.querySelectorAll('.reel-slide');
+    const tabs = reel.querySelectorAll('.reel-tab');
+    if (!slides.length) return null;
+    const span = Math.max(1, reel.offsetHeight - stage.offsetHeight);
+    return { reel, slides, tabs, tabList: tabs, n: slides.length, top: reel.getBoundingClientRect().top + window.scrollY, span };
+  }
+
+  function reelSet(i, ctx) {
+    if (i === reelIdx || !ctx) return;
+    reelIdx = i;
+    Array.prototype.forEach.call(ctx.slides, (el, k) => {
+      el.classList.toggle('is-on', k === i);
+      el.classList.toggle('is-past', k < i);
+    });
+    Array.prototype.forEach.call(ctx.tabList, (el, k) => {
+      el.classList.toggle('is-on', k === i);
+      if (k === i) el.setAttribute('aria-current', 'true');
+      else el.removeAttribute('aria-current');
+    });
+    const idx = $('reel-idx');
+    if (idx) idx.textContent = pad2(i + 1);
+  }
+
+  function reelPaint() {
+    reelRaf = 0;
+    if (reelOff()) return;
+    const ctx = reelCtx();
+    if (!ctx) return;
+    const p = Math.max(0, Math.min(1, (window.scrollY - ctx.top) / ctx.span));
+    const bar = $('reel-bar');
+    if (bar) bar.style.transform = 'scaleX(' + p.toFixed(4) + ')';
+    reelSet(Math.min(ctx.n - 1, Math.floor(p * ctx.n + 1e-6)), ctx);
+  }
+
+  function reelGo(i) {
+    const ctx = reelCtx();
+    if (!ctx) return;
+    const target = ctx.top + ((Math.min(ctx.n - 1, Math.max(0, i)) + 0.5) / ctx.n) * ctx.span;
+    window.scrollTo({ top: Math.round(target), behavior: reduce ? 'auto' : 'smooth' });
+  }
+
+  function wireReel() {
+    if (reelOff()) return;
+    const ctx = reelCtx();
+    if (!ctx) return;
+    reelSet(0, ctx);
+    window.addEventListener('scroll', () => { if (!reelRaf) reelRaf = requestAnimationFrame(reelPaint); }, { passive: true });
+    window.addEventListener('resize', () => { if (!reelRaf) reelRaf = requestAnimationFrame(reelPaint); });
+    Array.prototype.forEach.call(ctx.tabList, (el) => {
+      el.addEventListener('click', () => reelGo(parseInt(el.dataset.i, 10) || 0));
+    });
+    reelPaint();
+  }
+
   (async function init() {
     // 先把页面基本结构立起来，再等定位（定位最多 6 秒，不阻塞渲染）
     render();
     wireShowcase();
+    wireReel();
     const close = $('rd-close');
     if (close) close.onclick = closeRoute;
     const close2 = $('rd-close2');
