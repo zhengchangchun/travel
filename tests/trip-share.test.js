@@ -439,3 +439,35 @@ test('分享导出：同一趟只留最新一条记录（旧文件一并清掉�
     }
   });
 });
+
+// 2026-11-24：分享页以前只能看，看完回不去、也没法拉人一起改
+test('分享页：知道服务地址时给「在旅迹里打开 / 一起改」两个回链', async () => {
+  await withTmpShareDir(async () => {
+    const s = await start();
+    try {
+      const trip = (await req(s.base, '/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city: '杭州', title: '杭州行程' }),
+      })).body.data;
+      for (const name of ['西湖', '楼外楼']) {
+        await req(s.base, '/api/pins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trip_id: trip.id, name, lng: 120.14, lat: 30.24, category: 'sight' }),
+        });
+      }
+      const exp = await req(s.base, `/api/trips/${trip.id}/share/export`, { method: 'POST' });
+      assert.equal(exp.status, 200);
+      const html = fs.readFileSync(exp.body.data.files.find((f) => f.kind === 'html').path, 'utf8');
+      assert.match(html, /在旅迹里打开/, '缺回应用入口');
+      assert.match(html, new RegExp('/app\\?trip=' + trip.id));
+      assert.match(html, new RegExp('/collab\\?trip=' + trip.id));
+      // origin 只是渲染用，不该进 JSON 留档
+      const json = JSON.parse(fs.readFileSync(exp.body.data.files.find((f) => f.kind === 'json').path, 'utf8'));
+      assert.equal(json.origin, undefined, 'origin 不该进 JSON');
+    } finally {
+      await s.close();
+    }
+  });
+});

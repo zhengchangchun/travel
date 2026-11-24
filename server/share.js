@@ -422,6 +422,14 @@ function buildHtml(payload) {
         ? `<a class="btn ghost" href="${escHtml(p.links.walkFirstToLast)}" target="_blank" rel="noreferrer">全程步行路线 ↗</a>`
         : '')
     : '';
+  // 回应用的入口（2026-11-24）：分享页以前只能看，看完回不去、也没法拉人一起改。
+  // 只在知道服务地址时渲染（导出时从请求 Host 带过来）；离线打开文件时没有 origin，就不出这两个按钮。
+  const origin = String(p.origin || '').replace(/\/+$/, '');
+  const backLinks =
+    origin && p.tripId != null
+      ? `<a class="btn ghost" href="${escHtml(origin + '/app?trip=' + Number(p.tripId))}">在旅迹里打开 ↗</a>` +
+        `<a class="btn ghost" href="${escHtml(origin + '/collab?trip=' + Number(p.tripId))}">一起改 ↗</a>`
+      : '';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -519,7 +527,7 @@ function buildHtml(payload) {
   <div class="sketch">${svg}</div>
   ${baseLine}
   <ol>${items}</ol>
-  <div class="foot">${nav}</div>
+  <div class="foot">${nav}${backLinks}</div>
   <p class="tip">点「在高德打开 / 全程路线」会唤起手机上的高德地图（电脑上是网页版）。<br/>
   图上绿点是出发点、红点是终点，其它按 1/2/3… 标序号；<b>点图上那个序号团会跳到下面那张地点卡</b>；路线按分段上色（段数多时每 2 段同色），与分段列表的色点一一对应。这份文件是离线自包含的，直接转发就能看。</p>
 </div>
@@ -593,7 +601,10 @@ function payloadForJson(payload) {
     maps[m] = Object.assign({}, r, { image: undefined });
     delete maps[m].image;
   });
-  return Object.assign({}, payload, { maps });
+  // origin 只是渲染分享页按钮用的（本机地址），不进 JSON 留档
+  const out = Object.assign({}, payload, { maps });
+  delete out.origin;
+  return out;
 }
 
 function writePackage(dir, payload) {

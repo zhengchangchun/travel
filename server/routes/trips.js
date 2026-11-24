@@ -11,6 +11,15 @@ const { tripFor } = require('../trip-access');
 // 2026-11-24 起「我的」放宽成「我能碰的」—— owner 或被邀请进来的成员（一起改）。
 const me = (ctx) => auth.requireUser(ctx);
 
+// 分享页要回链到应用（「在旅迹里打开 / 一起改」）：从请求 Host 拼一个 origin。
+// 只用于渲染按钮，不进 JSON 留档；拿不到 Host（离线/测试）就返回空串。
+function originOf(ctx) {
+  const host = ctx && ctx.req && ctx.req.headers ? ctx.req.headers.host : '';
+  if (!host) return '';
+  const proto = String((ctx.req.headers['x-forwarded-proto'] || '') || '').split(',')[0].trim() || 'http';
+  return proto + '://' + host;
+}
+
 function tripOfUser(ctx, id) {
   const { user, trip, role } = tripFor(ctx, id);
   return { user, trip, role };
@@ -155,6 +164,8 @@ module.exports = [
       }
       payload.maps = built.maps;
       payload.mapErrors = built.errors;
+      // 分享页上的「在旅迹里打开 / 一起改」需要知道服务地址（离线打开文件时没有，就不出按钮）
+      payload.origin = originOf(ctx);
       const out = share.writePackage(SHARE_DIR(), payload);
       const text = share.buildText(payload);
       // 记一笔到分享列表（首页/分享列表页要用）；记录失败不影响分享本身。
