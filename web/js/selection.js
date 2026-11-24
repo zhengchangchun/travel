@@ -49,6 +49,8 @@
       sort_order: pin.sort_order,
       // 按天分段：第几天（默认 1）——清单分组要用
       day: Number(pin.day) || 1,
+      // 待规划（2026-11-24）：planned = 已排进日程；wish = 先收着、还没排
+      status: pin.status === 'wish' ? 'wish' : 'planned',
     };
   }
 
@@ -141,6 +143,7 @@
       photo: poi.photo,
       note: '',
       day: Number(poi.day) || 1,
+      status: 'planned',
     });
     notify();
     try {
@@ -181,6 +184,30 @@
     } catch (err) {
       pins = backupPins;
       ids = backupIds;
+      notify();
+      throw err;
+    }
+  }
+
+  // 待规划：把某个点标成 wish / planned（乐观更新，失败回滚）
+  async function setStatus(poiOrKey, status) {
+    const key = typeof poiOrKey === 'string' ? poiOrKey : keyOf(poiOrKey);
+    const next = String(status) === 'wish' ? 'wish' : 'planned';
+    const idx = pins.findIndex((p) => p.id === key);
+    if (idx < 0) return null;
+    const before = pins[idx].status;
+    if (before === next) return pins[idx];
+    pins[idx] = Object.assign({}, pins[idx], { status: next });
+    notify();
+    try {
+      const row = await write(() => API.updatePin(pins[idx].pinId, { status: next }));
+      const at = pins.findIndex((p) => p.id === key);
+      if (at >= 0 && row) pins[at] = mapPin(row);
+      notify();
+      return pins[at] || null;
+    } catch (err) {
+      const at = pins.findIndex((p) => p.id === key);
+      if (at >= 0) pins[at] = Object.assign({}, pins[at], { status: before });
       notify();
       throw err;
     }
@@ -290,6 +317,7 @@
     list,
     count,
     pendingCount,
+    setStatus,
     select,
     remove,
     toggle,

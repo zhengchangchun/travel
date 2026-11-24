@@ -780,7 +780,8 @@
   }
 
   function renderSelection() {
-    const count = Selection.count();
+    // 「我的选择」只数已排进日程的点；待规划单独一个数（否则「0 个点」和列表里有点会打架）
+    const count = plannedPins().length;
     $('selection-count').textContent = String(count);
     syncPanelAuto(); // 没点 ⇒ 右栏收起；加进第一个点 ⇒ 自动展开（他手动定过就不动）
     $('only-selected-btn').classList.toggle('active', state.onlySelected);
@@ -814,12 +815,57 @@
       photoOf: photoOfPin,
       photoCreditOf: photoCreditOfPin,
       onPinDay: onPinDay,
+      onWish: onMarkWish,
     });
+    renderWishBox();
     renderOrderChips();
     renderQuickLegs(panelPins, pick);
     // 挑点阶段就把这条线画在地图上（用户 2026-11-18：看不到点和点之间的路线）
     syncRoute();
     syncOrderToMap(); // 顺序一变，地图上的站号跟着变（第 1 站…第 N 站）
+  }
+
+  // 待规划清单：只列 wish 的点；「排进日程」把它转回 planned
+  function renderWishBox() {
+    const box = $('wish-box');
+    const list = $('wish-list');
+    if (!box || !list) return;
+    const wish = wishPins();
+    box.classList.toggle('hidden', wish.length === 0);
+    const n = $('wish-count');
+    if (n) n.textContent = String(wish.length);
+    if (!wish.length) {
+      list.innerHTML = '';
+      return;
+    }
+    UI.renderWishList(list, wish, {
+      onLocate: (pin) => {
+        flyTo(pin.lng, pin.lat, 15);
+        onPickPoi(pin);
+      },
+      onPlanIn: (pin) => onMarkPlanned(pin),
+      onRemove: onRemoveSelected,
+    });
+  }
+
+  async function onMarkWish(pin) {
+    try {
+      await Selection.setStatus(pin, 'wish');
+      await reloadSelection();
+      UI.setStatus('已收进「待规划」：' + pin.name + '（想好了点「排进日程」）');
+    } catch (err) {
+      UI.setStatus('收进待规划失败：' + human(err));
+    }
+  }
+
+  async function onMarkPlanned(pin) {
+    try {
+      await Selection.setStatus(pin, 'planned');
+      await reloadSelection();
+      UI.setStatus('已排进日程：' + pin.name);
+    } catch (err) {
+      UI.setStatus('排进日程失败：' + human(err));
+    }
   }
 
   function modeLabelOf(key) {
@@ -960,8 +1006,17 @@
   // - 按距离（默认）：从住宿锚点（没定就从第一个点）出发，先最近邻排一遍，再整体减掉回头路
   // - 手动顺序：就是库里存的那份（拖拽 / ↑↓ 排出来的），一个不动
   // - 2 个点及以下：顺序无所谓，直接给库里那份，别让用户看到列表自己跳
+  // 待规划（status=wish）不参与连线/耗时/分享：这里只取已排进日程的点
+  function plannedPins() {
+    return Selection.list().filter((p) => p.status !== 'wish');
+  }
+
+  function wishPins() {
+    return Selection.list().filter((p) => p.status === 'wish');
+  }
+
   function orderedPins() {
-    const pins = Selection.list();
+    const pins = plannedPins();
     let ordered = pins;
     if (state.orderMode === 'distance' && pins.length >= 3) {
       const start = baseForPlan();

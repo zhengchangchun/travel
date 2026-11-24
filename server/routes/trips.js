@@ -371,6 +371,14 @@ module.exports = [
       if (b.day !== undefined) {
         out = ctx.db.updatePinDay(pin.id, b.day).pin;
       }
+      // 待规划（2026-11-24）：planned ⇄ wish —— 先收着、还没排进日程的点
+      if (b.status !== undefined) {
+        const next = String(b.status);
+        if (next !== 'planned' && next !== 'wish') {
+          throw new ctx.HttpError(400, 'BAD_REQUEST', 'status 只能是 planned 或 wish');
+        }
+        out = ctx.db.updatePinStatus(pin.id, next).pin;
+      }
       return out || ctx.db.getPin(pin.id);
     },
   },

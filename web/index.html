@@ -114,6 +114,15 @@
             <span id="ql-modes" class="ql-modes"></span>
           </div>
           <ul id="selection-list" class="poi-list"></ul>
+          <!-- 待规划（2026-11-24，对标圆周旅迹的「待规划地点」）：先收着、还没排进日程的点。
+               它们不参与连线/耗时/分享，只是「想去但还没定哪天」的池子。 -->
+          <div id="wish-box" class="wish-box hidden">
+            <div class="wish-head">
+              <span class="wish-title">待规划 <b id="wish-count">0</b></span>
+              <span class="wish-note">先收着，想好了再排进日程</span>
+            </div>
+            <ul id="wish-list" class="poi-list wish-list"></ul>
+          </div>
           <div id="itinerary-panel" class="hidden">
             <div class="row itin-toolbar">
               <button id="itinerary-back" class="ghost" title="回到挑点列表">返回</button>

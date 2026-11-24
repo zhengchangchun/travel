@@ -359,6 +359,9 @@ function createDb(filePath) {
 
   // 按天分段：每个点属于第几天（默认 1）——要多天就得先有这个列，再建下面那些语句
   ensureColumn(db, 'pins', 'day', 'day INTEGER NOT NULL DEFAULT 1');
+  // 待规划（2026-11-24，对标圆周旅迹的「待规划地点」）：先收着、还没排进日程的点。
+  // planned = 已排进行程（默认，老数据全是这个）；wish = 待规划（只在候选清单里，不参与连线/分享）
+  ensureColumn(db, 'pins', 'status', "status TEXT NOT NULL DEFAULT 'planned'");
   // 笔记也按账号隔离（账号上线前的笔记 user_id 为空，靠「认领」归给某个账号）
   ensureColumn(db, 'notes', 'user_id', 'user_id INTEGER');
 
@@ -491,6 +494,7 @@ function createDb(filePath) {
     ),
     updatePinNote: db.prepare('UPDATE pins SET note = ? WHERE id = ?'),
     updatePinDay: db.prepare('UPDATE pins SET day = ? WHERE id = ?'),
+    updatePinStatus: db.prepare('UPDATE pins SET status = ? WHERE id = ?'),
 
     // ---- T4 POI 缓存表 ----
     getPoiRow: db.prepare('SELECT * FROM pois WHERE poi_id = ?'),
@@ -1180,6 +1184,13 @@ function createDb(filePath) {
         throw err;
       }
       return this.getSelectionByCity(city, userId);
+    },
+    // 待规划：planned ⇄ wish（只改这一个字段，别的都不动）
+    updatePinStatus(id, status) {
+      const next = String(status) === 'wish' ? 'wish' : 'planned';
+      const info = stmts.updatePinStatus.run(next, Number(id));
+      if (!info.changes) return { updated: false, pin: null };
+      return { updated: true, pin: this.getPin(Number(id)) };
     },
     updatePinNote(id, note) {
       const info = stmts.updatePinNote.run(note, id);

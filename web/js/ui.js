@@ -253,6 +253,7 @@
         (i === pins.length - 1 ? ' disabled' : '') +
         '>↓</button>' +
         '<button class="locate">定位</button>' +
+        '<button class="wish-btn" title="先收进「待规划」，不排进日程">待规划</button>' +
         '<button class="del">移除</button>' +
         '</div>';
       li.onclick = () => handlers.onLocate(pin);
@@ -262,6 +263,10 @@
       const down = li.querySelector('.down');
       if (locate) locate.onclick = (e) => { e.stopPropagation(); handlers.onLocate(pin); };
       if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
+      const wishBtn = li.querySelector('.wish-btn');
+      if (wishBtn && handlers.onWish) {
+        wishBtn.onclick = (e) => { e.stopPropagation(); handlers.onWish(pin); };
+      }
       if (up && handlers.onMove) {
         up.onclick = (e) => { e.stopPropagation(); handlers.onMove(i, -1); };
       }
@@ -276,6 +281,39 @@
           onSave: (text) => handlers.onNote(pin, text),
           onDone: handlers.onCancel,
         });
+      }
+      container.appendChild(li);
+    });
+  }
+
+  // 待规划清单：只列 status=wish 的点，每行两个动作（排进日程 / 移除）
+  function renderWishList(container, pins, handlers) {
+    if (!container) return;
+    container.innerHTML = '';
+    (pins || []).forEach((pin) => {
+      const color = window.TravelCategories.colorOf(pin.category);
+      const label = window.TravelCategories.labelOf(pin.category);
+      const li = document.createElement('li');
+      li.className = 'poi-item';
+      li.innerHTML =
+        '<div class="poi-head">' +
+        '<span class="dot" style="background:' + esc(color) + '"></span>' +
+        '<b class="poi-name">' + esc(pin.name) + '</b>' +
+        '<span class="poi-tag">' + esc(label) + '</span>' +
+        '</div>' +
+        '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
+        '<div class="sel-actions">' +
+        '<button class="plan-in" title="排进日程（回到「我的选择」）">排进日程</button>' +
+        '<button class="del">移除</button>' +
+        '</div>';
+      li.onclick = () => handlers && handlers.onLocate && handlers.onLocate(pin);
+      const planIn = li.querySelector('.plan-in');
+      if (planIn && handlers && handlers.onPlanIn) {
+        planIn.onclick = (e) => { e.stopPropagation(); handlers.onPlanIn(pin); };
+      }
+      const del = li.querySelector('.del');
+      if (del && handlers && handlers.onRemove) {
+        del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
       }
       container.appendChild(li);
     });
@@ -323,6 +361,7 @@
     showLegend,
     renderResults,
     renderSelectionPanel,
+    renderWishList,
     renderTripPins,
   };
 })();

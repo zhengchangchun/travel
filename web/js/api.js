@@ -101,6 +101,8 @@
     exportTripShare: (tripId, payload) =>
       request('/api/trips/' + tripId + '/share/export', post(payload || {})),
     addPin: (payload) => request('/api/pins', post(payload)),
+    // 改一个点：备注 / 第几天 / 待规划状态（planned ⇄ wish）
+    updatePin: (id, payload) => request('/api/pins/' + id, patch(payload || {})),
     deletePin: (id) => request('/api/pins/' + id, { method: 'DELETE' }),
     deleteTrip: (id) => request('/api/trips/' + id, { method: 'DELETE' }),
     // 删除该城市的全部行程与地点（同一城市一个行程的口径；删干净才不留“幽灵星标”）
