@@ -59,6 +59,16 @@
     collect: (city) => request('/api/collect', { method: 'POST', body: { city, category: 'all' } }),
     collectStatus: (runId) => request('/api/collect/status' + qs({ runId })),
     reveal: (file) => request('/api/share/reveal', { method: 'POST', body: { file } }),
+    // ---- 一起改（2026-11-24）：邀请 / 成员 / 留言 ----
+    tripInvite: (id) => request(`/api/trips/${id}/invite`),
+    createTripInvite: (id) => request(`/api/trips/${id}/invite`, { method: 'POST', body: {} }),
+    revokeTripInvite: (id) => request(`/api/trips/${id}/invite`, { method: 'DELETE' }),
+    inviteInfo: (token) => request(`/api/invite/${encodeURIComponent(token)}`),
+    acceptInvite: (token) => request(`/api/invite/${encodeURIComponent(token)}/accept`, { method: 'POST', body: {} }),
+    tripMembers: (id) => request(`/api/trips/${id}/members`),
+    removeTripMember: (id, uid) => request(`/api/trips/${id}/members/${uid}`, { method: 'DELETE' }),
+    tripComments: (id) => request(`/api/trips/${id}/comments`),
+    addTripComment: (id, text) => request(`/api/trips/${id}/comments`, { method: 'POST', body: { text } }),
   };
 
   function esc(s) {

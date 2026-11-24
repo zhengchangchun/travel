@@ -262,3 +262,18 @@ body.site .item .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-conten
   background: #fff; padding: 8px; border-radius: 2px; border: 1px solid var(--hair-2);
 }
 .phone-qr .small { color: var(--ink-3); }
+
+/* ---------- 一起改（协作页）：成员名单 + 留言 ---------- */
+.collab-members, .collab-comments { list-style: none; margin: 10px 0 0; padding: 0; }
+.collab-member {
+  display: flex; align-items: center; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.collab-member:last-child { border-bottom: 0; }
+.collab-member .who { flex: 1; font-size: 14px; }
+.collab-comments li { padding: 12px 0; border-bottom: 1px solid var(--hair); }
+.collab-comments li:last-child { border-bottom: 0; }
+.collab-comments .who { font-size: 13.5px; color: var(--ink); margin-right: 8px; }
+.collab-comments .when { font: 400 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
+.collab-comments p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.8; color: var(--ink-2); }
+.collab-comments .empty { color: var(--ink-3); font-size: 13px; }

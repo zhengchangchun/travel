@@ -3177,6 +3177,18 @@
     $('itinerary-share').onclick = () => onShareTrip();
     const tripShareBtn = $('trip-share-btn');
     if (tripShareBtn) tripShareBtn.onclick = () => onShareTrip();
+    // 「一起改」：跳到协作页（邀请链接 / 成员 / 留言都在那儿）
+    const tripCollabBtn = $('trip-collab-btn');
+    if (tripCollabBtn) {
+      tripCollabBtn.onclick = (e) => {
+        if (!state.tripId) {
+          e.preventDefault();
+          UI.setStatus('先挑几个点，这趟行程建出来才能邀请别人一起改');
+          return;
+        }
+        tripCollabBtn.href = '/collab?trip=' + state.tripId;
+      };
+    }
     const tripNote = $('trip-note');
     if (tripNote) {
       tripNote.onchange = onTripNoteChange;

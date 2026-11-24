@@ -5,23 +5,23 @@ const share = require('../share');
 const routemap = require('../routemap');
 const auth = require('../auth');
 const { applyPoiOrder } = require('../order');
+const { tripFor } = require('../trip-access');
 
-// 行程、点位、分享包都是「我的」：一律要登录，且只能碰自己的
+// 行程、点位、分享包都是「我的」：一律要登录。
+// 2026-11-24 起「我的」放宽成「我能碰的」—— owner 或被邀请进来的成员（一起改）。
 const me = (ctx) => auth.requireUser(ctx);
 
 function tripOfUser(ctx, id) {
-  const user = me(ctx);
-  const trip = ctx.db.getTripOfUser(Number(id), user.id);
-  if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
-  return { user, trip };
+  const { user, trip, role } = tripFor(ctx, id);
+  return { user, trip, role };
 }
 
-// 点属于某趟行程，行程属于某人：别人的点当不存在
+// 点属于某趟行程，行程得是我能碰的：别人的点当不存在
 function pinOfUser(ctx, id) {
   const user = me(ctx);
   const pin = ctx.db.getPin(Number(id));
-  const trip = pin ? ctx.db.getTripOfUser(pin.trip_id, user.id) : null;
-  if (!pin || !trip) throw new ctx.HttpError(404, 'NOT_FOUND', `点 ${id} 不存在`);
+  const hit = pin ? ctx.db.getTripForMember(pin.trip_id, user.id) : null;
+  if (!pin || !hit) throw new ctx.HttpError(404, 'NOT_FOUND', `点 ${id} 不存在`);
   return pin;
 }
 
@@ -58,8 +58,9 @@ function revealFile(full) {
 function sharePayload(ctx, tripId) {
   const id = Number(tripId);
   const user = auth.requireUser(ctx);
-  const trip = ctx.db.getTripOfUser(id, user.id);
-  if (!trip) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
+  const hit = ctx.db.getTripForMember(id, user.id);
+  if (!hit) throw new ctx.HttpError(404, 'NOT_FOUND', `行程 ${id} 不存在`);
+  const trip = hit.trip;
   const b = (ctx.body && ctx.body.base) || null;
   const base =
     b && Number.isFinite(Number(b.lng)) && Number.isFinite(Number(b.lat))
@@ -220,10 +221,22 @@ module.exports = [
     handler(ctx) {
       const user = me(ctx);
       const city = ctx.query && ctx.query.city;
-      const trips = ctx.db.listTrips(user.id, city ? String(city).trim() : undefined);
+      const mine = ctx.db.listTrips(user.id, city ? String(city).trim() : undefined);
+      // 2026-11-24：别人邀请我一起改的行程也要列出来（role=editor），否则「一起改」等于看不见
+      const shared = ctx.db.listTripsSharedWith(user.id).filter((t) => {
+        if (!city) return true;
+        return String(t.city) === String(city).trim();
+      });
+      const seen = new Set(mine.map((t) => Number(t.id)));
+      const trips = mine.concat(shared.filter((t) => !seen.has(Number(t.id))));
       // 每趟跟谁一起（一次查完，别一趟一个查询）
       const map = ctx.db.tripBuddiesOfUser(user.id);
-      return trips.map((t) => ({ ...t, buddyIds: map[Number(t.id)] || [] }));
+      return trips.map((t) => ({
+        ...t,
+        buddyIds: map[Number(t.id)] || [],
+        // 这趟是我建的还是别人拉我一起改的（页面据此显示「一起改」标记、并禁掉删除）
+        role: Number(t.user_id) === Number(user.id) ? 'owner' : 'editor',
+      }));
     },
   },
   {

@@ -29,6 +29,7 @@ const buddiesRoutes = require('./routes/buddies');
 const itemsRoutes = require('./routes/items');
 const backupRoutes = require('./routes/backup');
 const phoneRoutes = require('./routes/phone');
+const collabRoutes = require('./routes/collab');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
 
@@ -116,6 +117,7 @@ const PAGES = {
   '/buddies': 'buddies.html',
   '/settings': 'settings.html',
   '/login': 'login.html',
+  '/collab': 'collab.html',
 };
 
 function serveStatic(req, res, pathname, baseDir) {
@@ -191,6 +193,7 @@ function createApp(opts = {}) {
     ...itemsRoutes,
     ...backupRoutes,
     ...phoneRoutes,
+    ...collabRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));
@@ -358,6 +361,9 @@ function createApp(opts = {}) {
           pathname.slice('/share'.length),
           process.env.TRAVEL_SHARE_DIR || path.join(ROOT, 'share')
         );
+      } else if (pathname.startsWith('/invite/')) {
+        // 邀请落地页（2026-11-24）：/invite/<token> 交给协作页，token 由页面自己读
+        serveStatic(req, res, '/collab.html');
       } else if (pathname.startsWith('/notes-img/')) {
         // 笔记图片：本地缓存目录（data/notes-img），不放 web/ 代码目录
         serveStatic(

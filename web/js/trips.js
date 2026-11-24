@@ -8,17 +8,21 @@
   function tripCard(t) {
     const pins = state.pins[t.id];
     const n = Array.isArray(pins) ? pins.length : null;
+    const isEditor = t.role === 'editor';
     const acts = [
       '<a class="btn small primary" href="/app?trip=' + t.id + '">去规划</a>',
+      '<a class="btn small" href="/collab?trip=' + t.id + '">一起改</a>',
       '<button class="btn small" type="button" data-act="rename" data-id="' + t.id + '">改名</button>',
       '<button class="btn small" type="button" data-act="theme" data-id="' + t.id + '">改主题</button>',
-      '<button class="btn small danger" type="button" data-act="del" data-id="' + t.id + '">删除</button>',
+      // 别人拉我一起改的行程：不给「删除」（删的是别人的东西）
+      isEditor ? '' : '<button class="btn small danger" type="button" data-act="del" data-id="' + t.id + '">删除</button>',
     ].join('');
     return (
       '<div class="item" data-id="' + t.id + '">' +
       '<div class="body">' +
       '<div class="t">' + Site.esc(t.title) +
       '<span class="badge">' + Site.esc(t.city) + '</span>' +
+      (t.role === 'editor' ? '<span class="badge" style="color:#0b0d12;background:var(--ok);border-color:transparent">一起改</span>' : '') +
       (t.theme ? '<span class="badge" style="color:#0b0d12;background:var(--accent-2);border-color:transparent">' + Site.esc(t.theme) + '</span>' : '') +
       '</div>' +
       '<div class="s">' +

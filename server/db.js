@@ -88,6 +88,38 @@ CREATE TABLE IF NOT EXISTS trip_buddies (
   PRIMARY KEY (trip_id, buddy_id)
 );
 
+-- 一起改（2026-11-24，对标圆周旅迹的多人协作）：一趟行程可以有多个成员
+--   role: owner（建的人）/ editor（被邀请进来一起改的）
+CREATE TABLE IF NOT EXISTS trip_members (
+  trip_id   INTEGER NOT NULL,
+  user_id   INTEGER NOT NULL,
+  role      TEXT NOT NULL DEFAULT 'editor',
+  joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (trip_id, user_id)
+);
+
+-- 邀请链接：一个 token 对应一趟行程，可撤销、可过期（默认 30 天）
+CREATE TABLE IF NOT EXISTS trip_invites (
+  token      TEXT PRIMARY KEY,
+  trip_id    INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT,
+  revoked    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_trip_invites_trip ON trip_invites (trip_id);
+
+-- 行程留言：分享页/协作页上「大家一起商量」的落点（append-only，不删不改）
+CREATE TABLE IF NOT EXISTS trip_comments (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id    INTEGER NOT NULL,
+  user_id    INTEGER,
+  author     TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_trip_comments_trip ON trip_comments (trip_id, id);
+
 -- 每个点下面的小清单：到了这个地方「必去/要做的事」（一个点可以多条）
 CREATE TABLE IF NOT EXISTS pin_items (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -561,6 +593,29 @@ function createDb(filePath) {
     ),
     deleteBuddy: db.prepare('DELETE FROM buddies WHERE id = ?'),
     tripBuddyIds: db.prepare('SELECT buddy_id FROM trip_buddies WHERE trip_id = ? ORDER BY buddy_id'),
+    // ---- 一起改：成员 / 邀请 / 留言 ----
+    memberOf: db.prepare('SELECT * FROM trip_members WHERE trip_id = ? AND user_id = ?'),
+    membersOfTrip: db.prepare(
+      'SELECT m.*, u.username, u.nickname FROM trip_members m LEFT JOIN users u ON u.id = m.user_id WHERE m.trip_id = ? ORDER BY m.joined_at'
+    ),
+    insertMember: db.prepare(
+      "INSERT OR IGNORE INTO trip_members (trip_id, user_id, role) VALUES (?, ?, 'editor')"
+    ),
+    deleteMember: db.prepare('DELETE FROM trip_members WHERE trip_id = ? AND user_id = ?'),
+    tripsSharedWithUser: db.prepare(
+      'SELECT t.* FROM trips t JOIN trip_members m ON m.trip_id = t.id WHERE m.user_id = ? ORDER BY t.id DESC'
+    ),
+    insertInvite: db.prepare(
+      'INSERT INTO trip_invites (token, trip_id, created_by, expires_at) VALUES (?, ?, ?, ?)'
+    ),
+    getInvite: db.prepare('SELECT * FROM trip_invites WHERE token = ?'),
+    invitesOfTrip: db.prepare('SELECT * FROM trip_invites WHERE trip_id = ? ORDER BY created_at DESC'),
+    revokeInvitesOfTrip: db.prepare('UPDATE trip_invites SET revoked = 1 WHERE trip_id = ?'),
+    insertComment: db.prepare(
+      'INSERT INTO trip_comments (trip_id, user_id, author, text) VALUES (?, ?, ?, ?)'
+    ),
+    commentsOfTrip: db.prepare('SELECT * FROM trip_comments WHERE trip_id = ? ORDER BY id'),
+    countComments: db.prepare('SELECT COUNT(*) AS c FROM trip_comments WHERE trip_id = ?'),
     tripBuddiesOfUser: db.prepare(
       'SELECT tb.trip_id, tb.buddy_id FROM trip_buddies tb JOIN trips t ON t.id = tb.trip_id WHERE t.user_id = ?'
     ),
@@ -625,6 +680,65 @@ function createDb(filePath) {
       const trip = stmts.getTrip.get(Number(id));
       if (!trip) return null;
       return Number(trip.user_id) === Number(userId) ? trip : null;
+    },
+    // ---- 一起改（2026-11-24）：一趟行程的「能看/能改」不再只看 owner ----
+    // 返回 { trip, role } 或 null；role = owner | editor
+    getTripForMember(id, userId) {
+      const trip = stmts.getTrip.get(Number(id));
+      if (!trip) return null;
+      if (Number(trip.user_id) === Number(userId)) return { trip, role: 'owner' };
+      const m = stmts.memberOf.get(Number(id), Number(userId));
+      if (!m) return null;
+      return { trip, role: m.role || 'editor' };
+    },
+    listMembers(tripId) {
+      return stmts.membersOfTrip.all(Number(tripId)).map((r) => ({
+        userId: toNumber(r.user_id),
+        role: r.role || 'editor',
+        username: r.username || '',
+        nickname: r.nickname || r.username || '',
+        joinedAt: r.joined_at,
+      }));
+    },
+    addMember(tripId, userId) {
+      stmts.insertMember.run(Number(tripId), Number(userId));
+      return this.listMembers(tripId);
+    },
+    removeMember(tripId, userId) {
+      stmts.deleteMember.run(Number(tripId), Number(userId));
+      return this.listMembers(tripId);
+    },
+    listTripsSharedWith(userId) {
+      return stmts.tripsSharedWithUser.all(Number(userId));
+    },
+    createInvite({ token, tripId, createdBy, expiresAt }) {
+      stmts.insertInvite.run(String(token), Number(tripId), Number(createdBy), expiresAt || null);
+      return stmts.getInvite.get(String(token));
+    },
+    getInvite(token) {
+      return stmts.getInvite.get(String(token)) || null;
+    },
+    listInvitesOfTrip(tripId) {
+      return stmts.invitesOfTrip.all(Number(tripId));
+    },
+    revokeInvites(tripId) {
+      stmts.revokeInvitesOfTrip.run(Number(tripId));
+    },
+    addComment({ tripId, userId, author, text }) {
+      const info = stmts.insertComment.run(Number(tripId), userId == null ? null : Number(userId), String(author), String(text));
+      return toNumber(info.lastInsertRowid);
+    },
+    listComments(tripId) {
+      return stmts.commentsOfTrip.all(Number(tripId)).map((r) => ({
+        id: toNumber(r.id),
+        userId: r.user_id == null ? null : toNumber(r.user_id),
+        author: r.author,
+        text: r.text,
+        createdAt: r.created_at,
+      }));
+    },
+    countComments(tripId) {
+      return toNumber(stmts.countComments.get(Number(tripId)).c);
     },
     deleteTrip(id) {
       db.exec('BEGIN');
