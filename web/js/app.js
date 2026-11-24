@@ -222,7 +222,8 @@
   // ---------- P12：左栏整列收起 / 展开（与右栏 onTogglePanel 对称） ----------
   // P11 那个小箭头原来只能折叠卡片，用户以为它是「收起左栏」、点了却没反应 ⇒ 改成整列收起；
   // 单张卡片仍可点自己的标题条折叠。
-  const SIDEBAR_COLLAPSED_KEY = 'travel.sidebar-collapsed';
+  // v2（2026-11-24）：用户要「默认左侧展开」⇒ 升版让浏览器里存的「收起」不再生效
+  const SIDEBAR_COLLAPSED_KEY = 'travel.sidebar-collapsed.v2';
 
   function saveSidebarCollapsed(collapsed) {
     try {
@@ -781,6 +782,7 @@
   function renderSelection() {
     const count = Selection.count();
     $('selection-count').textContent = String(count);
+    syncPanelAuto(); // 没点 ⇒ 右栏收起；加进第一个点 ⇒ 自动展开（他手动定过就不动）
     $('only-selected-btn').classList.toggle('active', state.onlySelected);
     // 0 个点时「规划行程 / 自动成线」不可点（P9-⑦）：else 点了只会弹一句“先去挑点”
     const noPin = count === 0;
@@ -1424,21 +1426,62 @@
   }
 
   // 右栏折叠 / 展开：收起后地图变宽，AMap 需 resize() 防灰块错位
-  function onTogglePanel() {
+  // 2026-11-24 用户：「右侧如果未添加行程的情况下先隐藏」⇒ 手里一个点都没有时右栏默认收起，
+  // 加进第一个点就自动展开；他手动点过箭头之后，就按他的选择来（不再自动）。
+  const PANEL_KEY = 'travel.panel-collapsed.v2';
+
+  function readPanelChoice() {
+    try {
+      const raw = window.localStorage.getItem(PANEL_KEY);
+      if (raw === '1') return true;
+      if (raw === '0') return false;
+      return null; // 没选过 ⇒ 走自动
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function savePanelChoice(collapsed) {
+    try {
+      window.localStorage.setItem(PANEL_KEY, collapsed ? '1' : '0');
+    } catch (err) {
+      /* 存不下不影响使用 */
+    }
+  }
+
+  function applyPanelCollapsed(collapsed) {
     const panel = $('right-panel');
-    const collapsed = panel.classList.toggle('collapsed');
+    if (!panel) return;
+    const next = !!collapsed;
+    if (panel.classList.contains('collapsed') === next) return;
+    panel.classList.toggle('collapsed', next);
     const btn = $('panel-toggle');
     if (btn) {
       // P11：按钮只剩一个小箭头（收起态由 CSS 翻向左），文案退到 title / aria-label
-      const label = collapsed ? '展开右栏' : '收起右栏';
+      const label = next ? '展开右栏' : '收起右栏';
       btn.title = label;
       btn.setAttribute('aria-label', label);
-      btn.setAttribute('aria-expanded', String(!collapsed));
+      btn.setAttribute('aria-expanded', String(!next));
     }
     if (MapCtl.resize) {
       requestAnimationFrame(() => MapCtl.resize());
       setTimeout(() => MapCtl.resize(), 240);
     }
+  }
+
+  // 没点就收起（窄屏不这么干：那里右栏是整幅一行，收起反而更乱）
+  function syncPanelAuto() {
+    if (narrowScreen()) return;
+    if (readPanelChoice() !== null) return; // 他手动定过，就别自作主张
+    applyPanelCollapsed(Selection.count() === 0);
+  }
+
+  function onTogglePanel() {
+    const panel = $('right-panel');
+    if (!panel) return;
+    const collapsed = !panel.classList.contains('collapsed');
+    applyPanelCollapsed(collapsed);
+    savePanelChoice(collapsed); // 手动点过 ⇒ 以后按他的来
   }
 
   function onPlan() {
@@ -2051,7 +2094,8 @@
     }
     // 该城的实景图索引（点位名 → 图）：先拿回来，清单里才画得出缩略图
     await loadCityPhotos(state.city);
-    state.activeCats = new Set(Cats.all().map((c) => c.key));
+    // 切城市同样回到「未选分类」（默认不显示所有）
+    state.activeCats = new Set();
     state.onlySelected = false;
     state.ratingFilter = DEFAULT_RATING_FILTER;
     state.searchKey = '';
@@ -3193,15 +3237,20 @@
 
     Cats.init(state.config.categories);
     state.orderMode = readOrderMode(); // 点的顺序：默认「按距离」（上次选过就沿用上次的）
-    // 首先是一个地图：打开就把四类都显示出来，而不是空着等用户去选（用户 2026-11-11）
-    state.activeCats = new Set(Cats.all().map((c) => c.key));
+    // 默认不显示所有（2026-11-24 用户「默认不显示所有」）：打开时一个分类都不选 ⇒ 地图与列表都空着，
+    // 等他点分类再看。此前是「打开就把四类都显示出来」（2026-11-11 的口径），已按新要求改掉。
+    state.activeCats = new Set();
     renderCatChips();
     renderRatingSlider();
     loadBaseFromStore();
     renderBase();
     loadCardState(); // 侧栏卡片折叠状态（依赖 base 的默认展开策略）
     applyCardState();
-    applySidebarCollapsed(loadSidebarCollapsed()); // 上次把左栏收成窄条的话，刷新后保持
+    // 左栏默认展开（2026-11-24 用户「默认左侧展开」）：状态键已升 v2，旧值不再生效
+    applySidebarCollapsed(loadSidebarCollapsed());
+    // 右栏：手里还没有点 ⇒ 先收起（等第一个点进来再展开）
+    const panelChoice = readPanelChoice();
+    applyPanelCollapsed(panelChoice === null ? Selection.count() === 0 && !narrowScreen() : panelChoice);
 
     // Esc 关信息卡；点地图空白也关（不用去够卡片右上角那个 ×）
     document.addEventListener('keydown', (e) => {

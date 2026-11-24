@@ -82,11 +82,12 @@ test('默认不选分类：未选分类不显示地点，选了就只看选中�
   );
 });
 
-test('切城市回到「全部类别」；关键词搜索不过滤分类', () => {
+test('切城市回到「未选分类」（默认不显示所有）；关键词搜索不过滤分类', () => {
   const m = APP.match(/function\s+setCity[\s\S]*?\n  \}/);
   assert.ok(m, '未找到 setCity');
-  // 首先是一个地图：新城市打开就把四类都显示出来（用户 2026-11-11）
-  assert.match(m[0], /state\.activeCats = new Set\(Cats\.all\(\)/, 'setCity 应回到全部类别');
+  // 2026-11-24 用户「默认不显示所有」⇒ 打开/切城都不预选分类（此前是四类全选，2026-11-11 的口径）
+  assert.match(m[0], /state\.activeCats = new Set\(\);/, 'setCity 应回到未选分类');
+  assert.ok(!/state\.activeCats = new Set\(Cats\.all\(\)/.test(m[0]), 'setCity 不该再预选四类');
   const s = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/);
   assert.ok(s, '未找到 doPoiSearch');
   assert.match(

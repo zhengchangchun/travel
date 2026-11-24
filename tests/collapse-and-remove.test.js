@@ -74,12 +74,17 @@ test('左栏那个箭头点下去真的把整列收起来（P12：原来只能�
   // 窄条可点开（与右栏抽屉惯例一致）
   assert.match(APP, /#sidebar\s+\.brand/);
 
-  // 右栏按钮仍不写文字
+  // 右栏按钮仍不写文字（2026-11-24 起 aria 落在 applyPanelCollapsed 里，onTogglePanel 只做「取反 + 记住」）
   const panel = APP.match(/function onTogglePanel\(\)[\s\S]*?\n  \}/);
   assert.ok(panel, '缺 onTogglePanel');
   assert.ok(!/btn\.textContent/.test(panel[0]), '右栏按钮不该再写「收起 ‹ / 展开 ›」文字');
-  assert.match(panel[0], /aria-label/, '应以 aria-label 表达收起 / 展开');
-  assert.match(panel[0], /aria-expanded/, '应同步 aria-expanded');
+  assert.match(panel[0], /applyPanelCollapsed\(/, '要落到 applyPanelCollapsed（切 class ＋ 改 aria）');
+  assert.match(panel[0], /savePanelChoice\(/, '手动点过要记住（以后不再自动收起）');
+  const applyPanel = APP.match(/function applyPanelCollapsed\(collapsed\)[\s\S]*?\n  \}/);
+  assert.ok(applyPanel, '缺 applyPanelCollapsed');
+  assert.match(applyPanel[0], /aria-label/, '应以 aria-label 表达收起 / 展开');
+  assert.match(applyPanel[0], /aria-expanded/, '应同步 aria-expanded');
+  assert.ok(!/textContent/.test(applyPanel[0]), '不该往按钮里写文字');
 });
 
 // ---------- ② 「我的行程」移除不了 ----------
