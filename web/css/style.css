@@ -1482,6 +1482,13 @@ button:disabled { cursor: not-allowed; }
   .sidebar-toggle, #sidebar.collapsed .sidebar-toggle,
   .panel-toggle, #right-panel.collapsed .panel-toggle { width: 44px; height: 44px; }
   .bar-note, .card-sub { font-size: 12px; }
+  /* 手机上头部已经有「旅迹」了，左栏再摆一块品牌 + 副标题白占一屏（实测 87px）⇒ 只留收起按钮 */
+  body.has-headbar #sidebar .brand { padding-bottom: 0; }
+  body.has-headbar #sidebar .brand .brand-name,
+  body.has-headbar #sidebar .brand .brand-logo,
+  body.has-headbar #sidebar .brand .sub { display: none; }
+  body.has-headbar #sidebar .brand::after { display: none; }
+  body.has-headbar #sidebar .brand .brand-top { justify-content: flex-end; }
 }
 
 /* ---------- 「选完就收」（2026-11-24 用户：「我可以选一个也可以选多个，选完的话，这个选择框应该就消失了」）----------
