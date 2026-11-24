@@ -141,8 +141,10 @@
       zoom: 11,
       center: [120.15507, 30.27415],
       viewMode: '2D',
-      // 底图用亮色（用户 2026-11-09）：暗色界面里嵌一块亮地图，两侧栏保持暗色
-      mapStyle: 'amap://styles/normal',
+      // 底图用亮色（用户 2026-11-09 定的「地图底板要亮色」）。
+      // 2026-11-24 对齐圆周旅迹：换成高德官方的「清新」样式（薄荷绿地块 + 白路 + 淡蓝水），
+      // 与它截图里的地图观感一致；样式名是高德内置的，不依赖自定义样式 id。
+      mapStyle: 'amap://styles/fresh',
     });
     window.addEventListener('resize', onWindowResize);
     return map;
