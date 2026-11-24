@@ -85,12 +85,30 @@
     );
   }
 
+  // 路线上的点：白卡片 + 蓝色编号徽标（2026-11-24 对齐圆周旅迹）。
+  // 只有「在路线里」的点才用卡片（通常几个到十几个）；其余仍是小圆点/旗子，不然几百个卡片会糊成一片。
+  function routeCardHtml(poi, selected) {
+    const no = orderNo(poi);
+    const isBase = isBaseId(poi.id) || isBaseId(poi.poi_id);
+    const SC = window.TravelScoreColor;
+    const top = SC ? SC.isTop(poi.rating) : false;
+    return (
+      '<div class="route-card' + (selected ? ' selected' : '') + (isBase ? ' base' : '') + '" ' +
+      'title="' + esc(flagTitle(poi, top, isBase)) + '">' +
+      '<span class="rc-name">' + esc(poi.name) + '</span>' +
+      '<span class="rc-no">' + no + '</span>' +
+      '</div>'
+    );
+  }
+
   // 当前呈现档该给什么内容/锚点（圆点以自己为中心，旗子钉在自己的尖端）
   function contentFor(poi, selected, mode) {
+    if (orderNo(poi)) return routeCardHtml(poi, selected); // 路线上的点：卡片
     return mode === 'dot' ? dotHtml(poi, selected) : flagHtml(poi, selected);
   }
 
   function offsetFor(mode, poi) {
+    if (orderNo(poi)) return new AMap.Pixel(-13, -13); // 卡片：编号徽标压在坐标上
     if (mode === 'dot') {
       // 带站号的圆点大一圈（20px），锚点跟着挪，别让它偏出真实坐标
       return orderNo(poi) ? new AMap.Pixel(-10, -10) : new AMap.Pixel(-6, -6);
@@ -719,15 +737,23 @@
   let routeLabels = [];
   let routeLegBaseStyles = [];
   let routeLegFailed = [];
+  let routeCasings = []; // 白边（垫在彩线下面）：单独一份，不混进 routeLines 的 index
   let routeSelected = null;
 
   // 每种出行方式在地图上一个色 + 一种线型（与右栏芯片的图标/小线段同一套，route.js 的 MODES）
+  // 2026-11-24 对齐圆周旅迹：线要「粗、圆头、带一圈白边」——白边是它在浅色地图上不糊的关键。
+  // 颜色仍按出行方式区分（那是图例语义），只是整体加粗一档、圆头圆角。
+  // 颜色必须与 route.js / quickroute.js 那套一致（图例语义，有测试钉住）；
+  // 对齐对标产品靠的是「加粗 + 圆头 + 白边」，不是换色。
   const MODE_STYLES = {
-    driving: { strokeColor: '#1677ff', strokeWeight: 6, strokeStyle: 'solid' },
-    riding: { strokeColor: '#e8760c', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [7, 5] },
-    walking: { strokeColor: '#22a06b', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [2, 6] },
-    transit: { strokeColor: '#8a6cf0', strokeWeight: 5, strokeStyle: 'dashed', strokeDasharray: [12, 8] },
+    driving: { strokeColor: '#2aa9e0', strokeWeight: 8, strokeStyle: 'solid' },
+    riding: { strokeColor: '#e8760c', strokeWeight: 7, strokeStyle: 'dashed', strokeDasharray: [7, 5] },
+    walking: { strokeColor: '#22a06b', strokeWeight: 7, strokeStyle: 'dashed', strokeDasharray: [2, 6] },
+    transit: { strokeColor: '#8a6cf0', strokeWeight: 7, strokeStyle: 'dashed', strokeDasharray: [12, 8] },
   };
+
+  // 白边（casing）：垫在彩色线下面的一条更粗的白线，让线在浅色底图上「浮」起来
+  const CASING_STYLE = { strokeColor: '#ffffff', strokeWeight: 13, strokeOpacity: 0.95, strokeStyle: 'solid' };
 
   function routeStyle(mode) {
     return Object.assign({}, MODE_STYLES[mode] || MODE_STYLES.driving);
@@ -751,6 +777,11 @@
   const LEG_DIM = { strokeOpacity: 0.4, zIndex: 45 };
 
   function applyRouteSelection() {
+    // 白边跟着彩线一起变淡/加粗（它没有自己的选中语义，只是垫底）
+    routeCasings.forEach((line, i) => {
+      const dim = routeSelected !== null && routeSelected !== undefined && i !== routeSelected;
+      line.setOptions({ strokeOpacity: dim ? 0.35 : 0.95 });
+    });
     routeLines.forEach((line, i) => {
       const base = routeLegBaseStyles[i] || {};
       if (routeSelected === null || routeSelected === undefined) {
@@ -787,9 +818,11 @@
   function clearRoute() {
     if (map) {
       routeLines.forEach((l) => map.remove(l));
+      routeCasings.forEach((l) => map.remove(l));
       routeLabels.forEach((t) => map.remove(t));
     }
     routeLines = [];
+    routeCasings = [];
     routeLabels = [];
     routeLegBaseStyles = [];
     routeLegFailed = [];
@@ -822,10 +855,23 @@
       const legMode = leg.mode || mode;
       const day = days ? days[leg.index] : null;
       const style = failed ? FAILED_STYLE : day ? dayStyle(day) : routeStyle(legMode);
+      // 先垫一条白边（失败段不垫：虚线本来就要看得出「这段没规划成」）
+      if (!failed) {
+        const casing = new AMap.Polyline({
+          path,
+          ...CASING_STYLE,
+          lineJoin: 'round',
+          lineCap: 'round',
+          zIndex: 55,
+          bubble: true,
+        });
+        casing.setMap(map);
+        routeCasings.push(casing);
+      }
       const line = new AMap.Polyline({
         path,
         ...style,
-        // 成功的那几段画方向箭头：地图上也能看出先到哪儿、后到哪儿
+        // 方向箭头保留：地图上要能看出先到哪儿、后到哪儿（对标产品没有，但这是我们的信息量）
         showDir: !failed,
         lineJoin: 'round',
         lineCap: 'round',

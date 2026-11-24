@@ -9,7 +9,7 @@
   const AUTO_MODE = { key: 'auto', label: '最快', color: '', line: '', lineText: '先按时间最短逐段挑' };
   // 每种方式一个颜色 + 一种线型；地图上那条线就长这样（map.js 的 routeStyle 用同一套色）
   const MODES = [
-    { key: 'driving', label: '驾车', color: '#1677ff', line: 'solid', lineText: '实线' },
+    { key: 'driving', label: '驾车', color: '#2aa9e0', line: 'solid', lineText: '实线' },
     { key: 'riding', label: '骑行', color: '#e8760c', line: 'dash-long', lineText: '长虚线' },
     { key: 'walking', label: '步行', color: '#22a06b', line: 'dot', lineText: '细点线' },
     { key: 'transit', label: '公交', color: '#8a6cf0', line: 'dash-mid', lineText: '中虚线' },
