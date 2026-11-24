@@ -81,6 +81,11 @@
       '<button type="button" class="chip-static" id="head-city" title="点一下换城市">当前地区 <b>' +
       Site.esc(city) +
       '</b></button>';
+    // 用户态还没回来（/app 上要等地图/行程初始化完才轮到它）⇒ 先占位，别先画「登录 / 注册」
+    // 再换成「长春」—— 已登录的人刷新页面会看到自己“被登出”三秒（2026-11-24 实测 3.3s）。
+    if (!state.loaded) {
+      return cityBtn + '<span class="who-placeholder" aria-hidden="true"></span>';
+    }
     if (!u) {
       // 没登录：只给登录入口（个人设置也不用露，登录后自然就出现在「我的 ⌄」里）
       return cityBtn + '<a class="btn small primary" href="/login' + nextParam() + '">登录 / 注册</a>';

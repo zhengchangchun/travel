@@ -103,6 +103,9 @@ body.site .wrap, body.site footer.site { position: relative; z-index: 1; }
 
 /* 未登录/已登录两种形态 */
 .who { display: flex; align-items: center; gap: 8px; }
+/* 用户态还没回来时的占位：占住「头像 + 昵称」那块宽度，避免头部左右跳一下 */
+.who-placeholder { display: inline-block; width: 96px; height: 30px; border-radius: 999px;
+  background: var(--accent-soft); opacity: .55; }
 .avatar {
   width: 30px; height: 30px; border-radius: 50%; flex: none;
   background: var(--accent-soft); color: var(--accent-deep);
