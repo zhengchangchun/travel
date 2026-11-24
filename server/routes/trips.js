@@ -176,11 +176,13 @@ module.exports = [
           stops: payload.stops.length,
           distanceM: payload.plan && payload.plan.distanceM,
         });
-        // 旧记录里那些「这次没再生成」的文件（比如换了日期后缀的旧包）删掉，别在 share/ 里越堆越多
+        // 旧记录里那些「这次没再生成」的文件（比如换了日期后缀的旧包）删掉，别在 share/ 里越堆越多。
+        // ⚠️ 老记录（认领进来的历史分享）的 files 是个对象 {imported:true,day}，不是数组 ⇒ 必须守卫
         const keep = new Set(out.files.map((f) => f.name));
         const dir = path.resolve(SHARE_DIR());
         stale.forEach((row) => {
-          (row.files || []).forEach((f) => {
+          const oldFiles = Array.isArray(row.files) ? row.files : [];
+          oldFiles.forEach((f) => {
             if (!f || !f.name || keep.has(f.name)) return;
             const full = path.resolve(dir, path.basename(f.name));
             if (path.dirname(full) !== dir) return;
