@@ -1511,3 +1511,15 @@ button:disabled { cursor: not-allowed; }
   .panel-toggle, #right-panel.collapsed .panel-toggle { width: 44px; height: 44px; }
   .bar-note, .card-sub { font-size: 12px; }
 }
+
+/* ---------- 「选完就收」（2026-11-24 用户：「我可以选一个也可以选多个，选完的话，这个选择框应该就消失了」）----------
+   右栏「加个地点」：手里有点了、人也走开 ⇒ 收成一行「＋ 加个地点」；点它或聚焦回来就展开。 */
+.add-toggle {
+  width: 100%; display: inline-flex; align-items: center; justify-content: flex-start;
+  padding: 10px 12px; border: 1px dashed var(--line-2, #cfc9bd); background: transparent;
+  color: var(--accent-2, #a8683c); font-size: 13px; border-radius: 8px;
+}
+.add-toggle:hover { border-color: var(--accent, #a8683c); }
+.add-toggle.hidden { display: none; }
+.pin-card.add-collapsed #add-combo { display: none; }
+.pin-card.add-collapsed .card-sub { display: none; }

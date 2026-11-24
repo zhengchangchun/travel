@@ -8,6 +8,22 @@
   let ids = new Set();
   const listeners = [];
 
+  // 写还在飞的计数（2026-11-24）：乐观更新会先 notify 一次，这时候服务端还没看到这个点；
+  // 路线规划（/api/itinerary/route）读的是库里的这趟点，撞上就会 400「行程点数不足 2」。
+  // 所以把写包起来计数，规划那边等它归零再发请求。
+  let writes = 0;
+  async function write(fn) {
+    writes += 1;
+    try {
+      return await fn();
+    } finally {
+      writes -= 1;
+    }
+  }
+  function pendingCount() {
+    return writes;
+  }
+
   function keyOf(poi) {
     if (!poi) return '';
     if (poi.id != null) return String(poi.id);
@@ -128,7 +144,7 @@
     });
     notify();
     try {
-      const res = await API.selectPoi({ city, poi: toPayload(poi) });
+      const res = await write(() => API.selectPoi({ city, poi: toPayload(poi) }));
       tripId = res.tripId;
       const idx = pins.findIndex((p) => p.id === key);
       if (idx >= 0) pins[idx] = mapPin(res.pin);
@@ -158,9 +174,9 @@
           item && typeof item.pinId === 'number' && Number.isFinite(item.pinId)
             ? item.pinId
             : Number(String(key).slice(4));
-        await API.deletePin(rowId);
+        await write(() => API.deletePin(rowId));
       } else {
-        await API.unselectPoi({ city, poiId: key, tripId: tripId || undefined });
+        await write(() => API.unselectPoi({ city, poiId: key, tripId: tripId || undefined }));
       }
     } catch (err) {
       pins = backupPins;
@@ -186,7 +202,7 @@
     pins = next;
     notify();
     try {
-      await API.reorderSelection({ city, tripId: tripId || undefined, poi_ids: next.map((p) => p.id) });
+      await write(() => API.reorderSelection({ city, tripId: tripId || undefined, poi_ids: next.map((p) => p.id) }));
     } catch (err) {
       pins = backup;
       notify();
@@ -213,7 +229,7 @@
     pins = next;
     notify();
     try {
-      await API.reorderSelection({ city, tripId: tripId || undefined, poi_ids: next.map((p) => p.id) });
+      await write(() => API.reorderSelection({ city, tripId: tripId || undefined, poi_ids: next.map((p) => p.id) }));
       return next;
     } catch (err) {
       pins = backup;
@@ -273,6 +289,7 @@
     has,
     list,
     count,
+    pendingCount,
     select,
     remove,
     toggle,

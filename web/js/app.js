@@ -884,11 +884,24 @@
     return modes.length === legs.length ? modes : undefined;
   }
 
+  let routeWaitTimer = 0;
+
   // ---------- 一条路线只规划一次 ----------
   // 挑点视图与行程视图都调它（地图上那条线、两张清单的逐段数字、分享包全用同一份数据）；
   // 路线身份没变时 Route.draw 直接返回，不重请求（高德逐段规划要花配额）
   function syncRoute() {
     if (!Route) return;
+    // 选中集还在写服务端（乐观更新已先刷了界面）：等一下再规划 ——
+    // 否则服务端还没看到刚加的点，/api/itinerary/route 会 400「行程点数不足 2」，
+    // 而画路线的身份键没变、一报错就不再重试，行程里的耗时/距离就一直是空白的。
+    if (Selection.pendingCount && Selection.pendingCount() > 0) {
+      if (routeWaitTimer) clearTimeout(routeWaitTimer);
+      routeWaitTimer = setTimeout(() => {
+        routeWaitTimer = 0;
+        syncRoute();
+      }, 350);
+      return;
+    }
     const pins = orderedPins();
     const start = baseForPlan();
     const stops = state.autoReturn && start && pins.length ? pins.concat([start]) : pins;
@@ -1310,13 +1323,54 @@
       // 读不到就清空：留着旧选中会在列表里显示误导人的“幽灵星标”
       if (Selection.reset) Selection.reset();
     }
+    // 「选完就收」：手里有点了、人不在输入框里 ⇒ 把加地点那个框收起来；一个点都没有时必须露出来
+    if (Selection.count() > 0 && document.activeElement !== $('add-input')) maybeCollapseAddBox();
+    else if (Selection.count() === 0) setAddBoxCollapsed(false);
+  }
+
+  // ---------- 「选完就收」（2026-11-24 用户：「我可以选一个也可以选多个，选完的话，这个选择框应该就消失了」）----------
+  // 右栏「加个地点」这个选择框：手里已经有点了、而且人已经走开（失焦 / 点别处 / 从列表里挑）
+  // ⇒ 收成一行「＋ 加个地点」；点它（或直接把焦点放回去）就展开。正在连着加时不打扰。
+  function addBoxEl() {
+    return $('add-combo');
+  }
+  function addBoxCard() {
+    const box = addBoxEl();
+    return box ? box.closest('.pin-card') : null;
+  }
+  function setAddBoxCollapsed(flag) {
+    const card = addBoxCard();
+    if (!card) return;
+    const next = !!flag;
+    if (card.classList.contains('add-collapsed') === next) return;
+    card.classList.toggle('add-collapsed', next);
+    const toggle = $('add-toggle');
+    if (toggle) {
+      toggle.classList.toggle('hidden', !next);
+      toggle.setAttribute('aria-expanded', String(!next));
+    }
+    const input = $('add-input');
+    if (input) input.setAttribute('aria-expanded', String(!next));
+    if (!next && input) input.focus(); // 展开就顺手聚焦，少点一下
+  }
+  function maybeCollapseAddBox() {
+    if (Selection.count() > 0) setAddBoxCollapsed(true);
   }
 
   async function onToggleSelect(poi) {
+    const had = Selection.has(poi);
     try {
       await Selection.toggle(poi);
     } catch (err) {
       UI.setStatus('选中失败：' + human(err));
+      return;
+    }
+    // 窄屏上从列表里点 ★ 加完：把「筛选·结果」卡收起，把屏幕让给地图（宽屏不打断多选）
+    if (!had && Selection.has(poi) && narrowScreen() && cardExpanded('filter')) {
+      cardState.filter = false;
+      saveCardState();
+      applyCardState();
+      UI.setStatus('已加入我的选择（点「筛选·结果」标题条可以再看列表）');
     }
   }
 
@@ -2041,6 +2095,9 @@
     } catch (err) {
       /* 选中加载失败不阻塞主流程 */
     }
+    // 「选完就收」：进城/切趟时手里已经有点的，加地点那个框就收起来（一个点都没有时保持露出）
+    if (Selection.count() > 0) maybeCollapseAddBox();
+    else setAddBoxCollapsed(false);
     await refreshTrips();
     await loadCityView(state.city);
   }
@@ -2924,6 +2981,8 @@
       if (cityListOpen() && combo && !combo.contains(e.target)) closeCityList();
       const addCombo = addComboEl();
       if (addListOpen() && addCombo && !addCombo.contains(e.target)) closeAddList();
+      const card = addBoxCard();
+      if (card && !card.contains(e.target)) maybeCollapseAddBox();
     });
     $('poi-search-btn').onclick = doPoiSearch;
     $('poi-input').addEventListener('keydown', (e) => {
@@ -2942,9 +3001,12 @@
           const combo = addComboEl();
           if (combo && combo.contains(document.activeElement)) return;
           if (addListOpen()) closeAddList();
+          maybeCollapseAddBox(); // 选完就走开 ⇒ 收起这个选择框
         }, 120);
       });
     }
+    const addToggle = $('add-toggle');
+    if (addToggle) addToggle.onclick = () => setAddBoxCollapsed(false);
     $('only-selected-btn').onclick = onToggleOnlySelected;
     const clearFilterBtn = $('filter-clear-btn');
     // 评分滑块（P10）：拖 = 实时跟手，松手后重算一次；键盘/点轨道也走同一个入口

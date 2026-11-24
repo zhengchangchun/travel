@@ -91,6 +91,8 @@
         <section class="card pin-card">
           <h2>我的选择 <span id="selection-count" class="count">0</span></h2>
           <p class="card-sub">加地点：打字按名字找（本地已收录 ＋ OpenStreetMap）· 或在左边列表点 ★ 挑</p>
+          <!-- 选完就收：手里已经有点了、人也走开了 ⇒ 输入框收成这一行（点开再选） -->
+          <button id="add-toggle" class="add-toggle hidden" type="button" aria-controls="add-combo" aria-expanded="false">＋ 加个地点</button>
           <div id="add-combo" class="combo">
             <input id="add-input" class="combo-input" placeholder="加个地点：如 西湖 / 之江实验室" autocomplete="off"
                    role="combobox" aria-expanded="false" aria-controls="add-results" aria-autocomplete="list" />
