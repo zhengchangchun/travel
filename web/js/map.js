@@ -102,13 +102,15 @@
   }
 
   // 当前呈现档该给什么内容/锚点（圆点以自己为中心，旗子钉在自己的尖端）
+  // 路线上的点：近看（z≥14）用白卡片 + 编号徽标；远看（z≤13）退回带编号的小圆点 ——
+  // 远看时卡片会互相压住（实测三亚整城视野 9 张卡叠成一团），圆点才分得开。
   function contentFor(poi, selected, mode) {
-    if (orderNo(poi)) return routeCardHtml(poi, selected); // 路线上的点：卡片
+    if (orderNo(poi) && mode !== 'dot') return routeCardHtml(poi, selected);
     return mode === 'dot' ? dotHtml(poi, selected) : flagHtml(poi, selected);
   }
 
   function offsetFor(mode, poi) {
-    if (orderNo(poi)) return new AMap.Pixel(-13, -13); // 卡片：编号徽标压在坐标上
+    if (orderNo(poi) && mode !== 'dot') return new AMap.Pixel(-13, -13); // 卡片：编号徽标压在坐标上
     if (mode === 'dot') {
       // 带站号的圆点大一圈（20px），锚点跟着挪，别让它偏出真实坐标
       return orderNo(poi) ? new AMap.Pixel(-10, -10) : new AMap.Pixel(-6, -6);
