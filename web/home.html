@@ -123,73 +123,104 @@
     <section class="block" id="reel-block" data-reveal>
       <div class="section-head">
         <span class="sec-no">03</span>
-        <h2>这四件事</h2>
+        <h2>这几件事</h2>
         <i class="rule"></i>
-        <span class="note">从刷到的那条笔记开始</span>
+        <span class="note">挑之前先看一遍</span>
       </div>
 
-      <div class="reel" id="reel">
+      <div class="reel" id="reel" style="--reel-n: 6">
         <div class="reel-stage">
-          <span class="reel-count"><b id="reel-idx">01</b><i>/</i>04</span>
+          <span class="reel-count"><b id="reel-idx">01</b><i>/</i><span id="reel-total">06</span></span>
 
           <div class="reel-slides" id="reel-slides">
             <article class="reel-slide is-on" data-i="0">
-              <span class="reel-ico" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H14l6 6v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />
-                  <path d="M14 4v6h6" /><path d="M8 14l2.5 2.5L16 11" />
-                </svg>
-              </span>
-              <span class="reel-kick">贴一条链接</span>
-              <h3 class="reel-claim">地图上直接看<i>。</i></h3>
-              <p class="reel-text">小红书、抖音的链接贴进去，正文里提到的地方直接落到地图上，不用你一个个找。</p>
-              <span class="reel-mark" aria-hidden="true">01</span>
-            </article>
-
-            <article class="reel-slide" data-i="1">
-              <span class="reel-ico" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 20h16" /><path d="M7.5 20v-7M12 20V7.5M16.5 20v-4" />
-                </svg>
-              </span>
-              <span class="reel-kick">翻开看排行</span>
-              <h3 class="reel-claim">分数高的先看<i>。</i></h3>
-              <p class="reel-text">拆出来的地方按评分排成一张表，分类、分数随便筛，看中哪个就挑哪个。</p>
-              <span class="reel-mark" aria-hidden="true">02</span>
-            </article>
-
-            <article class="reel-slide" data-i="2">
               <span class="reel-ico" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="6" cy="18" r="2.4" /><circle cx="18" cy="6" r="2.4" />
                   <path d="M8 16.2c3.6-1.2 4.4-4.6 6.4-7.4" stroke-dasharray="3 3" />
                 </svg>
               </span>
-              <span class="reel-kick">让它排顺序</span>
-              <h3 class="reel-claim">按里程排成一天<i>。</i></h3>
-              <p class="reel-text">从住的地方出发，每段多远、多久都标在上面，少走回头路；玩几天就分几天。</p>
+              <span class="reel-kick">精选线路</span>
+              <h3 class="reel-claim">路线直接看<i>。</i></h3>
+              <p class="reel-text">排好的线路摆在这儿：左边是沿线实景，右边按天列好走哪几个点。</p>
+              <span class="reel-mark" aria-hidden="true">01</span>
+            </article>
+
+            <article class="reel-slide" data-i="1">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3.5" y="5" width="17" height="14" rx="1.5" />
+                  <circle cx="9" cy="10" r="1.6" />
+                  <path d="M4 17.2l4.4-4.4 2.9 2.9L15 12l4.5 4.5" />
+                </svg>
+              </span>
+              <span class="reel-kick">美景一起看</span>
+              <h3 class="reel-claim">先看图再定<i>。</i></h3>
+              <p class="reel-text">沿线的站都配了实景照片，先看景色对不对胃口，再决定这一站留多久。</p>
+              <span class="reel-mark" aria-hidden="true">02</span>
+            </article>
+
+            <article class="reel-slide" data-i="2">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="9" cy="8.4" r="3" />
+                  <path d="M3.6 19.6c0-3 2.4-5 5.4-5s5.4 2 5.4 5" />
+                  <circle cx="17" cy="9.6" r="2.2" />
+                  <path d="M16.1 13.7c2.3.4 3.9 2.2 3.9 4.3" />
+                </svg>
+              </span>
+              <span class="reel-kick">找搭子</span>
+              <h3 class="reel-claim">喊上人一起去<i>。</i></h3>
+              <p class="reel-text">同行的人记在名单里，谁怕走路、谁要早睡都备注上，下次直接喊。</p>
               <span class="reel-mark" aria-hidden="true">03</span>
             </article>
 
             <article class="reel-slide" data-i="3">
               <span class="reel-ico" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" />
-                  <path d="M8.2 10.8 15.8 6.4M8.2 13.2l7.6 4.4" />
+                  <path d="M12 4.6l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 10.3l5.4-.8z" />
                 </svg>
               </span>
-              <span class="reel-kick">发给同行的人</span>
-              <h3 class="reel-claim">一起商量着改<i>。</i></h3>
-              <p class="reel-text">排完生成一个网页，谁点开都能看；要改哪直接说，你这边随手改。</p>
+              <span class="reel-kick">网红打卡</span>
+              <h3 class="reel-claim">热门的一眼看全<i>。</i></h3>
+              <p class="reel-text">景点、吃的、住的按分数排好，人气高不高，一眼就看出来。</p>
               <span class="reel-mark" aria-hidden="true">04</span>
+            </article>
+
+            <article class="reel-slide" data-i="4">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="7.8" />
+                  <path d="M12 7.4V12l3.1 2" />
+                </svg>
+              </span>
+              <span class="reel-kick">路程时间</span>
+              <h3 class="reel-claim">多远多久都写着<i>。</i></h3>
+              <p class="reel-text">每段走什么方式、开多久、多远，一段段列出来，骑车坐地铁换着算。</p>
+              <span class="reel-mark" aria-hidden="true">05</span>
+            </article>
+
+            <article class="reel-slide" data-i="5">
+              <span class="reel-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 19.9V4.4M8 4.4 4.4 8M8 4.4 11.6 8" />
+                  <path d="M16 4.1v15.5M16 19.6l3.6-3.6M16 19.6l-3.6-3.6" />
+                </svg>
+              </span>
+              <span class="reel-kick">随时改</span>
+              <h3 class="reel-claim">顺序随手改<i>。</i></h3>
+              <p class="reel-text">拖一下、上下挪一挪，或者按天分一分，路线跟着重算。</p>
+              <span class="reel-mark" aria-hidden="true">06</span>
             </article>
           </div>
 
           <div class="reel-tabs" id="reel-tabs" aria-label="这四件事">
-            <button class="reel-tab is-on" type="button" data-i="0" aria-current="true"><b>01</b>贴一条链接</button>
-            <button class="reel-tab" type="button" data-i="1"><b>02</b>翻开看排行</button>
-            <button class="reel-tab" type="button" data-i="2"><b>03</b>让它排顺序</button>
-            <button class="reel-tab" type="button" data-i="3"><b>04</b>发给同行的人</button>
+            <button class="reel-tab is-on" type="button" data-i="0" aria-current="true"><b>01</b>精选线路</button>
+            <button class="reel-tab" type="button" data-i="1"><b>02</b>美景一起看</button>
+            <button class="reel-tab" type="button" data-i="2"><b>03</b>找搭子</button>
+            <button class="reel-tab" type="button" data-i="3"><b>04</b>网红打卡</button>
+            <button class="reel-tab" type="button" data-i="4"><b>05</b>路程时间</button>
+            <button class="reel-tab" type="button" data-i="5"><b>06</b>随时改</button>
           </div>
           <i class="reel-bar" aria-hidden="true"><b id="reel-bar"></b></i>
         </div>

@@ -15,15 +15,15 @@ const HTML = fs.readFileSync(path.join(ROOT, 'web/home.html'), 'utf8');
 const CSS = fs.readFileSync(path.join(ROOT, 'web/css/home.css'), 'utf8');
 const JS = fs.readFileSync(path.join(ROOT, 'web/js/home.js'), 'utf8');
 
-const KICKS = ['贴一条链接', '翻开看排行', '让它排顺序', '发给同行的人'];
+const KICKS = ['精选线路', '美景一起看', '找搭子', '网红打卡', '路程时间', '随时改'];
 
 function slides() {
   return HTML.split('<article class="reel-slide').slice(1);
 }
 
-test('03 卷轴：四条重点，各带小标签 / 主张 / 一句话', () => {
+test('03 卷轴：六条重点，各带小标签 / 主张 / 一句话', () => {
   const s = slides();
-  assert.equal(s.length, 4, '应有四条重点');
+  assert.equal(s.length, 6, '应有六条重点');
   s.forEach((chunk, i) => {
     const body = chunk.slice(0, chunk.indexOf('</article>'));
     assert.match(body, /class="reel-ico"/, `第 ${i + 1} 条缺图标`);
@@ -39,9 +39,9 @@ test('03 卷轴：四条重点，各带小标签 / 主张 / 一句话', () => {
   assert.match(HTML, /class="reel-slide is-on" data-i="0"/, '初始亮的应是第一张');
 });
 
-test('03 卷轴：底部四段进度轨与四条重点对得上', () => {
+test('03 卷轴：底部六段进度轨与六条重点对得上', () => {
   const rails = HTML.split('<button class="reel-tab').slice(1);
-  assert.equal(rails.length, 4, '应有四段进度轨');
+  assert.equal(rails.length, 6, '应有六段进度轨');
   rails.forEach((chunk, i) => {
     const body = chunk.slice(0, chunk.indexOf('</button>'));
     assert.ok(body.includes(KICKS[i]), `第 ${i + 1} 段进度轨文案应是「${KICKS[i]}」`);
@@ -53,8 +53,12 @@ test('03 卷轴：底部四段进度轨与四条重点对得上', () => {
 });
 
 test('03 卷轴：外层按重点数撑高，舞台 sticky 在头部下面', () => {
-  assert.match(CSS, /\.reel\s*\{[^}]*height:\s*calc\(4 \* 88vh\)/, '外层高度应是 4 × 88vh');
-  assert.match(CSS, /@supports \(height: 1svh\)[\s\S]*?calc\(4 \* 88svh\)/, '移动端要用 svh 兜住地址栏');
+  const n = slides().length;
+  const varAttr = HTML.match(/class="reel" id="reel" style="--reel-n: (\d+)"/);
+  assert.ok(varAttr, 'HTML 要把重点数写进 --reel-n');
+  assert.equal(Number(varAttr[1]), n, '--reel-n 要与实际重点数一致（否则滚动长度对不上）');
+  assert.match(CSS, /\.reel\s*\{[^}]*height:\s*calc\(var\(--reel-n, 4\) \* 78vh\)/, '外层高度应随重点数走');
+  assert.match(CSS, /@supports \(height: 1svh\)[\s\S]*?calc\(var\(--reel-n, 4\) \* 78svh\)/, '移动端要用 svh 兜住地址栏');
   assert.match(CSS, /\.reel-stage\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--head-h\)/, '舞台要 sticky 钉在头部下面');
   assert.match(CSS, /\.reel-slide\.is-on\s*\{[^}]*opacity:\s*1/, '亮着的那张要完全显出来');
   assert.match(CSS, /\.reel-slide\.is-past\s*\{[^}]*translateY\(-/, '走过的往上走一点，方向感才对');

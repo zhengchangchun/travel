@@ -298,10 +298,11 @@ body.home .region .foot { display: flex; align-items: center; gap: 10px; margin-
 body.home .region .foot .btn { font-size: 12.5px; letter-spacing: .04em; }
 
 /* ---------- 03 这四件事：滚一段换一个重点（Apple 那种高亮卷轴，2026-11-24） ----------
-   外层按重点数撑高（4 × 88vh），舞台 sticky 钉在头部下面 ⇒ 每滚过约 5/8 屏换下一个重点。
+   外层按重点数撑高（`--reel-n` × 78vh，个数写在 HTML 的同名变量上），舞台 sticky 钉在头部下面
+   ⇒ 每滚过约 0.7 屏换下一个重点。
    一张只留一条主张：宋体 Black 放到最大、后面压一枚巨大的水印编号；底部四段是进度轨（可点）。
    窄屏 / 系统开了「减少动态效果」⇒ 退回成一列普通卡片（文案与顺序完全一样）。 */
-body.home .reel { position: relative; height: calc(4 * 88vh); border-top: 1px solid var(--hair); }
+body.home .reel { position: relative; height: calc(var(--reel-n, 4) * 78vh); border-top: 1px solid var(--hair); }
 body.home .reel-stage {
   position: sticky; top: var(--head-h); height: calc(100vh - var(--head-h));
   display: flex; flex-direction: column; justify-content: center; overflow: hidden;
@@ -332,7 +333,7 @@ body.home .reel-claim {
   font-size: clamp(40px, 6.4vw, 94px); font-weight: 900; line-height: 1.08; letter-spacing: .03em; color: var(--ink);
 }
 body.home .reel-claim i { font-style: normal; color: var(--accent); }
-body.home .reel-text { margin: 0; max-width: 30ch; font-size: 15px; line-height: 1.95; color: var(--ink-2); }
+body.home .reel-text { margin: 0; max-width: 38ch; font-size: 15px; line-height: 1.95; color: var(--ink-2); }
 body.home .reel-mark {
   position: absolute; right: 0; top: 50%; transform: translateY(-50%); pointer-events: none;
   font-family: var(--latin); font-size: clamp(150px, 24vw, 360px); line-height: .78;
@@ -351,7 +352,7 @@ body.home .reel-tab:hover { color: var(--ink-2); }
 body.home .reel-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--hair); }
 body.home .reel-bar b { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: 0 50%; }
 @supports (height: 1svh) {
-  body.home .reel { height: calc(4 * 88svh); }
+  body.home .reel { height: calc(var(--reel-n, 4) * 78svh); }
   body.home .reel-stage { height: calc(100svh - var(--head-h)); }
 }
 /* ---------- 窄屏 ---------- */
