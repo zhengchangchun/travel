@@ -6,6 +6,7 @@ const { loadConfig, loadCategories, ROOT } = require('./config');
 const { createCache } = require('./cache');
 const defaultAmap = require('./amap');
 const { createDb } = require('./db');
+const amapWeb = require('./amap-web');
 const {
   createRateLimiter,
   createViewportRunRegistry,
@@ -175,6 +176,8 @@ function createApp(opts = {}) {
         poiCache: typeof ctx.db.poiCacheStats === 'function' ? ctx.db.poiCacheStats() : null,
         // 高德 key 状态（2026-11-25）：多 key 轮换时哪个用尽了。**不返回 key 本身**，只给尾号。
         amapKeys: typeof amap.keyStatus === 'function' ? amap.keyStatus() : null,
+        // 高德网页版兜底状态（2026-11-25）：限速间隔、是否在风控冷却中
+        amapWeb: typeof amapWeb.status === 'function' ? amapWeb.status() : null,
       }),
     },
     {
@@ -244,6 +247,8 @@ function createApp(opts = {}) {
     viewportRuns: opts.viewportRuns || createViewportRunRegistry(),
     // 分享文件「在文件管理器里显示」：可注入（测试里换成假实现，别真弹 Finder）
     reveal: opts.reveal,
+    // 高德网页版兜底（2026-11-25）：Web 服务配额用尽时走网页端配额。可注入（测试里换假实现）。
+    amapWeb: opts.amapWeb || amapWeb,
   };
 
   async function handleApi(req, res, ctx, method, pathname, query) {

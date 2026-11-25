@@ -2,6 +2,17 @@
 const { matchesName } = require('../geocode-osm');
 const hours = require('../hours');
 
+// typecode → 分类（网页版只给 typecode，不给分类）
+// 与 config/categories.json 的 amapCode 对齐：050000 美食 / 100000 住宿 / 110000 景点 / 080000 游玩
+function categoryOfTypecode(typecode) {
+  const t = String(typecode || '');
+  if (t.startsWith('05')) return 'food';
+  if (t.startsWith('10')) return 'stay';
+  if (t.startsWith('11')) return 'sight';
+  if (t.startsWith('08')) return 'play';
+  return 'other';
+}
+
 function metresBetween(lng1, lat1, lng2, lat2) {
   const R = 6371000;
   const rad = Math.PI / 180;
@@ -67,9 +78,30 @@ module.exports = [
       if (Array.isArray(remote) && remote.length) return remote;
       const hit = localHit();
       if (hit.length) return hit;
+      // 高德 Web 服务配额用尽时，走**高德网页版**（网页端自己的配额，与 Web 服务分开）。
+      // 2026-11-25：这是「不申请新 key 也能继续搜」的唯一一条路。
+      // 代价：慢（开一次页面 10–25 秒）、严格限速（默认 8 秒/次）、会触发风控。
+      // 所以只用于「用户主动搜一个词」这种低频场景，不用于批量采集。
+      const kw = String(keywords == null ? '' : keywords).trim();
+      const quotaOut = remoteError && /OVER_LIMIT|CALL_LIMIT|QPS/i.test(String(remoteError.message || ''));
+      if (quotaOut && kw.length >= 2 && ctx.amapWeb && typeof ctx.amapWeb.searchByWeb === 'function') {
+        try {
+          const web = await ctx.amapWeb.searchByWeb({ keyword: kw, city: params.city });
+          if (web && web.ok && web.items.length) {
+            return web.items.map((p) =>
+              Object.assign({}, p, {
+                // 如实标来源：这是网页版抓的，不是 Web 服务
+                source: 'amap-web',
+                category: p.category || categoryOfTypecode(p.typecode),
+              })
+            );
+          }
+        } catch (err) {
+          /* 网页版也不成：继续往下走 OSM */
+        }
+      }
       // 三级兜底的最后一级：OSM（Photon，免 key）。「按名字搜地点」不该因为高德没额度就整条断掉，
       // 但 OSM 经常给一条无关街道 ⇒ 只认名字对得上的（错点比没点更坏，用户 2026-11-16）
-      const kw = String(keywords == null ? '' : keywords).trim();
       if (kw.length >= 2 && ctx.osm && typeof ctx.osm.searchOsm === 'function') {
         try {
           const list = await ctx.osm.searchOsm({
