@@ -1,5 +1,6 @@
 // 两点间近似距离（米）：给「附近」排序用，精度足够
 const { matchesName } = require('../geocode-osm');
+const hours = require('../hours');
 
 function metresBetween(lng1, lat1, lng2, lat2) {
   const R = 6371000;
@@ -145,7 +146,16 @@ module.exports = [
             : reason || '高德没有这个地点的营业时间',
         };
       }
-      return { available: true, ...data };
+      // 时段冲突判定（2026-11-25）：把「上午/下午/傍晚/晚上能不能去」一次算好给前端，
+      // 前端不用再解析一遍自由文本。只判一天内的时间重叠，不判星期几（行程里没有具体日期）。
+      const hoursText = data.opentimeWeek || data.opentimeToday || '';
+      return {
+        available: true,
+        ...data,
+        slots: hours.slotVerdicts(hoursText),
+        closedWeekdays: hours.parseClosedWeekdays(hoursText),
+        allDay: hours.isAllDay(hoursText),
+      };
     },
   },
   {

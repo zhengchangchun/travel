@@ -291,6 +291,35 @@
       container.appendChild(li);
     });
     paintSelection(container, selectedLeg);
+    // 时段冲突（2026-11-25）：选了时段的那些行，异步查一次营业时间，冲突就标红。
+    // 不阻塞渲染；查不到（额度用尽 / 这个地点没营业时间）就什么都不显示。
+    if (handlers.onHoursCheck) checkHours(container, pins, handlers);
+  }
+
+  // 每行一个占位符（.itin-hours[data-poi]）：查完把「这个时段去不了」写进去。
+  // 同一个 poi 只查一次（一趟里同一个地点可能出现两次）。
+  function checkHours(container, pins, handlers) {
+    const boxes = Array.prototype.slice.call(container.querySelectorAll('.itin-hours[data-poi]'));
+    if (!boxes.length) return;
+    const byPoi = new Map();
+    pins.forEach((p) => {
+      if (p && p.poi_id) byPoi.set(String(p.poi_id), p);
+    });
+    boxes.forEach((box) => {
+      const poiId = box.dataset.poi;
+      const pin = byPoi.get(poiId);
+      if (!poiId || !pin || !pin.slot) return;
+      Promise.resolve(handlers.onHoursCheck(poiId))
+        .then((res) => {
+          if (!res || !res.available) return;
+          const v = (res.slots || {})[pin.slot];
+          if (!v || v.status !== 'conflict') return;
+          box.innerHTML = '<span class="itin-hours-bad" title="营业时间对不上">' + esc(v.reason || '这个时段不开门') + '</span>';
+        })
+        .catch(() => {
+          /* 查不到就不显示，不打扰 */
+        });
+    });
   }
 
   // 段选中：高亮那一行（并展开它的路书）。地图上点某段、列表上点到达行都走这里。

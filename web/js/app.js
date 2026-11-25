@@ -1274,6 +1274,8 @@
       onPinDay: onPinDay,
       onPinSlot: onPinSlot,
       onPinBooking: onPinBooking,
+      // 时段冲突：行程里选了时段的行会异步查一次营业时间（实时，不缓存）
+      onHoursCheck: (poiId) => API.poiBusiness(poiId),
       onReorder: onReorderItinerary,
       onCancel: renderItinerary,
       onLegSelect: (index) => { if (Route) Route.selectLeg(index); },

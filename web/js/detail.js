@@ -162,9 +162,31 @@
                 : '')
           );
         }
+        // 时段冲突（2026-11-25）：服务端已经把「上午/下午/傍晚/晚上能不能去」算好了，
+        // 这里只把不能去的列出来。全都能去就不占地方。
+        const slots = res.slots || {};
+        const bad = ['morning', 'afternoon', 'evening', 'night']
+          .map((k) => ({ k, v: slots[k] }))
+          .filter((x) => x.v && x.v.status === 'conflict');
+        const slotLine = bad.length
+          ? '<div class="hours-slots">' +
+            bad.map((x) => '<span class="hours-slot-bad">' + esc(x.v.reason || '') + '</span>').join('') +
+            '</div>'
+          : '';
+        // 闭馆日（周一闭馆这类）：单独一行，不参与冲突判定（行程里没有具体日期）
+        const closed = Array.isArray(res.closedWeekdays) ? res.closedWeekdays : [];
+        const closedLine = closed.length
+          ? '<div class="hours-closed">' +
+            closed.map((d) => '周' + '一二三四五六日'[Number(d) - 1] + ' 闭馆').join('、') +
+            '</div>'
+          : '';
         box.innerHTML =
           '<span class="hours-icon" aria-hidden="true">🕘</span>' +
-          '<span class="hours-body">' + parts.join('<span class="hours-sep">·</span>') + '</span>' +
+          '<span class="hours-body">' +
+          parts.join('<span class="hours-sep">·</span>') +
+          slotLine +
+          closedLine +
+          '</span>' +
           '<span class="hours-src" title="每次打开都重新取，不存本地">实时</span>';
         box.classList.remove('hidden');
         const more = box.querySelector('.hours-more');
