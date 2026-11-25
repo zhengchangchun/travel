@@ -159,6 +159,33 @@
     return seen.size;
   }
 
+  // 抓取失败时把人引到「手动贴正文」那条路（2026-11-25，P1-4）：
+  // 抓取依赖本机登录态与平台风控（NEED_LOGIN / NEED_CAPTCHA / FETCH_FAIL / NO_DATA），
+  // 这些情况下用户手里其实就有那段正文 —— 与其让他卡在「抓不到」，不如把备用入口直接摊开。
+  const FALLBACK_CODES = ['NEED_LOGIN', 'NEED_CAPTCHA', 'FETCH_FAIL', 'NO_DATA', 'TIMEOUT'];
+
+  function openManualFallback(reason) {
+    const box = $('note-manual') || document.querySelector('.note-manual');
+    if (box) box.open = true;
+    const ta = $('note-share');
+    if (ta) {
+      // 把刚才那条链接/文案带过去，他只需要补上正文
+      const linkEl = $('note-link');
+      const raw = String((linkEl && linkEl.value) || '').trim();
+      if (raw && !String(ta.value || '').trim()) ta.value = raw;
+      setTimeout(() => ta.focus(), 60);
+    }
+    setHint(
+      (reason ? reason + ' · ' : '') + '把笔记正文粘到下面「手动贴正文」里，一样能提地名（不用等抓取）',
+      true
+    );
+  }
+
+  function errCode(err) {
+    if (!err) return '';
+    return String(err.code || err.message || '').trim();
+  }
+
   async function onFetch() {
     if (st.busy) {
       setHint('上一个任务还在跑：等它跑完，或点「取消」', true);
@@ -184,6 +211,11 @@
         return;
       }
       if (!r.ok) {
+        const code = errCode(r.err);
+        if (FALLBACK_CODES.includes(code)) {
+          openManualFallback(human(r.err));
+          return;
+        }
         setHint('抓取失败：' + human(r.err), true);
         return;
       }
@@ -225,6 +257,11 @@
         return;
       }
       if (!r.ok) {
+        const code = errCode(r.err);
+        if (FALLBACK_CODES.includes(code)) {
+          openManualFallback(human(r.err));
+          return;
+        }
         setHint('批量抓取失败：' + human(r.err), true);
         return;
       }
