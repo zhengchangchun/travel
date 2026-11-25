@@ -100,6 +100,12 @@
     revealShare: (file) => request('/api/share/reveal', post({ file })),
     exportTripShare: (tripId, payload) =>
       request('/api/trips/' + tripId + '/share/export', post(payload || {})),
+    // 导出到导航（2026-11-25）：GPX / KML 直接下载（浏览器自己处理 Content-Disposition）
+    geofileUrl: (tripId, format, order) =>
+      '/api/trips/' +
+      tripId +
+      '/geofile?' +
+      qs({ format: format || 'gpx', order: order && order.length ? order.join(',') : undefined }),
     addPin: (payload) => request('/api/pins', post(payload)),
     // 改一个点：备注 / 第几天 / 待规划状态（planned ⇄ wish）
     updatePin: (id, payload) => request('/api/pins/' + id, patch(payload || {})),

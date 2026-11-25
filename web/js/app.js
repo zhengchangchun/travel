@@ -1565,6 +1565,61 @@
     }
   }
 
+  // 导出菜单（2026-11-25）：复制 / .md / GPX / KML 收进一个下拉。
+  // 点外面、按 Esc、选完任一项都关；按钮的 aria-expanded 跟着变。
+  function closeExportMenu() {
+    const menu = $('export-menu');
+    const btn = $('itinerary-export');
+    if (menu) menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function bindExportMenu() {
+    const btn = $('itinerary-export');
+    const menu = $('export-menu');
+    if (!btn || !menu) return;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const open = menu.classList.contains('hidden');
+      menu.classList.toggle('hidden', !open);
+      btn.setAttribute('aria-expanded', String(open));
+    };
+    // 点菜单内部不关（交给各自的 onclick 处理），点外面关
+    menu.onclick = (e) => e.stopPropagation();
+    document.addEventListener('click', closeExportMenu);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeExportMenu();
+    });
+  }
+
+  // 导出到导航（2026-11-25，P0-3）：GPX / KML。
+  // 苹果地图双击 GPX 直接进「指南」；KML 给 Google Earth / 奥维。
+  // 高德没有公开的导入入口（它的路书只能站内建）⇒ 高德那条腿仍走免 key 的 uri.amap.com 链接。
+  function onExportGeo(format) {
+    if (!state.tripId) {
+      UI.setStatus('先挑几个点，这趟行程建出来才能导出');
+      return;
+    }
+    const pins = orderedPins();
+    if (!pins.length) {
+      UI.setStatus('还没有地点可导出');
+      return;
+    }
+    const url = API.geofileUrl(state.tripId, format, orderKeys(pins));
+    // 用隐藏的 a[download] 触发下载：比 window.open 稳（不会被拦弹窗）
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    UI.setStatus(
+      format === 'gpx'
+        ? 'GPX 已下载 · 苹果地图双击就能导入（坐标来自高德，在只认 WGS84 的软件里会偏几百米）'
+        : 'KML 已下载 · Google Earth / 奥维互动地图能打开'
+    );
+  }
+
   // ---------- P13 行程分享：生成「发给别人就能看」的分享包 ----------
   // 三件套 = 自包含 HTML（P14：地图生成的真实路线图 + 免 key 的高德链接）/ 纯文本 / JSON（留档）。
   // 住宿锚点只存在浏览器 localStorage ⇒ 生成时一起带上去，别人的分享页里也能看到「住」。
@@ -3227,9 +3282,27 @@
       };
     }
     $('itinerary-back').onclick = () => setView('list');
-    $('itinerary-copy').onclick = onCopyItinerary;
-    $('itinerary-download').onclick = onDownloadItinerary;
+    $('itinerary-copy').onclick = () => {
+      closeExportMenu();
+      onCopyItinerary();
+    };
+    $('itinerary-download').onclick = () => {
+      closeExportMenu();
+      onDownloadItinerary();
+    };
     $('itinerary-share').onclick = () => onShareTrip();
+    // 导出到导航（2026-11-25）：直接让浏览器下载（服务端带 Content-Disposition）
+    const gpxBtn = $('itinerary-gpx');
+    if (gpxBtn) gpxBtn.onclick = () => {
+      closeExportMenu();
+      onExportGeo('gpx');
+    };
+    const kmlBtn = $('itinerary-kml');
+    if (kmlBtn) kmlBtn.onclick = () => {
+      closeExportMenu();
+      onExportGeo('kml');
+    };
+    bindExportMenu();
     const tripShareBtn = $('trip-share-btn');
     if (tripShareBtn) tripShareBtn.onclick = () => onShareTrip();
     // 「一起改」：跳到协作页（邀请链接 / 成员 / 留言都在那儿）

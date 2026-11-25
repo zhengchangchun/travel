@@ -2,9 +2,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const share = require('../share');
+const geofile = require('../geofile');
 const routemap = require('../routemap');
 const auth = require('../auth');
-const { applyPoiOrder } = require('../order');
+const { applyPoiOrder, parseOrderCsv } = require('../order');
 const { tripFor } = require('../trip-access');
 
 // 行程、点位、分享包都是「我的」：一律要登录。
@@ -64,7 +65,7 @@ function revealFile(full) {
 }
 
 // 行程分享载荷：库里读行程 + 有序点，住宿锚点在前端（localStorage）⇒ 由请求体带过来
-function sharePayload(ctx, tripId) {
+function sharePayload(ctx, tripId, orderOverride) {
   const id = Number(tripId);
   const user = auth.requireUser(ctx);
   const hit = ctx.db.getTripForMember(id, user.id);
@@ -98,7 +99,10 @@ function sharePayload(ctx, tripId) {
     itemsByPin,
     // order（可选）：页面上「按距离」排出来的点序随请求带过来，分享包 / 静态路线图跟着它排
     // 按天分段：分享包也按「天 → 顺序」排
-    stops: applyPoiOrder(ctx.db.getTripPinsOrdered(id), ctx.body && ctx.body.order),
+    stops: applyPoiOrder(
+      ctx.db.getTripPinsOrdered(id),
+      orderOverride !== undefined ? orderOverride : ctx.body && ctx.body.order
+    ),
     base,
     labels,
     when: new Date().toISOString(),
@@ -225,6 +229,36 @@ module.exports = [
         // 同一个服务里就能打开看（浏览器里的链接，不是本地路径）
         preview: '/share/' + encodeURIComponent(out.base + '.html'),
       };
+    },
+  },
+  {
+    // 导出到导航（2026-11-25，P0-3）：GPX / KML 两种通用地理文件。
+    // 苹果地图双击 GPX 直接进「指南」；KML 给 Google Earth / 奥维。高德没有公开导入入口，
+    // 所以高德那条腿仍走免 key 的 uri.amap.com 链接（分享页/信息卡上已有）。
+    method: 'GET',
+    path: '/api/trips/:id/geofile',
+    handler(ctx) {
+      // GET 没有 body：点序从 query 的 order 来（与 /api/selection/export 同口径）
+      const payload = sharePayload(ctx, ctx.params.id, parseOrderCsv(ctx.query && ctx.query.order));
+      if (!(payload.stops || []).length) {
+        throw new ctx.HttpError(400, 'EMPTY_TRIP', '这条行程还没有地点，先挑几个再导出');
+      }
+      const fmt = String((ctx.query && ctx.query.format) || 'gpx').toLowerCase();
+      if (fmt !== 'gpx' && fmt !== 'kml') {
+        throw new ctx.HttpError(400, 'BAD_REQUEST', 'format 只能是 gpx 或 kml');
+      }
+      const body = fmt === 'gpx' ? geofile.buildGpx(payload) : geofile.buildKml(payload);
+      const name = geofile.fileBase(payload, fmt);
+      const type = fmt === 'gpx' ? 'application/gpx+xml' : 'application/vnd.google-earth.kml+xml';
+      ctx.res.writeHead(200, {
+        'Content-Type': type + '; charset=utf-8',
+        'Content-Length': Buffer.byteLength(body),
+        // 浏览器直接下载（文件名带城市与日期，落地就能双击）
+        'Content-Disposition':
+          'attachment; filename="' + encodeURIComponent(name) + '"; filename*=UTF-8\'\'' + encodeURIComponent(name),
+      });
+      ctx.res.end(body);
+      return undefined;
     },
   },
   {

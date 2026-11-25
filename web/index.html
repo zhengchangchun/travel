@@ -67,7 +67,7 @@
     <!-- 中栏：地图 -->
     <main id="map-wrap">
       <div id="map"></div>
-      <div id="view-count" class="view-count">当前视野 0 条 · 全城已收录 0 条</div>
+      <div id="view-count" class="view-count">当前视野 0 条</div>
       <!-- 打开城市先落在核心区（2026-11-24）；想看整城范围就点这个（按需，不默认） -->
       <button id="city-fit-btn" class="map-btn" type="button" title="把镜头收到整座城市的范围（不落点）">看全城</button>
       <div id="view-hint" class="view-hint hidden"></div>
@@ -92,7 +92,7 @@
       <div id="right-body" class="right-body">
         <section class="card pin-card">
           <h2>我的选择 <span id="selection-count" class="count">0</span></h2>
-          <p class="card-sub">加地点：打字按名字找（本地已收录 ＋ OpenStreetMap）· 或在左边列表点 ★ 挑</p>
+          <p class="card-sub">加地点：打字按名字找（本地存过的 ＋ OpenStreetMap）· 或在左边列表点 ★ 挑</p>
           <!-- 选完就收：手里已经有点了、人也走开了 ⇒ 输入框收成这一行（点开再选） -->
           <button id="add-toggle" class="add-toggle hidden" type="button" aria-controls="add-combo" aria-expanded="false">＋ 加个地点</button>
           <div id="add-combo" class="combo">
@@ -127,8 +127,19 @@
             <div class="row itin-toolbar">
               <button id="itinerary-back" class="ghost" title="回到挑点列表">返回</button>
               <button id="itinerary-share" class="primary" title="生成可发给别人的分享包（网页＋文本）">分享</button>
-              <button id="itinerary-copy" class="ghost" title="把整条行程复制成文字">复制</button>
-              <button id="itinerary-download" class="ghost" title="下载成正按 Markdown 排好的 .md">下载</button>
+              <!-- 导出（2026-11-25）：复制 / 下载 .md / GPX / KML 都是低频动作，收进一个菜单，
+                   否则右栏 275px 里 6 个按钮会溢出（实测 KML 被裁掉）。 -->
+              <span class="export-wrap">
+                <button id="itinerary-export" class="ghost" type="button" aria-haspopup="true" aria-expanded="false"
+                        title="导出：复制文字 / 下载 .md / GPX / KML">导出 ⌄</button>
+                <div id="export-menu" class="export-menu hidden" role="menu">
+                  <button id="itinerary-copy" type="button" role="menuitem" title="把整条行程复制成文字">复制文字</button>
+                  <button id="itinerary-download" type="button" role="menuitem" title="下载成按 Markdown 排好的 .md">下载 .md</button>
+                  <div class="sep"></div>
+                  <button id="itinerary-gpx" type="button" role="menuitem" title="导出 GPX（苹果地图 / 两步路 / 六只脚 / Garmin 都能导入）">导出 GPX</button>
+                  <button id="itinerary-kml" type="button" role="menuitem" title="导出 KML（Google Earth / 奥维互动地图）">导出 KML</button>
+                </div>
+              </span>
             </div>
             <div class="trip-note-row">
               <span class="trip-note-label">备注</span>
