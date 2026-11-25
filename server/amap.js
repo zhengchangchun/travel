@@ -402,6 +402,74 @@ async function poiDetail(id) {
   return pois.length ? normalizePoi(pois[0]) : null;
 }
 
+// 营业时间（2026-11-25）：**只实时取、不落库**。
+// 为什么单独一个函数：营业时间会变（换季、临时闭馆、节假日调整），存进库里第二天就是错的；
+// 而且用户明确要求「每个人上来都能实时读取」。所以这条链不经过任何缓存层。
+//
+// 优先 v5（show_fields=business 给 opentime_today / opentime_week，比 v3 的 biz_ext 全），
+// v5 不可用（额度/权限）时退回 v3 的 biz_ext.opentime2。两边都拿不到就返回 null，
+// 由调用方决定「不显示」而不是显示一个空壳。
+async function poiBusiness(id) {
+  const poiId = String(id == null ? '' : id).trim();
+  if (!poiId) return null;
+  // 两个失败原因必须分开报（2026-11-25 实测踩到）：
+  //   「额度用尽」≠「这个地点没有营业时间」—— 前者明天就有了，后者永远没有。
+  // 混在一起会让用户以为这个地点没营业时间，实际只是今天查不了。
+  let lastErr = null;
+  try {
+    const json = await amapGet('/v5/place/detail', { id: poiId, show_fields: 'business' });
+    const pois = Array.isArray(json.pois) ? json.pois : [];
+    if (pois.length) {
+      const p = pois[0] || {};
+      const b = p.business || {};
+      const today = firstString(b.opentime_today);
+      const week = firstString(b.opentime_week);
+      if (today || week) {
+        return {
+          id: firstString(p.id) || poiId,
+          name: firstString(p.name),
+          opentimeToday: today,
+          opentimeWeek: week,
+          tel: firstString(b.tel),
+          rating: firstString(b.rating),
+          cost: firstString(b.cost),
+          keytag: firstString(b.keytag),
+          source: 'amap-v5',
+        };
+      }
+      // v5 通了但没这两个字段 ⇒ 这个地点确实没营业时间（住宿类常见）
+      return null;
+    }
+  } catch (err) {
+    lastErr = err;
+  }
+  try {
+    const json = await amapGet('/v3/place/detail', { id: poiId, extensions: 'all' });
+    const pois = Array.isArray(json.pois) ? json.pois : [];
+    if (!pois.length) return null;
+    const p = pois[0] || {};
+    const biz = p.biz_ext || {};
+    const week = firstString(biz.opentime2) || firstString(biz.opentime);
+    if (!week) return null;
+    return {
+      id: firstString(p.id) || poiId,
+      name: firstString(p.name),
+      opentimeToday: '',
+      opentimeWeek: week,
+      tel: firstString(p.tel),
+      rating: firstString(biz.rating),
+      cost: firstString(biz.cost),
+      keytag: '',
+      source: 'amap-v3',
+    };
+  } catch (err) {
+    lastErr = lastErr || err;
+  }
+  // 两边都失败：把原因抛出去（额度用尽 / 网络 / 权限），让路由如实报
+  if (lastErr) throw lastErr;
+  return null;
+}
+
 // 逆地理编码：把一个坐标翻译成「这里是哪」（P19）。
 // 搜索类接口（place/text|around）配额用尽时，geocode/regeo 通常还有额度 —— 点地图就能用。
 async function reverseGeocode({ lng, lat, radius = 200 } = {}) {
@@ -644,6 +712,7 @@ module.exports = {
   thinRing,
   capRing,
   poiDetail,
+  poiBusiness,
   normalizePoi,
   classifyType,
   parsePolyline,

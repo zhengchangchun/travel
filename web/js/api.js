@@ -79,6 +79,8 @@
     searchPoi: (params) => request('/api/poi/search?' + qs(params)),
     nearbyPoi: (params) => request('/api/poi/nearby?' + qs(params)),
     poiDetail: (id) => request('/api/poi/detail?' + qs({ id })),
+    // 营业时间（2026-11-25）：**实时取、不缓存**（服务端也不走 cache）—— 会变的信息不能存
+    poiBusiness: (id) => request('/api/poi/business?' + qs({ id })),
     listTrips: (city) => request('/api/trips' + (city ? '?' + qs({ city }) : '')),
     // 旅游搭子（名单在 /buddies 维护，这里只读来显示「这趟跟谁一起」）
     listBuddies: () => request('/api/buddies'),
@@ -130,6 +132,9 @@
     refreshNote: (id) => request('/api/notes/' + id + '/refresh', post({})),
     updatePinNote: (id, note) => request('/api/pins/' + id, patch({ note })),
     updatePinDay: (id, day) => request('/api/pins/' + id, patch({ day })),
+    // 预约与时间段（2026-11-25）：用户自己的安排
+    updatePinBooking: (id, booking) => request('/api/pins/' + id, patch({ booking })),
+    updatePinSlot: (id, slot) => request('/api/pins/' + id, patch({ slot })),
 
     // 选中（T2）：一次只针对「某一趟」（一城多趟）；不给 tripId 就由服务端取该城第一趟
     getSelection: (city, tripId) => request('/api/selection?' + qs({ city, tripId })),

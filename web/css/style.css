@@ -131,6 +131,21 @@ button.primary:hover { background: #8f5630; }
 .poi-tag.src { color: #0f766e; background: #e0f2f1; font-weight: 600; }
 .poi-addr { color: #55514a; font-size: 12px; margin-top: 4px; }
 .poi-meta { color: #a8683c; font-size: 12px; margin-top: 4px; }
+/* 时段 / 预约（2026-11-25）：行程里每行两个小下拉。右栏只有 300px，两个并排刚好 */
+.itin-slot-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 5px; font-size: 12px; color: #55514b;
+}
+.itin-slot { display: inline-flex; align-items: center; gap: 4px; }
+.itin-slot > span { color: #8a8478; font-size: 11.5px; }
+.itin-slot select {
+  border: 1px solid #cfc9bd; background: #fff; border-radius: 6px;
+  padding: 2px 4px; font-size: 12px; color: #2b2a26; max-width: 96px;
+}
+.itin-book-warn {
+  font-size: 11px; color: #b23b38; background: #fdecec;
+  border: 1px solid rgba(217, 83, 79, .35); border-radius: 999px; padding: 1px 7px;
+}
 .poi-item .del {
   border: none; background: none; color: #a8683c; font-size: 15px; padding: 0 4px;
 }
@@ -221,6 +236,31 @@ button.danger:hover { background: #ad2102; }
   display: flex; align-items: flex-start; gap: 8px; margin: 8px 0;
   background: #f6f1e7; border-radius: 8px; padding: 8px;
 }
+/* 营业时间（2026-11-25）：实时取的那一行。与地址同一套底色，但左边一条细竖线区分 */
+.poi-hours {
+  display: flex; align-items: flex-start; gap: 7px; margin: 8px 0;
+  background: #f6f1e7; border-radius: 8px; padding: 8px;
+  border-left: 3px solid #22a06b;
+  font-size: 12.5px; color: #2b2a26; line-height: 1.55;
+}
+.poi-hours.hidden { display: none; }
+.poi-hours .hours-icon { flex: none; font-size: 13px; line-height: 1.4; }
+.poi-hours .hours-body { flex: 1; min-width: 0; word-break: break-word; }
+.poi-hours .hours-body b { font-weight: 700; color: #1a7a4e; }
+.poi-hours .hours-sep { color: #b8b2a6; margin: 0 5px; }
+.poi-hours .hours-week { color: #55514b; }
+.poi-hours .hours-full { display: block; color: #55514b; margin-top: 3px; }
+.poi-hours .hours-full.hidden { display: none; }
+.poi-hours .hours-more {
+  border: 0; background: transparent; color: #0e9fc4; font-size: 12px;
+  padding: 0 2px; margin-left: 2px; text-decoration: underline;
+}
+.poi-hours .hours-src {
+  flex: none; font-size: 10.5px; color: #6b7683; border: 1px solid #d8d2c6;
+  border-radius: 999px; padding: 1px 6px; align-self: flex-start;
+}
+/* 额度用尽：说清是「今天查不了」而不是「这个地点没营业时间」 */
+.poi-hours .hours-quota { color: #8a6a2f; }
 .addr-text { flex: 1; font-size: 13px; color: #2b2a26; word-break: break-all; }
 .copy-addr { border: 1px solid #cfc9bd; background: #fff; border-radius: 6px; font-size: 12px; padding: 3px 8px; }
 .card-rows { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0; font-size: 13px; }

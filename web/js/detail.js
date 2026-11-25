@@ -125,6 +125,66 @@
     );
   }
 
+  // 营业时间（2026-11-25）：**每次打开都实时取**，不缓存、不落库。
+  // 为什么：营业时间会变（换季、临时闭馆、节假日调整），存下来第二天就是错的；
+  // 用户口径「每个人上来都能实时读取」。拿不到就整行不出现（不显示空壳）。
+  // 返回的 opentimeWeek 可能很长（「周二至周日 09:00-17:00开放 最晚进入16:30；周一全天不开放…」）
+  // ⇒ 默认只显示第一段，点「展开」看全文。
+  function loadHours(card, data) {
+    const box = card.querySelector('#poi-hours');
+    if (!box || !data || !data.poi_id) return;
+    const API = window.TravelAPI;
+    if (!API || typeof API.poiBusiness !== 'function') return;
+    API.poiBusiness(data.poi_id)
+      .then((res) => {
+        if (!res || !res.available) {
+          // 额度用尽要说清（明天就有了），不能让人以为这个地点没营业时间
+          if (res && res.quota) {
+            box.innerHTML =
+              '<span class="hours-icon" aria-hidden="true">🕘</span>' +
+              '<span class="hours-body hours-quota">' + esc(res.reason || '今天查不了营业时间') + '</span>';
+            box.classList.remove('hidden');
+          }
+          return;
+        }
+        const today = String(res.opentimeToday || '').trim();
+        const week = String(res.opentimeWeek || '').trim();
+        if (!today && !week) return;
+        const parts = [];
+        if (today) parts.push('<b>今天</b> ' + esc(today));
+        if (week) {
+          const short = week.length > 46 ? week.slice(0, 46) + '…' : week;
+          parts.push(
+            '<span class="hours-week">' + esc(short) + '</span>' +
+              (week.length > 46
+                ? '<button type="button" class="hours-more" title="看完整营业时间">展开</button>' +
+                  '<span class="hours-full hidden">' + esc(week) + '</span>'
+                : '')
+          );
+        }
+        box.innerHTML =
+          '<span class="hours-icon" aria-hidden="true">🕘</span>' +
+          '<span class="hours-body">' + parts.join('<span class="hours-sep">·</span>') + '</span>' +
+          '<span class="hours-src" title="每次打开都重新取，不存本地">实时</span>';
+        box.classList.remove('hidden');
+        const more = box.querySelector('.hours-more');
+        if (more) {
+          more.onclick = () => {
+            const full = box.querySelector('.hours-full');
+            const shortEl = box.querySelector('.hours-week');
+            if (!full || !shortEl) return;
+            const open = full.classList.contains('hidden');
+            full.classList.toggle('hidden', !open);
+            shortEl.classList.toggle('hidden', open);
+            more.textContent = open ? '收起' : '展开';
+          };
+        }
+      })
+      .catch(() => {
+        /* 取不到就不显示，不打扰 */
+      });
+  }
+
   function render(card, data, city, handlers) {
     const photos = sortPhotos(data.photos);
     const color = colorOf(data.category);
@@ -236,6 +296,9 @@
       '<span class="addr-text">' + esc(data.address || '（无详细地址）') + '</span>' +
       '<button class="copy-addr" title="复制地址">复制</button>' +
       '</div>' +
+      // 营业时间（2026-11-25）：**每次打开都实时取**，不读缓存也不读库。
+      // 先占一个空位，拿到才填；拿不到就整行不出现（不显示「暂无」这种空壳）。
+      (data.atPoint ? '' : '<div class="poi-hours hidden" id="poi-hours"></div>') +
       tagsHtml +
       nearbyHtml +
       sourcesHtml +
@@ -253,6 +316,10 @@
       '<p class="card-dismiss-hint">× / Esc / 点地图空白 都能关掉这个卡片</p>';
 
     card.classList.remove('hidden');
+
+    // 营业时间：实时取（2026-11-25）。不缓存、不落库 —— 换季/临时闭馆/节假日都会变。
+    // 拿不到就整行不出现；拿到了才填。异步，不阻塞卡片其余部分。
+    loadHours(card, data);
 
     // 「这一带还有」里我们库里真有的那几条：点一下弹那个地点的详情
     card.querySelectorAll('.at-nearby-item[data-nearby]').forEach((btn) => {

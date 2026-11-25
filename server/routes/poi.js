@@ -113,6 +113,42 @@ module.exports = [
     },
   },
   {
+    // 营业时间（2026-11-25）：**实时取、不缓存、不落库**。
+    // 用户口径：「最好不要缓存 每个人上来都能实时读取」—— 营业时间会变（换季/临时闭馆/节假日），
+    // 存下来第二天就是错的。所以这里**故意不走 ctx.cache**（与 /api/poi/detail 不同）。
+    // 拿不到就返回 { available:false }，前端不显示这一行（不显示空壳）。
+    method: 'GET',
+    path: '/api/poi/business',
+    async handler(ctx) {
+      const id = ctx.query.id;
+      if (!id || !String(id).trim()) {
+        throw new ctx.HttpError(400, 'BAD_REQUEST', '缺少参数 id');
+      }
+      const poiId = String(id).trim();
+      let data = null;
+      let reason = '';
+      let quota = false;
+      try {
+        data = await ctx.amap.poiBusiness(poiId);
+      } catch (err) {
+        reason = (err && err.message) || '取营业时间失败';
+        // 额度用尽 / QPS 超限：明天就有了，与「这个地点没营业时间」是两回事
+        quota = /OVER_LIMIT|CALL_LIMIT|QPS/i.test(reason);
+      }
+      if (!data) {
+        return {
+          available: false,
+          id: poiId,
+          quota,
+          reason: quota
+            ? '高德今天的查询额度用完了（明天 0 点恢复）· 营业时间明天再看'
+            : reason || '高德没有这个地点的营业时间',
+        };
+      }
+      return { available: true, ...data };
+    },
+  },
+  {
     // 点地图任意处问「这里是哪」（P19）。
     // 口径：**主信息一定对得上点击处** ——
     //   ① 库里有点就在 25m 内（基本就是点在它上面）⇒ 用它当主名，零调用
