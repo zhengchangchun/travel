@@ -87,7 +87,7 @@ test('两次请求都真打高德（不缓存）', async () => {
 
 // ---------- ② 额度用尽 ≠ 没营业时间 ----------
 
-test('额度用尽：quota=true 且文案说「明天再看」，不说「这个地点没有营业时间」', async () => {
+test('额度用尽：quota=true 且文案说「下月恢复」，不说「这个地点没有营业时间」', async () => {
   const amap = {
     async poiBusiness() {
       const e = new Error('USER_DAILY_QUERY_OVER_LIMIT');
@@ -102,7 +102,7 @@ test('额度用尽：quota=true 且文案说「明天再看」，不说「这个
     assert.strictEqual(body.data.available, false);
     assert.strictEqual(body.data.quota, true, '额度用尽要标 quota');
     assert.match(body.data.reason, /额度用完/, '要说清是额度问题');
-    assert.match(body.data.reason, /明天/, '要给出什么时候能看');
+    assert.match(body.data.reason, /下月/, '要给出什么时候能看（高德是自然月重置，不是明天）');
     assert.ok(!/没有这个地点的营业时间/.test(body.data.reason), '不能误报成「这个地点没营业时间」');
   } finally {
     await s.close();
