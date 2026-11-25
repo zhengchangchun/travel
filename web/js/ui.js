@@ -15,12 +15,13 @@
     if (el) el.textContent = text;
   }
 
-  // 双口径计数：当前视野 N 条 · 全城已收录 M 条
+  // 2026-11-25 按用户口径（#52）收掉「已收录」这个概念：地方本来都有数据，只是本地还没缓存，
+  // 界面上不再出现「已收录 N 条」字样。total 参数保留（调用点不动），只展示当前这批多少条。
   // label 缺省「当前视野」；轮廓屏传「全城精选」（那时列表口径不是本视野）
   function setViewCount(viewN, total, label) {
     const el = $('view-count');
     if (!el) return;
-    el.textContent = (label || '当前视野') + ' ' + viewN + ' 条 · 全城已收录 ' + total + ' 条';
+    el.textContent = (label || '当前视野') + ' ' + viewN + ' 条';
   }
 
   // 视野提示（「本区域加载中…」「放大地图以加载」）：空串则隐藏

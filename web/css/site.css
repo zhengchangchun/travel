@@ -59,10 +59,14 @@ body.site .wrap, body.site footer.site { position: relative; z-index: 1; }
 /* 等宽大写微标签（这个风格里到处在用） */
 .lbl { font: var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--ink-3); }
 
-/* ---------- 通栏头部（所有页面共用） ---------- */
+/* ---------- 通栏头部（所有页面共用） ----------
+   ⚠️ sticky 要挂在 #headbar 这个宿主上，不能只挂在里面的 .head 上：
+   宿主高度正好等于头部高度（56px），里面的 sticky 元素没有可移动的空间 ⇒ 一滚就跟着走掉。
+   实测（2026-11-25）：/ 滚 500px 后 headTop=-500、/trips -114、/shares -371，全站头部都粘不住。 */
+#headbar { position: sticky; top: 0; z-index: 50; }
 .head {
   height: var(--head-h); display: flex; align-items: center; gap: 18px;
-  padding: 0 18px; position: sticky; top: 0; z-index: 50;
+  padding: 0 18px; position: relative; z-index: 50;
   background: rgba(255, 255, 255, .86);
   -webkit-backdrop-filter: saturate(180%) blur(14px); backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--line);
@@ -169,6 +173,9 @@ footer.site {
 }
 
 /* 规划页（/app）也挂了这条头部：三栏高度要扣掉头部那一条，不然底部被顶出屏幕 */
+/* ⚠️ body 必须 height:auto：style.css 里写了 html,body{height:100%}，body 就只剩一屏高，
+   里面的 sticky 头部只能在那一屏里粘（实测手机端滚到 800px 就开始跟着走掉）。 */
+body.has-headbar { height: auto; min-height: 100%; }
 body.has-headbar #app { height: calc(100vh - var(--head-h)); }
 @media (max-width: 900px) {
   body.has-headbar #app { height: auto; }

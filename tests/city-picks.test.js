@@ -89,7 +89,7 @@ test('地图上的提示在亮底图上要能读（不是暗色主题那套浅�
   assert.match(rules[rules.length - 1], /color:\s*var\(--ink\)/, '地图区那条提示要用亮字');
 });
 
-test('ui.setViewCount：label 缺省「当前视野」，轮廓屏传「全城精选」', () => {
+test('ui.setViewCount：label 缺省「当前视野」，轮廓屏传「全城精选」；不再出现「已收录」', () => {
   const el = { textContent: '' };
   const win = {};
   const doc = { getElementById: () => el };
@@ -97,7 +97,9 @@ test('ui.setViewCount：label 缺省「当前视野」，轮廓屏传「全城�
   const U = win.TravelUI;
   assert.ok(U && typeof U.setViewCount === 'function', '缺 setViewCount');
   U.setViewCount(12, 345);
-  assert.strictEqual(el.textContent, '当前视野 12 条 · 全城已收录 345 条');
+  assert.strictEqual(el.textContent, '当前视野 12 条');
   U.setViewCount(40, 345, '全城精选');
-  assert.strictEqual(el.textContent, '全城精选 40 条 · 全城已收录 345 条');
+  assert.strictEqual(el.textContent, '全城精选 40 条');
+  // 用户 2026-11-23（#52）：「收录」不是一个概念 —— 地方本来都有数据，只是本地还没缓存
+  assert.ok(!/已收录/.test(el.textContent), '界面上不该再出现「已收录」');
 });

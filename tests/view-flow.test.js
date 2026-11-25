@@ -96,12 +96,13 @@ test('切城市回到「未选分类」（默认不显示所有）；关键词�
   );
 });
 
-test('双口径计数：当前视野 N 条 · 全城已收录 M 条', () => {
+test('双口径计数：当前视野 N 条（「已收录」已按用户口径收掉）', () => {
   assert.match(APP, /setViewCount/, 'app 未调用 setViewCount');
-  assert.match(APP, /poisStats/, 'app 未取全城已收录数（poisStats）');
+  assert.match(APP, /poisStats/, 'app 未取全城条数（poisStats）');
   assert.match(UI, /setViewCount/, 'ui.js 缺 setViewCount');
   assert.match(UI, /当前视野/, 'ui.js 缺「当前视野」');
-  assert.match(UI, /全城已收录/, 'ui.js 缺「全城已收录」');
+  // 用户 2026-11-23（#52）：「收录」不是一个概念，界面上不再出现
+  assert.ok(!/全城已收录/.test(UI), 'ui.js 不该再写「全城已收录」');
   assert.match(HTML, /id="view-count"/, 'index 缺 #view-count 容器');
   assert.match(CSS, /\.view-count/, 'css 缺 .view-count 样式');
 });

@@ -67,7 +67,7 @@ test('errors.js：已知码给人话、认不出也不吞线索', () => {
   const quota = E.humanize({ code: 'AMAP_ERROR', message: 'USER_DAILY_QUERY_OVER_LIMIT' });
   assert.ok(quota.indexOf('USER_DAILY_QUERY_OVER_LIMIT') < 0, '不该把裸码给用户看');
   assert.match(quota, /额度用完/, '额度用尽要说人话');
-  assert.match(quota, /本地已收录/, '要给出还能做什么');
+  assert.match(quota, /本地存过的点/, '要给出还能做什么');
 
   // 后端 live.errors 里只有高德原句（没有 code），也要认得出来
   assert.strictEqual(E.humanize('USER_DAILY_QUERY_OVER_LIMIT'), quota);

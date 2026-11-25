@@ -5,9 +5,9 @@
   const CODE_TEXT = {
     // ---- 高德（infocode 或 info 名）----
     USER_DAILY_QUERY_OVER_LIMIT:
-      '高德今天的搜索额度用完了（明天 0 点恢复）· 本地已收录的点照常能看',
+      '高德今天的搜索额度用完了（明天 0 点恢复）· 本地存过的点照常能看',
     DAILY_QUERY_OVER_LIMIT:
-      '高德今天的搜索额度用完了（明天 0 点恢复）· 本地已收录的点照常能看',
+      '高德今天的搜索额度用完了（明天 0 点恢复）· 本地存过的点照常能看',
     QPS_HAS_EXCEEDED_THE_LIMIT: '请求太密了（超出高德 QPS 限制）· 等几秒再试',
     CALL_LIMIT: '高德调用次数到上限了 · 等额度恢复（本地缓存仍可用）',
     INVALID_USER_KEY: '高德 Key 无效 · 检查 config/local.json 里的 Web 服务 Key',
