@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>去哪便宜 · 旅迹</title>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+  <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body class="site">
+  <div id="headbar"></div>
+
+  <main class="wrap">
+    <h1 class="page">最近去哪便宜</h1>
+    <p class="hint">
+      从杭州出发，看未来一个月各目的地哪天最便宜。价格是同程的每日最低起价，
+      只作线索 —— 真要买还是点进去核对那一班。
+    </p>
+
+    <div class="card">
+      <div class="row" style="align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="field" style="margin-bottom:0;flex:0 0 auto">
+          <label for="fr-window">看多久以内</label>
+          <select id="fr-window">
+            <option value="14">两周</option>
+            <option value="30" selected>一个月</option>
+            <option value="45">一个半月</option>
+            <option value="60">两个月</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;flex:0 0 auto">
+          <label for="fr-span">玩几天</label>
+          <select id="fr-span">
+            <option value="2">2 天</option>
+            <option value="3" selected>3 天</option>
+            <option value="4">4 天</option>
+            <option value="5">5 天</option>
+          </select>
+        </div>
+        <button class="btn primary" type="button" id="fr-refresh" style="margin-top:18px">刷新价格</button>
+        <span class="form-msg" id="fr-msg"></span>
+      </div>
+      <p class="hint" id="fr-meta" style="margin:12px 0 0"></p>
+    </div>
+
+    <div id="main"></div>
+  </main>
+
+  <footer class="site">旅迹 · 价格只在内存里放 30 分钟，不存到本机 —— 免得你看到的是过期的价</footer>
+
+  <script src="/js/site.js"></script>
+  <script src="/js/headbar.js"></script>
+  <script src="/js/fares.js"></script>
+</body>
+</html>

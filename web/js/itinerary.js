@@ -127,6 +127,9 @@
     ).join('');
     // 必须预约的给个醒目小标（没约进不去，这是行程里最容易翻车的一条）
     const warn = booking === 'required' ? '<span class="itin-book-warn" title="没预约进不去">要预约</span>' : '';
+    // 时段冲突（2026-11-25）：选了时段才查营业时间。
+    // 先占一个空位，查完才填；查不到（额度用尽 / 这个地点没营业时间）就整行不出现。
+    const hoursSlot = slot && handlers.onHoursCheck ? '<span class="itin-hours" data-poi="' + esc(pin.poi_id || '') + '"></span>' : '';
     return (
       '<div class="itin-slot-row">' +
       (handlers.onPinSlot
@@ -138,6 +141,7 @@
           '<select class="pin-booking" title="要不要提前预约">' + bookOpts + '</select></label>' +
           warn
         : '') +
+      hoursSlot +
       '</div>'
     );
   }

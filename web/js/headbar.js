@@ -69,6 +69,7 @@
       '<nav>' +
       item('/trips', '我的行程') +
       item('/buddies', '旅游搭子') +
+      item('/fares', '去哪便宜') +
       item('/shares', '分享列表') +
       '</nav>'
     );
