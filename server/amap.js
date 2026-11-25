@@ -236,33 +236,124 @@ async function cityBoundary(city) {
   };
 }
 
+// ---- 多 key 轮换（2026-11-25）----
+// 高德配额是**按 key 按月**算的（个人开发者基础搜索 5000 次/月）。一个 key 用尽就换下一个，
+// 不用重启、不用改代码。
+//
+// 口径：
+//   · 只有「配额类」错误才换 key（USER_DAILY_QUERY_OVER_LIMIT / CALL_LIMIT / QPS 超限）；
+//     参数错、key 无效这类换 key 也没用，直接抛。
+//   · 换过的 key 记下来（exhausted），下次直接从下一个开始，不每次都撞一遍。
+//   · 全部用尽 ⇒ 抛原来的配额错误（调用方照旧能识别）。
+//   · 进程重启后 exhausted 清空（配额是按月的，重启后重试一次是合理的）。
+const QUOTA_INFOS = [
+  'USER_DAILY_QUERY_OVER_LIMIT',
+  'DAILY_QUERY_OVER_LIMIT',
+  'CALL_LIMIT',
+  'QPS_HAS_EXCEEDED_THE_LIMIT',
+  'USER_QUERY_OVER_LIMIT',
+];
+
+// key → 用尽时间（毫秒）。只放内存，不落盘。
+const exhaustedKeys = new Map();
+// 下次从哪个 key 开始（轮询起点）
+let keyCursor = 0;
+
+function isQuotaInfo(info) {
+  const s = String(info || '');
+  return QUOTA_INFOS.some((q) => s.includes(q));
+}
+
+function allKeys() {
+  const cfg = config();
+  const list = Array.isArray(cfg.amap.webServiceKeys) ? cfg.amap.webServiceKeys : [];
+  if (list.length) return list;
+  return cfg.amap.webServiceKey ? [cfg.amap.webServiceKey] : [];
+}
+
+// 按轮询顺序给出候选 key：从 cursor 开始转一圈，跳过已用尽的
+function candidateKeys() {
+  const keys = allKeys();
+  if (!keys.length) return [];
+  const n = keys.length;
+  const start = keyCursor % n;
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const k = keys[(start + i) % n];
+    if (!exhaustedKeys.has(k)) out.push(k);
+  }
+  // 全用尽了：把全部 key 都返回（让调用方拿到真实的配额错误，而不是「没 key」）
+  return out.length ? out : keys.slice();
+}
+
+function markExhausted(key) {
+  exhaustedKeys.set(key, Date.now());
+  const keys = allKeys();
+  const at = keys.indexOf(key);
+  if (at >= 0) keyCursor = (at + 1) % Math.max(1, keys.length);
+}
+
+// 给 /api/health 与调试用：每个 key 的状态（**不返回 key 本身**，只给尾号）
+function keyStatus() {
+  const keys = allKeys();
+  return {
+    total: keys.length,
+    available: keys.filter((k) => !exhaustedKeys.has(k)).length,
+    keys: keys.map((k) => ({
+      tail: String(k).slice(-4),
+      exhausted: exhaustedKeys.has(k),
+      exhaustedAt: exhaustedKeys.has(k) ? new Date(exhaustedKeys.get(k)).toISOString() : null,
+    })),
+  };
+}
+
+// 手动清空「用尽」标记（配额恢复后不用重启）
+function resetKeyStatus() {
+  exhaustedKeys.clear();
+  keyCursor = 0;
+}
+
 async function amapGet(pathname, params = {}) {
-  const url = new URL(AMAP_BASE + pathname);
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === '') continue;
-    url.searchParams.set(k, v);
+  const keys = candidateKeys();
+  if (!keys.length) {
+    throw new AmapError('没有配置高德 Web 服务 key', { infocode: 'NO_KEY', info: 'NO_KEY' });
   }
-  url.searchParams.set('key', config().amap.webServiceKey);
+  let lastErr = null;
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+    const url = new URL(AMAP_BASE + pathname);
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      url.searchParams.set(k, v);
+    }
+    url.searchParams.set('key', key);
 
-  let res;
-  try {
-    res = await globalThis.fetch(url.toString());
-  } catch (err) {
-    throw new AmapError(`高德请求失败: ${err.message}`, { cause: String(err) });
-  }
+    let res;
+    try {
+      res = await globalThis.fetch(url.toString());
+    } catch (err) {
+      throw new AmapError(`高德请求失败: ${err.message}`, { cause: String(err) });
+    }
 
-  let json;
-  try {
-    json = await res.json();
-  } catch (err) {
-    throw new AmapError('高德返回内容不是 JSON');
-  }
+    let json;
+    try {
+      json = await res.json();
+    } catch (err) {
+      throw new AmapError('高德返回内容不是 JSON');
+    }
 
-  if (json.status !== '1' || json.infocode !== '10000') {
+    if (json.status === '1' && json.infocode === '10000') return json;
+
     const info = json.info || json.infocode || 'UNKNOWN';
-    throw new AmapError(String(info), { infocode: json.infocode, info: json.info });
+    lastErr = new AmapError(String(info), { infocode: json.infocode, info: json.info });
+    // 配额类错误 ⇒ 这个 key 用尽了，换下一个；其它错误（参数/key 无效）换也没用
+    if (isQuotaInfo(info) && keys.length > 1) {
+      markExhausted(key);
+      continue;
+    }
+    throw lastErr;
   }
-  return json;
+  throw lastErr || new AmapError('高德请求失败');
 }
 
 // 二进制接口（静态地图）：拿到的是 PNG，不是 JSON。
@@ -699,6 +790,10 @@ async function planTransit(origin, destination, city) {
 module.exports = {
   amapGet,
   amapGetBinary,
+  // 多 key 轮换（2026-11-25）
+  keyStatus,
+  resetKeyStatus,
+  isQuotaInfo,
   searchCity,
   searchPoi,
   searchPoiInArea,

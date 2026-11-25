@@ -173,6 +173,8 @@ function createApp(opts = {}) {
         cache: ctx.cache.stats(),
         // POI 内存缓存读数（2026-11-25）：不落盘，带 TTL，重启即清
         poiCache: typeof ctx.db.poiCacheStats === 'function' ? ctx.db.poiCacheStats() : null,
+        // 高德 key 状态（2026-11-25）：多 key 轮换时哪个用尽了。**不返回 key 本身**，只给尾号。
+        amapKeys: typeof amap.keyStatus === 'function' ? amap.keyStatus() : null,
       }),
     },
     {

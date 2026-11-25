@@ -49,6 +49,41 @@ cp config/example.json config/local.json   # 填入高德 key
 node server/index.js                        # 起服务（默认 http://127.0.0.1:8787）
 ```
 
+### 高德 key 与配额（2026-11-25）
+
+高德配额是**按 key 按月**算的（个人开发者基础搜索 5000 次/月），而且**按服务大类分开**：
+
+| 服务 | 用途 | 配额池 |
+| --- | --- | --- |
+| `place/*`（搜索/周边/多边形/详情） | 采集、搜地点 | 搜索池（最先用尽） |
+| `assistant/inputtips` | 输入提示 | 与搜索池共用 |
+| `geocode/*` | 正/逆地理编码 | 独立 |
+| `direction/*` | 路径规划 | 独立 |
+| `config/district` | 行政区划 | 独立 |
+| `staticmap` | 静态地图 | 独立 |
+
+所以「搜索额度用尽」时，路径规划、逆地理、行政区划**照旧能用**。
+
+**多 key 轮换**：`config/local.json` 里可以写多个 key，一个用尽自动换下一个（不用重启）：
+
+```json
+{
+  "amap": {
+    "webServiceKeys": ["第一个 key", "第二个 key", "第三个 key"],
+    "jsApiKey": "JS API 的 key",
+    "jsApiSecurityCode": ""
+  }
+}
+```
+
+- 老的单 key 写法 `"webServiceKey": "..."` 照旧能用（会自动包成数组）
+- 只有**配额类**错误才换 key（`USER_DAILY_QUERY_OVER_LIMIT` / `CALL_LIMIT` / QPS 超限）；
+  参数错、key 无效换也没用，直接报错
+- 换过的 key 会记住，下次直接从下一个开始，不每次都撞一遍
+- 全部用尽 ⇒ 报原来的配额错误
+- `GET /api/health` 的 `amapKeys` 能看到每个 key 的状态（**只给尾号**，不返回 key 本身）
+- 配额恢复后不用重启：重启进程即可（用尽标记只在内存里）
+
 ### 手机上用（2026-11-24 起默认开着）
 
 服务默认监听 `0.0.0.0`，**同一 Wi-Fi 下手机/平板直接就能打开**；启动日志会打印可用地址，个人设置页里还有一张二维码（页面现画的，不连外部服务）：

@@ -34,10 +34,22 @@ function loadConfig(root = ROOT) {
   }
 
   const amap = raw.amap || {};
+  // 多 key 轮换（2026-11-25）：高德配额是**按 key 按月**算的，一个 key 用尽就换下一个。
+  // 配置两种写法都认：
+  //   "webServiceKey": "k1"                      单 key（老写法，照旧能用）
+  //   "webServiceKeys": ["k1", "k2", "k3"]      多 key（推荐）
+  // 单 key 写法会自动包成数组，调用方只认数组。
+  const keys = Array.isArray(amap.webServiceKeys)
+    ? amap.webServiceKeys.map((k) => String(k || '').trim()).filter(Boolean)
+    : [];
+  const single = String(amap.webServiceKey || '').trim();
+  if (single && !keys.includes(single)) keys.unshift(single);
   return {
     port: Number(process.env.PORT) || Number(raw.port) || 8787,
     amap: {
-      webServiceKey: amap.webServiceKey || '',
+      // 第一个 key 仍叫 webServiceKey（兼容老调用点），全部 key 在 webServiceKeys
+      webServiceKey: keys[0] || '',
+      webServiceKeys: keys,
       jsApiKey: amap.jsApiKey || '',
       jsApiSecurityCode: amap.jsApiSecurityCode || '',
     },
