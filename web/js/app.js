@@ -2061,7 +2061,7 @@
       UI.setViewHint('');
       UI.setStatus(
         '实时搜索没成功' +
-          (state.pois.length ? '，先用本地已收录的 ' + state.pois.length + ' 条' : '') +
+          (state.pois.length ? '，先用刚取到的 ' + state.pois.length + ' 条' : '') +
           '：' +
           human(err)
       );
@@ -2100,7 +2100,7 @@
       // 列表里已经有东西时别说「失败」——用户明明看得见结果，报失败只会让人以为白搜了
       UI.setStatus(
         '实时搜索没成功' +
-          (state.pois.length ? '，先用本地已收录的 ' + state.pois.length + ' 条' : '') +
+          (state.pois.length ? '，先用刚取到的 ' + state.pois.length + ' 条' : '') +
           '：' +
           human(errors[0])
       );
@@ -2837,7 +2837,7 @@
       const src = hits.length ? (hits[0].local ? 'local' : String(hits[0].source || '')) : '';
       const srcNote =
         src === 'local'
-          ? '（高德暂时不可用，来自本地已收录）'
+          ? '（高德暂时不可用，来自本次缓存）'
           : src === 'osm'
             ? '（高德暂时不可用，来自 OpenStreetMap）'
             : '';

@@ -111,9 +111,9 @@ test('搜不到不该把原来的清单清空，措辞要说「没找到」', ()
   assert.match(fn, /没找到 · ' \+ human\(err\)/, '搜索报错时也要落在「没找到」口径上');
 });
 
-test('命中来源要说清：高德 / 本地已收录 / OpenStreetMap，OSM 那条还要打标', () => {
+test('命中来源要说清：高德 / 本次缓存 / OpenStreetMap，OSM 那条还要打标', () => {
   const fn = APP.match(/async function doPoiSearch[\s\S]*?\n  \}/)[0];
-  assert.match(fn, /来自本地已收录/, '本地兑底没说来源');
+  assert.match(fn, /来自本次缓存/, '缓存兑底没说来源');
   assert.match(fn, /来自 OpenStreetMap/, 'OSM 兑底没说来源（不能把别人的数据说成自己的）');
   // 结果行上给 OSM 那几条一个可见的标记
   const item = UI.match(/function buildItem\(poi, key, sig, handlers, onPick\)[\s\S]*?\n  \}/)[0];
