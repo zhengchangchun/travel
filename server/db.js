@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { contentHash, setDigest } = require('./poi-hash');
 const { applyPoiOrder } = require('./order');
+const { createPoiStore } = require('./poi-store');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -180,27 +181,13 @@ CREATE INDEX IF NOT EXISTS idx_pins_poi ON pins(poi_id);
 CREATE INDEX IF NOT EXISTS idx_notes_city ON notes(city);
 CREATE INDEX IF NOT EXISTS idx_note_places_note ON note_places(note_id);
 
-CREATE TABLE IF NOT EXISTS pois (
-  poi_id     TEXT PRIMARY KEY,
-  city       TEXT NOT NULL,
-  adcode     TEXT,
-  category   TEXT NOT NULL,
-  name       TEXT NOT NULL,
-  address    TEXT,
-  lng        REAL NOT NULL,
-  lat        REAL NOT NULL,
-  typecode   TEXT,
-  rating     TEXT,
-  cost       TEXT,
-  tel        TEXT,
-  photos     TEXT,
-  tags       TEXT,
-  fetched_at TEXT NOT NULL,
-  content_sha256 TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_pois_city_cat ON pois(city, category);
-CREATE INDEX IF NOT EXISTS idx_pois_city_rating ON pois(city, category, rating);
+-- 2026-11-25：pois / poi_coverage / city_boundaries 三张表**不再建**。
+-- 用户口径「不要所有的数据都存在本地，可以做缓存 但是不能持久化到我这，
+-- 要不然数据更新了 我们就都是错的」—— 地点、评分、人均、电话、图片、行政区划
+-- 都是上游事实，落盘就会变成「静默的错」。它们现在只在内存里带 TTL 活着（server/poi-store.js）。
+-- 老库里的这三张表不主动删（删数据不可逆），但代码不再读写它们。
 
+-- 采集运行日志（poi_collect_runs）仍落盘：那是「我们做过什么」的记录，不是上游事实。
 CREATE TABLE IF NOT EXISTS poi_collect_runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   city        TEXT NOT NULL,
@@ -214,28 +201,6 @@ CREATE TABLE IF NOT EXISTS poi_collect_runs (
   detail      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_city ON poi_collect_runs(city, category);
-
-CREATE TABLE IF NOT EXISTS poi_coverage (
-  city         TEXT NOT NULL,
-  category     TEXT NOT NULL,
-  gx           INTEGER NOT NULL,
-  gy           INTEGER NOT NULL,
-  collected_at TEXT NOT NULL,
-  n_inserted   INTEGER NOT NULL DEFAULT 0,
-  truncated    INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (city, category, gx, gy)
-);
-
--- 城市行政轮廓（P21）：一次拉下来长期用（高德行政区查询有日配额）
-CREATE TABLE IF NOT EXISTS city_boundaries (
-  city       TEXT PRIMARY KEY,
-  name       TEXT,
-  adcode     TEXT,
-  center     TEXT,
-  bbox       TEXT,
-  rings      TEXT,
-  fetched_at TEXT NOT NULL
-);
 `;
 
 const DEFAULT_CATEGORY_LABELS = {
@@ -334,13 +299,17 @@ function ensureColumn(db, table, column, ddl) {
   if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
 }
 
-function createDb(filePath) {
+function createDb(filePath, opts = {}) {
   if (filePath !== ':memory:') {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
   }
   const db = new DatabaseSync(filePath);
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  // POI / 覆盖账本 / 城市轮廓：内存缓存（带 TTL，不落盘）。
+  // 用户口径（2026-11-25）：「不要所有的数据都存在本地，可以做缓存 但是不能持久化到我这，
+  // 要不然数据更新了 我们就都是错的」。可注入（测试里换短 TTL / 假时钟）。
+  const poiStore = opts.poiStore || createPoiStore();
   ensureColumn(db, 'pins', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
   // 预约与时间段（2026-11-25）：这两样是**用户自己的安排**，不是高德的事实 ⇒ 存库。
   //   booking：none（不用预约）/ needed（建议预约）/ required（必须预约，没约进不去）
@@ -353,9 +322,13 @@ function createDb(filePath) {
   // 一城可多趟：主题（比如「西线＋东线」）与归属用户
   ensureColumn(db, 'trips', 'theme', 'theme TEXT');
   ensureColumn(db, 'trips', 'user_id', 'user_id INTEGER');
-  ensureColumn(db, 'poi_coverage', 'truncated', 'truncated INTEGER NOT NULL DEFAULT 0');
   // POI 内容指纹列（存量库前滚；缺失指纹的行在下面回填）
-  ensureColumn(db, 'pois', 'content_sha256', 'content_sha256 TEXT');
+  // 2026-11-25：pois 已不落盘，这行只为兼容老库（表还在但不再读写）
+  try {
+    ensureColumn(db, 'pois', 'content_sha256', 'content_sha256 TEXT');
+  } catch (err) {
+    /* 新库没有 pois 表：正常 */
+  }
   // 笔记本地缓存（P3）：正文/作者/封面/图全部落本地，页面之后从本地读（不再每次都去平台）
   ensureColumn(db, 'notes', 'source_type', 'source_type TEXT');
   ensureColumn(db, 'notes', 'author', 'author TEXT');
@@ -512,27 +485,9 @@ function createDb(filePath) {
     updatePinBooking: db.prepare('UPDATE pins SET booking = ? WHERE id = ?'),
     updatePinSlot: db.prepare('UPDATE pins SET slot = ? WHERE id = ?'),
 
-    // ---- T4 POI 缓存表 ----
-    getPoiRow: db.prepare('SELECT * FROM pois WHERE poi_id = ?'),
-    insertPoi: db.prepare(
-      `INSERT INTO pois (poi_id, city, adcode, category, name, address, lng, lat, typecode, rating, cost, tel, photos, tags, fetched_at, content_sha256)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ),
-    updatePoi: db.prepare(
-      `UPDATE pois SET city = ?, adcode = ?, category = ?, name = ?, address = ?, lng = ?, lat = ?,
-        typecode = ?, rating = ?, cost = ?, tel = ?, photos = ?, tags = ?, fetched_at = ?, content_sha256 = ?
-       WHERE poi_id = ?`
-    ),
-    listPoiHashes: db.prepare('SELECT poi_id, content_sha256 FROM pois WHERE city = ?'),
-    listMissingHashes: db.prepare(
-      'SELECT * FROM pois WHERE content_sha256 IS NULL LIMIT 2000'
-    ),
-    setPoiHash: db.prepare('UPDATE pois SET content_sha256 = ? WHERE poi_id = ?'),
-    getPoiHash: db.prepare('SELECT content_sha256 FROM pois WHERE poi_id = ?'),
-    countPoisByCat: db.prepare(
-      'SELECT category, COUNT(*) AS c FROM pois WHERE city = ? GROUP BY category'
-    ),
-    countPoisCity: db.prepare('SELECT COUNT(*) AS c FROM pois WHERE city = ?'),
+    // ---- POI / 覆盖账本 / 城市轮廓：2026-11-25 起**不落盘**，全在内存（server/poi-store.js）----
+    // 下面这些 SQL 语句已删除：pois / poi_coverage / city_boundaries 三张表不再读写。
+    // 采集运行日志仍落盘（那是「我们做过什么」，不是上游事实）。
     listRunsByCity: db.prepare(
       'SELECT * FROM poi_collect_runs WHERE city = ? ORDER BY id DESC'
     ),
@@ -543,31 +498,6 @@ function createDb(filePath) {
     findRunningRun: db.prepare(
       `SELECT * FROM poi_collect_runs WHERE city = ? AND category = ? AND status = 'running'
        ORDER BY id DESC LIMIT 1`
-    ),
-
-    // ---- T8 采集覆盖格 ----
-    isCovered: db.prepare(
-      'SELECT 1 AS hit FROM poi_coverage WHERE city = ? AND category = ? AND gx = ? AND gy = ? LIMIT 1'
-    ),
-    markCovered: db.prepare(
-      `INSERT OR REPLACE INTO poi_coverage (city, category, gx, gy, collected_at, n_inserted, truncated)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ),
-    listCoverage: db.prepare(
-      'SELECT * FROM poi_coverage WHERE city = ? AND category = ? ORDER BY gx, gy'
-    ),
-    // 含 collected_at：补采决策要按「这个格多久前采的」判新鲜度（P2 账本）
-    listCoverageRange: db.prepare(
-      `SELECT gx, gy, collected_at, n_inserted, truncated FROM poi_coverage
-       WHERE city = ? AND category = ? AND gx BETWEEN ? AND ? AND gy BETWEEN ? AND ?`
-    ),
-    getCityBoundary: db.prepare('SELECT * FROM city_boundaries WHERE city = ?'),
-    upsertCityBoundary: db.prepare(
-      `INSERT INTO city_boundaries (city, name, adcode, center, bbox, rings, fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(city) DO UPDATE SET
-         name = excluded.name, adcode = excluded.adcode, center = excluded.center,
-         bbox = excluded.bbox, rings = excluded.rings, fetched_at = excluded.fetched_at`
     ),
 
     // ---- 账号 / 会话 ----
@@ -1244,206 +1174,52 @@ function createDb(filePath) {
       return { changes: info.changes, trip: stmts.getTrip.get(id) };
     },
 
-    // ---- T4 POI 缓存 ----
+    // ---- POI / 覆盖账本 / 城市轮廓（2026-11-25 起全在内存，不落盘）----
+    // 用户口径：「不要所有的数据都存在本地，可以做缓存 但是不能持久化到我这，
+    // 要不然数据更新了 我们就都是错的」。这些是上游事实，落盘就会变成静默的错。
+    // 实现见 server/poi-store.js（带 TTL，进程重启即清空）。
     upsertPoi(poi) {
-      const photos = JSON.stringify(Array.isArray(poi.photos) ? poi.photos : []);
-      const tags = JSON.stringify(Array.isArray(poi.tags) ? poi.tags : []);
-      const fetchedAt = poi.fetched_at || new Date().toISOString();
-      const hash = contentHash({ ...poi, photos, tags: JSON.parse(tags) });
-      const existing = stmts.getPoiRow.get(poi.poi_id);
-      if (existing) {
-        stmts.updatePoi.run(
-          poi.city,
-          poi.adcode || null,
-          poi.category,
-          poi.name,
-          poi.address || '',
-          Number(poi.lng),
-          Number(poi.lat),
-          poi.typecode || null,
-          poi.rating || null,
-          poi.cost || null,
-          poi.tel || null,
-          photos,
-          tags,
-          fetchedAt,
-          hash,
-          poi.poi_id
-        );
-        return { status: 'updated', row: stmts.getPoiRow.get(poi.poi_id) };
-      }
-      stmts.insertPoi.run(
-        poi.poi_id,
-        poi.city,
-        poi.adcode || null,
-        poi.category,
-        poi.name,
-        poi.address || '',
-        Number(poi.lng),
-        Number(poi.lat),
-        poi.typecode || null,
-        poi.rating || null,
-        poi.cost || null,
-        poi.tel || null,
-        photos,
-        tags,
-        fetchedAt,
-        hash
-      );
-      return { status: 'inserted', row: stmts.getPoiRow.get(poi.poi_id) };
+      return poiStore.upsertPoi(poi);
     },
     getPoi(poiId) {
-      return stmts.getPoiRow.get(poiId) || null;
+      return poiStore.getPoi(poiId);
     },
-    // 一条 POI 的已存内容指纹（可能为 null：未回填）
     poiContentHash(poiId) {
-      const row = stmts.getPoiHash.get(poiId);
-      return row ? row.content_sha256 : null;
+      return poiStore.poiContentHash(poiId);
     },
-    // 某城市全部 POI 的集合指纹（与顺序无关）——用于「库没被悄悄改动」的核账
     poiDigest(city) {
-      const rows = stmts.listPoiHashes.all(city);
-      const withHash = rows.filter((r) => r.content_sha256);
-      return {
-        total: rows.length,
-        hashed: withHash.length,
-        digest: setDigest(withHash.map((r) => ({ poi_id: r.poi_id, hash: r.content_sha256 }))),
-      };
+      return poiStore.poiDigest(city);
     },
     countPois(city, category) {
-      if (category) {
-        const rows = stmts.countPoisByCat.all(city);
-        const hit = rows.find((r) => r.category === category);
-        return hit ? toNumber(hit.c) : 0;
-      }
-      return toNumber(stmts.countPoisCity.get(city).c);
+      return poiStore.countPois(city, category);
     },
-    listPois({ city, category, minRating, sort, limit, offset, bbox } = {}) {
-      if (!city) return { total: 0, items: [] };
-      const where = ['city = ?'];
-      const params = [city];
-      if (category) {
-        where.push('category = ?');
-        params.push(category);
-      }
-      if (minRating !== undefined && minRating !== null && minRating !== '') {
-        where.push("rating IS NOT NULL AND rating <> '' AND CAST(rating AS REAL) >= ?");
-        params.push(Number(minRating));
-      }
-      if (bbox) {
-        where.push('lng BETWEEN ? AND ? AND lat BETWEEN ? AND ?');
-        params.push(
-          Number(bbox.minLng),
-          Number(bbox.maxLng),
-          Number(bbox.minLat),
-          Number(bbox.maxLat)
-        );
-      }
-      const whereSql = 'WHERE ' + where.join(' AND ');
-      const orderSql =
-        sort === 'rating'
-          ? "ORDER BY (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC"
-          : 'ORDER BY name ASC';
-      const off = Math.max(0, Number(offset) || 0);
-      // 有 bbox（视野加载）且不给 limit → 框内全量返回；其余情况保持既有默认封顶 200
-      const hasLimit = limit !== undefined && limit !== null && limit !== '';
-      const lim = hasLimit ? Math.max(0, Number(limit) || 0) || 200 : bbox ? null : 200;
-      const total = toNumber(
-        db.prepare(`SELECT COUNT(*) AS c FROM pois ${whereSql}`).get(...params).c
-      );
-      const rows =
-        lim === null
-          ? db.prepare(`SELECT * FROM pois ${whereSql} ${orderSql}`).all(...params)
-          : db
-              .prepare(`SELECT * FROM pois ${whereSql} ${orderSql} LIMIT ? OFFSET ?`)
-              .all(...params, lim, off);
+    listPois(opts = {}) {
+      const { total, rows } = poiStore.listPois(opts);
       return { total, items: rows.map(mapPoiRow) };
     },
-    // P9-⑥ 本地关键词搜索：高德配额用尽 / 没结果时的回退，直接查本地已收录的 pois。
-    // 支持空格分开的多词：每个词都必须在 name/address 里出现（AND）。
-    // 排序：**名字里有的排在「只有地址里有」的前面**（搜「西湖」不该先给一条地址里带西湖的民宿），
-    // 同一档再按评分降序。命中行带 local: true，调用方据此告诉用户「结果来自本地缓存」。
-    searchPoisLocal({ city, keywords, category, limit = 60 } = {}) {
-      const kw = String(keywords == null ? '' : keywords).trim();
-      if (!city || !kw) return [];
-      const where = ['city = ?'];
-      const params = [city];
-      if (category) {
-        where.push('category = ?');
-        params.push(category);
-      }
-      kw
-        .split(/\s+/)
-        .filter((t) => t)
-        .slice(0, 4)
-        .forEach((t) => {
-          where.push("(name LIKE ? OR COALESCE(address, '') LIKE ?)");
-          params.push('%' + t + '%', '%' + t + '%');
-        });
-      const lim = Math.max(1, Math.min(200, Number(limit) || 60));
-      // ORDER BY 里的 ? 按出现顺序接在 WHERE 的 ? 后面。
-      // 档位：名字**完全相同** > 名字**以它开头** > 名字里含它 > 只有地址里有它；
-      // 同一档内按评分降序（搜「西湖」先给「西湖风景名胜区」，而不是「…民宿(西湖湖滨商圈店)」）
-      const rows = db
-        .prepare(
-          'SELECT * FROM pois WHERE ' +
-            where.join(' AND ') +
-            ' ORDER BY CASE' +
-            ' WHEN name = ? THEN 0' +
-            ' WHEN name LIKE ? THEN 1' +
-            ' WHEN name LIKE ? THEN 2' +
-            ' ELSE 3 END,' +
-            " (rating IS NULL OR rating = '') ASC, CAST(rating AS REAL) DESC, name ASC LIMIT ?"
-        )
-        .all(...params, kw, kw + '%', '%' + kw + '%', lim);
-      return rows.map((r) => ({ ...mapPoiRow(r), local: true }));
+    searchPoisLocal(opts = {}) {
+      return poiStore.searchPoisLocal(opts).map((r) => ({ ...mapPoiRow(r), local: true }));
     },
-    // 点地图任意处：这一带我们库里真有的点（P19）。deg 是粗筛方框半径（度，0.0015 ≈ 150m）。
-    poisNearPoint({ lng, lat, deg = 0.0015, limit = 5 } = {}) {
-      const x = Number(lng);
-      const y = Number(lat);
-      const d = Number(deg) > 0 ? Number(deg) : 0.0015;
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
-      const lim = Math.max(1, Math.min(50, Number(limit) || 5));
-      // 经度方向乘 cos(纬度)² ≈ 0.75（杭州一带）—— 只用于排序，够用
-      const rows = db
-        .prepare(
-          'SELECT * FROM pois WHERE lng BETWEEN ? AND ? AND lat BETWEEN ? AND ?' +
-            ' ORDER BY ((lng - ?) * (lng - ?) * 0.75 + (lat - ?) * (lat - ?)) ASC LIMIT ?'
-        )
-        .all(x - d, x + d, y - d, y + d, x, x, y, y, lim);
-      return rows.map(mapPoiRow);
+    poisNearPoint(opts = {}) {
+      return poiStore.poisNearPoint(opts).map(mapPoiRow);
     },
     poisStats(city) {
-      const rows = stmts.countPoisByCat.all(city);
-      const total = toNumber(stmts.countPoisCity.get(city).c);
-      const countWhere = (cond) =>
-        toNumber(
-          db.prepare(`SELECT COUNT(*) AS c FROM pois WHERE city = ? AND ${cond}`).get(city).c
-        );
-      const ratingBuckets = [
-        { label: '≥4.5', count: countWhere("rating <> '' AND CAST(rating AS REAL) >= 4.5") },
-        {
-          label: '4.0–4.5',
-          count: countWhere(
-            "rating <> '' AND CAST(rating AS REAL) >= 4.0 AND CAST(rating AS REAL) < 4.5"
-          ),
-        },
-        {
-          label: '3.5–4.0',
-          count: countWhere(
-            "rating <> '' AND CAST(rating AS REAL) >= 3.5 AND CAST(rating AS REAL) < 4.0"
-          ),
-        },
-        { label: '<3.5', count: countWhere("rating <> '' AND CAST(rating AS REAL) < 3.5") },
-        { label: '无评分', count: countWhere("rating IS NULL OR rating = ''") },
-      ];
-      return {
-        total,
-        categories: rows.map((r) => ({ key: r.category, count: toNumber(r.c) })),
-        ratingBuckets,
-      };
+      return poiStore.poisStats(city);
     },
+    // 采集覆盖账本：与 POI 同寿命（POI 没了账本留着就会「以为采过其实没有」）
+    isCovered(city, category, gx, gy) {
+      return poiStore.isCovered(city, category, gx, gy);
+    },
+    markCovered(city, category, gx, gy, nInserted = 0, truncated = false) {
+      poiStore.markCovered(city, category, gx, gy, nInserted, truncated);
+    },
+    listCoverage(city, category) {
+      return poiStore.listCoverage(city, category);
+    },
+    listCoverageRange(city, category, minGx, maxGx, minGy, maxGy) {
+      return poiStore.listCoverageRange(city, category, minGx, maxGx, minGy, maxGy);
+    },
+    // 采集运行日志仍落盘（那是「我们做过什么」，不是上游事实）
     createRun({ city, category }) {
       const info = stmts.insertRun.run(city, category, new Date().toISOString());
       return stmts.getRun.get(toNumber(info.lastInsertRowid));
@@ -1472,27 +1248,6 @@ function createDb(filePath) {
     },
     findRunningRun(city, category) {
       return stmts.findRunningRun.get(city, category) || null;
-    },
-    // ---- T8 采集覆盖格 ----
-    isCovered(city, category, gx, gy) {
-      return !!stmts.isCovered.get(city, category, gx, gy);
-    },
-    markCovered(city, category, gx, gy, nInserted = 0, truncated = false) {
-      stmts.markCovered.run(
-        city,
-        category,
-        gx,
-        gy,
-        new Date().toISOString(),
-        Number(nInserted) || 0,
-        truncated ? 1 : 0
-      );
-    },
-    listCoverage(city, category) {
-      return stmts.listCoverage.all(city, category);
-    },
-    listCoverageRange(city, category, minGx, maxGx, minGy, maxGy) {
-      return stmts.listCoverageRange.all(city, category, minGx, maxGx, minGy, maxGy);
     },
     listRuns(city) {
       const rows = stmts.listRunsByCity.all(city);
@@ -1542,33 +1297,12 @@ function createDb(filePath) {
       return this.buildTripMarkdown(trip.id, order);
     },
     // 城市轮廓：rings 不在或为空就当作没缓存（宁可重新拉，也别画一张空图）
+    // 城市轮廓：行政区划会调整 ⇒ 同样只放内存（不落盘）
     getCityBoundary(city) {
-      const row = stmts.getCityBoundary.get(city);
-      if (!row) return null;
-      const rings = parseJsonArray(row.rings);
-      if (!rings.length) return null;
-      return {
-        name: row.name || city,
-        adcode: row.adcode || '',
-        center: parseJsonArray(row.center),
-        bbox: parseJsonArray(row.bbox),
-        rings,
-        fetchedAt: row.fetched_at,
-        cached: true,
-      };
+      return poiStore.getCityBoundary(city);
     },
     saveCityBoundary(city, b) {
-      const data = b || {};
-      stmts.upsertCityBoundary.run(
-        city,
-        data.name || city,
-        data.adcode || '',
-        JSON.stringify(data.center || null),
-        JSON.stringify(data.bbox || null),
-        JSON.stringify(data.rings || []),
-        data.fetchedAt || new Date().toISOString()
-      );
-      return this.getCityBoundary(city);
+      return poiStore.saveCityBoundary(city, b);
     },
     // ---- 账号 / 会话（账号密码登录；密码 scrypt 哈希，会话存 token 的 sha256）----
     createUser({ username, passwordHash, salt, nickname }) {
@@ -1681,8 +1415,7 @@ function createDb(filePath) {
       return { changes: toNumber(info.changes) };
     },
     countPoisByCity(city) {
-      const row = stmts.countPoisCity.get(String(city));
-      return toNumber(row && row.c);
+      return poiStore.countPoisByCity(city);
     },
     countTripsByCity(city) {
       const row = stmts.countTripsCity.get(String(city));
@@ -1695,34 +1428,18 @@ function createDb(filePath) {
     close() {
       db.close();
     },
+    // 内存缓存的读数（/api/health 与调试用）
+    poiCacheStats() {
+      return poiStore.stats();
+    },
+    clearPoiCache() {
+      poiStore.clear();
+    },
   };
 
-  // 存量行回填内容指纹（幂等；新库无行直接跳过）。
-  // 包在一个事务里：38k 行逐行隐式事务会慢到让启动卡住（每行一次 fsync）。
-  const missing = db.prepare('SELECT COUNT(*) AS c FROM pois WHERE content_sha256 IS NULL').get();
-  if (toNumber(missing && missing.c) > 0) {
-    db.exec('BEGIN');
-    try {
-      for (;;) {
-        const rows = stmts.listMissingHashes.all();
-        if (!rows.length) break;
-        rows.forEach((row) => {
-          stmts.setPoiHash.run(
-            contentHash({
-              ...row,
-              photos: parseJsonArray(row.photos),
-              tags: parseJsonArray(row.tags),
-            }),
-            row.poi_id
-          );
-        });
-      }
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw err;
-    }
-  }
+  // 2026-11-25：pois 已不落盘，不再需要回填内容指纹。
+  // 老库里那三张表（pois / poi_coverage / city_boundaries）不主动删（删数据不可逆），
+  // 但代码不再读写它们。
 
   return api;
 }

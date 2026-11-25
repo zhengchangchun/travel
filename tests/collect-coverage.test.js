@@ -141,7 +141,7 @@ test('gridCenter：格中心落在格内', () => {
 
 // ---------- 覆盖表 ----------
 
-test('poi_coverage：幂等迁移 + markCovered/isCovered', () => {
+test('poi_coverage：内存账本（不落盘）+ markCovered/isCovered', () => {
   const db = createDb(':memory:');
   assert.strictEqual(db.isCovered('杭州', 'all', 1, 2), false);
   db.markCovered('杭州', 'all', 1, 2, 3);
@@ -153,13 +153,18 @@ test('poi_coverage：幂等迁移 + markCovered/isCovered', () => {
   db.close();
 });
 
-test('poi_coverage：旧库自动补表（幂等）', () => {
+test('poi_coverage 不再建表（账本只在内存，与 POI 同寿命）', () => {
   const db = createDb(':memory:');
   db.markCovered('杭州', 'all', 5, 5);
-  const cols = db.raw.prepare('PRAGMA table_info(poi_coverage)').all().map((c) => c.name);
-  ['city', 'category', 'gx', 'gy', 'collected_at', 'n_inserted'].forEach((c) =>
-    assert.ok(cols.includes(c), '缺列 ' + c)
-  );
+  const tables = db.raw
+    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+    .all()
+    .map((r) => r.name);
+  assert.ok(!tables.includes('poi_coverage'), 'poi_coverage 不该再落盘（POI 没了账本留着就会「以为采过其实没有」）');
+  assert.ok(!tables.includes('pois'), 'pois 不该再落盘');
+  assert.ok(!tables.includes('city_boundaries'), 'city_boundaries 不该再落盘');
+  // 但内存里是有的
+  assert.strictEqual(db.isCovered('杭州', 'all', 5, 5), true);
   db.close();
 });
 
@@ -364,10 +369,8 @@ test('T8b 格内高德持续报错 ⇒ 该格不标覆盖（可重试）且不�
   db.close();
 });
 
-test('T8b poi_coverage 增列 truncated（幂等迁移 + 默认 0）', () => {
+test('T8b 覆盖账本带 truncated（内存里默认 0）', () => {
   const db = createDb(':memory:');
-  const cols = db.raw.prepare('PRAGMA table_info(poi_coverage)').all().map((c) => c.name);
-  assert.ok(cols.includes('truncated'), 'poi_coverage 缺 truncated 列');
   db.markCovered('杭州', 'food', 1, 1);
   assert.strictEqual(db.listCoverage('杭州', 'food')[0].truncated, 0);
   db.markCovered('杭州', 'food', 1, 1, 0, true);
@@ -375,7 +378,7 @@ test('T8b poi_coverage 增列 truncated（幂等迁移 + 默认 0）', () => {
   db.close();
 });
 
-test('T8b 旧库 poi_coverage 无 truncated → 自动补列且幂等', () => {
+test('T8b 旧库里的 poi_coverage 表不再被读写（不报错、也不影响内存账本）', () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
@@ -390,10 +393,13 @@ test('T8b 旧库 poi_coverage 无 truncated → 自动补列且幂等', () => {
   );
   raw.close();
   const d1 = createDb(file);
-  const cols = d1.raw.prepare('PRAGMA table_info(poi_coverage)').all().map((c) => c.name);
-  assert.ok(cols.includes('truncated'), '旧库未补 truncated');
+  // 老表还在（不主动删数据），但代码不读它：内存账本是空的
+  assert.strictEqual(d1.isCovered('杭州', 'food', 1, 1), false, '不该从老表里读出「采过」');
+  d1.markCovered('杭州', 'food', 1, 1);
+  assert.strictEqual(d1.isCovered('杭州', 'food', 1, 1), true);
   d1.close();
   const d2 = createDb(file); // 连跑两次不报错
+  assert.strictEqual(d2.isCovered('杭州', 'food', 1, 1), false, '重启后账本清空（内存缓存）');
   d2.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });

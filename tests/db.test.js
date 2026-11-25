@@ -98,7 +98,7 @@ test('notes CRUD：按城市过滤', () => {
   db.close();
 });
 
-test('POI 内容指纹：写库时落 content_sha256；存量行重开时回填；集合指纹可对账', () => {
+test('POI 内容指纹：内存里算、不落盘；重启后清空（不拿旧数据当事实）', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'travel-hash-'));
   const file = path.join(dir, 'travel.db');
   const poi = {
@@ -120,7 +120,7 @@ test('POI 内容指纹：写库时落 content_sha256；存量行重开时回填�
   let db = createDb(file);
   db.upsertPoi(poi);
   const h1 = db.poiContentHash('H1');
-  assert.match(h1, /^[0-9a-f]{64}$/, '写入时应落 64 位指纹');
+  assert.match(h1, /^[0-9a-f]{64}$/, '写入时应算出 64 位指纹');
 
   // 字段变了 ⇒ 指纹变
   db.upsertPoi({ ...poi, rating: '4.9' });
@@ -132,12 +132,10 @@ test('POI 内容指纹：写库时落 content_sha256；存量行重开时回填�
   assert.match(digits.digest, /^[0-9a-f]{64}$/);
   db.close();
 
-  // 模拟存量库：指纹列被置空 ⇒ 重开时应回填
-  const raw = new (require('node:sqlite').DatabaseSync)(file);
-  raw.exec("UPDATE pois SET content_sha256 = NULL WHERE poi_id = 'H1'");
-  raw.close();
+  // 2026-11-25：POI 不再落盘 ⇒ 重开后内存是空的（这是特性：下次用一定重新问上游）
   db = createDb(file);
-  assert.match(db.poiContentHash('H1'), /^[0-9a-f]{64}$/, '重开时应回填存量行指纹');
+  assert.equal(db.getPoi('H1'), null, '重启后不该还有旧 POI（否则数据更新了我们就都是错的）');
+  assert.equal(db.poiDigest('杭州').total, 0);
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });

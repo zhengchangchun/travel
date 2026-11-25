@@ -30,6 +30,7 @@ const itemsRoutes = require('./routes/items');
 const backupRoutes = require('./routes/backup');
 const phoneRoutes = require('./routes/phone');
 const collabRoutes = require('./routes/collab');
+const faresRoutes = require('./routes/fares');
 const photos = require('./featured-photos');
 const homeImg = require('./home-img');
 
@@ -118,6 +119,7 @@ const PAGES = {
   '/settings': 'settings.html',
   '/login': 'login.html',
   '/collab': 'collab.html',
+  '/fares': 'fares.html',
 };
 
 function serveStatic(req, res, pathname, baseDir) {
@@ -165,7 +167,13 @@ function createApp(opts = {}) {
     {
       method: 'GET',
       path: '/api/health',
-      handler: (ctx) => ({ status: 'up', uptime: process.uptime(), cache: ctx.cache.stats() }),
+      handler: (ctx) => ({
+        status: 'up',
+        uptime: process.uptime(),
+        cache: ctx.cache.stats(),
+        // POI 内存缓存读数（2026-11-25）：不落盘，带 TTL，重启即清
+        poiCache: typeof ctx.db.poiCacheStats === 'function' ? ctx.db.poiCacheStats() : null,
+      }),
     },
     {
       method: 'GET',
@@ -194,6 +202,7 @@ function createApp(opts = {}) {
     ...backupRoutes,
     ...phoneRoutes,
     ...collabRoutes,
+    ...faresRoutes,
   ];
 
   const routes = rawRoutes.map((r) => ({ ...r, ...compile(r.path) }));

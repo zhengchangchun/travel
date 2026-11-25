@@ -56,11 +56,10 @@ test('营业时间接口故意不走 ctx.cache（与 /api/poi/detail 不同）',
   assert.match(POI_ROUTE, /cached\(ctx, \(\) => ctx\.amap\.poiDetail/, 'detail 仍走缓存（它是不变的基本信息）');
 });
 
-test('pois 表不加 opentime 列（营业时间不落库）', () => {
-  const schema = DB.match(/CREATE TABLE IF NOT EXISTS pois \([\s\S]*?\n\);/);
-  assert.ok(schema, '缺 pois 建表语句');
-  assert.ok(!/opentime/i.test(schema[0]), 'pois 表不该有 opentime 列（会变的信息不存）');
-  // 前滚也不该加
+test('pois 表已不落盘（营业时间更不可能存）', () => {
+  // 2026-11-25：pois 整张表都不再建了（地点/评分/人均/电话/图片都是上游事实）
+  assert.ok(!/CREATE TABLE IF NOT EXISTS pois \(/.test(DB), 'pois 不该再建表');
+  assert.ok(!/opentime/i.test(DB), 'db.js 里不该出现 opentime（营业时间只实时取）');
   assert.ok(!/ensureColumn\(db, 'pois', 'opentime/.test(DB), '不该给 pois 前滚 opentime 列');
 });
 
