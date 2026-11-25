@@ -98,6 +98,50 @@
     );
   }
 
+  // 时段与预约（2026-11-25）：两个小下拉，选完就存。
+  // 时段＝打算什么时候去（上午/下午/傍晚/晚上）；预约＝要不要提前约。
+  // 两个都是「用户自己的安排」，不是高德的事实 ⇒ 存库（营业时间才是实时取的）。
+  const SLOTS = [
+    { key: '', label: '不排时段' },
+    { key: 'morning', label: '上午' },
+    { key: 'afternoon', label: '下午' },
+    { key: 'evening', label: '傍晚' },
+    { key: 'night', label: '晚上' },
+  ];
+  const BOOKINGS = [
+    { key: 'none', label: '不用预约' },
+    { key: 'needed', label: '建议预约' },
+    { key: 'required', label: '必须预约' },
+  ];
+
+  function slotBookingHtml(pin, handlers) {
+    const slot = String(pin.slot || '');
+    const booking = String(pin.booking || 'none');
+    const slotOpts = SLOTS.map(
+      (s) =>
+        '<option value="' + s.key + '"' + (s.key === slot ? ' selected' : '') + '>' + s.label + '</option>'
+    ).join('');
+    const bookOpts = BOOKINGS.map(
+      (b) =>
+        '<option value="' + b.key + '"' + (b.key === booking ? ' selected' : '') + '>' + b.label + '</option>'
+    ).join('');
+    // 必须预约的给个醒目小标（没约进不去，这是行程里最容易翻车的一条）
+    const warn = booking === 'required' ? '<span class="itin-book-warn" title="没预约进不去">要预约</span>' : '';
+    return (
+      '<div class="itin-slot-row">' +
+      (handlers.onPinSlot
+        ? '<label class="itin-slot"><span>时段</span>' +
+          '<select class="pin-slot" title="打算什么时候去">' + slotOpts + '</select></label>'
+        : '') +
+      (handlers.onPinBooking
+        ? '<label class="itin-slot"><span>预约</span>' +
+          '<select class="pin-booking" title="要不要提前预约">' + bookOpts + '</select></label>' +
+          warn
+        : '') +
+      '</div>'
+    );
+  }
+
   function render(container, pins, handlers) {
     handlers = handlers || {};
     if (!container) return;
@@ -188,6 +232,9 @@
         '</div>' +
         '<div class="poi-addr">' + esc(pin.address || '（无详细地址）') + '</div>' +
         (meta.length ? '<div class="poi-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+        // 时段与预约（2026-11-25）：两个小下拉，选完就存。
+        // 时段＝打算什么时候去；预约＝要不要提前约（没约进不去的那种）。
+        (handlers.onPinSlot || handlers.onPinBooking ? slotBookingHtml(pin, handlers) : '') +
         NoteBox.html(note);
 
       if (leg) {
@@ -209,6 +256,24 @@
       if (up) up.onclick = (e) => { e.stopPropagation(); handlers.onMove(index, -1); };
       if (down) down.onclick = (e) => { e.stopPropagation(); handlers.onMove(index, 1); };
       if (del) del.onclick = (e) => { e.stopPropagation(); handlers.onRemove(pin); };
+
+      // 时段 / 预约：选完就存（不弹确认，改错了再选一次就行）
+      const slotSel = li.querySelector('.pin-slot');
+      if (slotSel && handlers.onPinSlot) {
+        slotSel.onchange = (e) => {
+          e.stopPropagation();
+          handlers.onPinSlot(pin, slotSel.value);
+        };
+        slotSel.onclick = (e) => e.stopPropagation();
+      }
+      const bookSel = li.querySelector('.pin-booking');
+      if (bookSel && handlers.onPinBooking) {
+        bookSel.onchange = (e) => {
+          e.stopPropagation();
+          handlers.onPinBooking(pin, bookSel.value);
+        };
+        bookSel.onclick = (e) => e.stopPropagation();
+      }
 
       if (handlers.onNote) {
         NoteBox.wire(li, {

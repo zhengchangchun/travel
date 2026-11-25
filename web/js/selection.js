@@ -51,6 +51,9 @@
       day: Number(pin.day) || 1,
       // 待规划（2026-11-24）：planned = 已排进日程；wish = 先收着、还没排
       status: pin.status === 'wish' ? 'wish' : 'planned',
+      // 预约与时间段（2026-11-25）：用户自己的安排
+      booking: pin.booking === 'needed' || pin.booking === 'required' ? pin.booking : 'none',
+      slot: pin.slot || '',
     };
   }
 

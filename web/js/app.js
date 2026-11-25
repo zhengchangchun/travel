@@ -1223,6 +1223,42 @@
     }
   }
 
+  // 时段 / 预约（2026-11-25）：用户自己的安排，选完就存。
+  // 与「营业时间」不同 —— 那个是高德的事实、每次实时取；这两个是「我打算怎么安排」。
+  function pinRowId(pin) {
+    if (!pin) return null;
+    const raw = pin.pinId != null ? pin.pinId : Number(String(pin.id || '').replace(/^pin:/, ''));
+    return Number.isFinite(raw) ? raw : null;
+  }
+
+  async function onPinSlot(pin, slot) {
+    const id = pinRowId(pin);
+    if (id == null) return;
+    try {
+      await API.updatePinSlot(id, slot || '');
+      await reloadSelection();
+      if (state.view === 'itinerary') renderItinerary();
+      const label = { morning: '上午', afternoon: '下午', evening: '傍晚', night: '晚上' }[slot] || '';
+      UI.setStatus(label ? '「' + pin.name + '」排在' + label : '「' + pin.name + '」不排时段了');
+    } catch (err) {
+      UI.setStatus('存时段失败：' + human(err));
+    }
+  }
+
+  async function onPinBooking(pin, booking) {
+    const id = pinRowId(pin);
+    if (id == null) return;
+    try {
+      await API.updatePinBooking(id, booking || 'none');
+      await reloadSelection();
+      if (state.view === 'itinerary') renderItinerary();
+      const label = { needed: '建议提前预约', required: '必须提前预约（没约进不去）' }[booking] || '';
+      UI.setStatus(label ? '「' + pin.name + '」' + label : '「' + pin.name + '」不用预约');
+    } catch (err) {
+      UI.setStatus('存预约失败：' + human(err));
+    }
+  }
+
   function renderItinerary() {
     const list = orderedPins();
     syncOrderToMap();
@@ -1236,6 +1272,8 @@
       onRemove: onRemoveFromItinerary,
       onNote: onEditPinNote,
       onPinDay: onPinDay,
+      onPinSlot: onPinSlot,
+      onPinBooking: onPinBooking,
       onReorder: onReorderItinerary,
       onCancel: renderItinerary,
       onLegSelect: (index) => { if (Route) Route.selectLeg(index); },

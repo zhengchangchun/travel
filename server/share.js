@@ -17,6 +17,18 @@ const path = require('node:path');
 
 const DIST = 111.32; // 每度纬度的公里数（近似的等距圆柱投影）
 
+// 时间段与预约的文案（2026-11-25）：分享包/行程单/页面三处共用同一套说法
+const SLOT_LABEL = {
+  morning: '上午',
+  afternoon: '下午',
+  evening: '傍晚',
+  night: '晚上',
+};
+const BOOKING_LABEL = {
+  needed: '建议提前预约',
+  required: '必须提前预约（没约进不去）',
+};
+
 function escHtml(s) {
   return String(s === undefined || s === null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -141,6 +153,9 @@ function buildPayload({ trip, city, stops, base, labels, when, maps, mapErrors, 
     tel: s.tel || '',
     photo: s.photo || '',
     note: s.note || '',
+    // 预约与时间段（2026-11-25）：用户自己的安排，跟着分享包/行程单一起走
+    booking: s.booking || 'none',
+    slot: s.slot || '',
     // 这个点下面的小清单（到了这地方必去/要做的事）
     items: (((itemsByPin || {})[Number(s.id)]) || []).map((it) => ({ text: it.text, done: !!it.done })),
     url: markerUrl(s),
@@ -230,6 +245,12 @@ function buildText(payload) {
     lines.push(`${s.seq}. ${s.name}${meta.length ? '（' + meta.join(' · ') + '）' : ''}`);
     if (s.address) lines.push(`   ${s.address}`);
     if (s.tel) lines.push(`   ☎ ${s.tel}`);
+    // 时间段与预约（2026-11-25）：这两样是「到了现场才知道要不要提前约」的关键信息，
+    // 分享给同行的人时必须带上，否则对方不知道什么时候去、要不要先约
+    if (s.slot) lines.push(`   时段：${SLOT_LABEL[s.slot] || s.slot}`);
+    if (s.booking && s.booking !== 'none') {
+      lines.push(`   预约：${BOOKING_LABEL[s.booking] || s.booking}`);
+    }
     if (s.note) lines.push(`   备注：${s.note}`);
     if (s.items && s.items.length) {
       lines.push('   要去的：' + s.items.map((i) => (i.done ? '✓ ' : '· ') + i.text).join('，'));
@@ -378,6 +399,9 @@ function buildHtml(payload) {
       if (s.categoryLabel) meta.push(escHtml(s.categoryLabel));
       if (s.rating) meta.push('★' + escHtml(s.rating));
       if (s.cost) meta.push('¥' + escHtml(s.cost));
+      // 时间段与预约（2026-11-25）：分享页上也看得到「什么时候去 / 要不要先约」
+      if (s.slot) meta.push(escHtml(SLOT_LABEL[s.slot] || s.slot));
+      if (s.booking && s.booking !== 'none') meta.push(escHtml(BOOKING_LABEL[s.booking] || s.booking));
       const thumb = s.photo
         ? `<img class="thumb" src="${escHtml(s.photo)}" alt="" loading="lazy" onerror="this.remove()"/>`
         : '';

@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS pins (
   photo       TEXT,
   note        TEXT,
   sort_order  INTEGER NOT NULL DEFAULT 0,
+  -- 预约与时间段（2026-11-25）：用户自己的安排，不是高德的事实
+  booking     TEXT NOT NULL DEFAULT 'none',
+  slot        TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -242,6 +245,10 @@ const DEFAULT_CATEGORY_LABELS = {
   play: '游玩',
 };
 
+// 时间段与预约的文案（2026-11-25）：与 server/share.js 同一套说法（行程单/分享包/页面三处一致）
+const SLOT_LABEL = { morning: '上午', afternoon: '下午', evening: '傍晚', night: '晚上' };
+const BOOKING_LABEL = { needed: '建议提前预约', required: '必须提前预约（没约进不去）' };
+
 function toNumber(value) {
   return typeof value === 'bigint' ? Number(value) : value;
 }
@@ -335,6 +342,12 @@ function createDb(filePath) {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
   ensureColumn(db, 'pins', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
+  // 预约与时间段（2026-11-25）：这两样是**用户自己的安排**，不是高德的事实 ⇒ 存库。
+  //   booking：none（不用预约）/ needed（建议预约）/ required（必须预约，没约进不去）
+  //   slot：morning / afternoon / evening / night（打算什么时候去）
+  // 营业时间不在这里 —— 那个会变，每次实时取（见 /api/poi/business）。
+  ensureColumn(db, 'pins', 'booking', "booking TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn(db, 'pins', 'slot', 'slot TEXT');
   // 行程自己的备注（「先吃饭再逛」这类整条行程的话）—— 每条地点的备注在 pins.note
   ensureColumn(db, 'trips', 'note', 'note TEXT');
   // 一城可多趟：主题（比如「西线＋东线」）与归属用户
@@ -495,6 +508,9 @@ function createDb(filePath) {
     updatePinNote: db.prepare('UPDATE pins SET note = ? WHERE id = ?'),
     updatePinDay: db.prepare('UPDATE pins SET day = ? WHERE id = ?'),
     updatePinStatus: db.prepare('UPDATE pins SET status = ? WHERE id = ?'),
+    // 预约与时间段（2026-11-25）：用户自己的安排
+    updatePinBooking: db.prepare('UPDATE pins SET booking = ? WHERE id = ?'),
+    updatePinSlot: db.prepare('UPDATE pins SET slot = ? WHERE id = ?'),
 
     // ---- T4 POI 缓存表 ----
     getPoiRow: db.prepare('SELECT * FROM pois WHERE poi_id = ?'),
@@ -1199,6 +1215,22 @@ function createDb(filePath) {
       const info = stmts.updatePinNote.run(note, id);
       return { changes: info.changes, pin: stmts.getPin.get(id) };
     },
+    // 预约：none / needed / required（只认这三个值，别的当 none）
+    updatePinBooking(id, booking) {
+      const raw = String(booking == null ? '' : booking).trim();
+      const next = raw === 'needed' || raw === 'required' ? raw : 'none';
+      const info = stmts.updatePinBooking.run(next, Number(id));
+      if (!info.changes) return { updated: false, pin: null };
+      return { updated: true, pin: stmts.getPin.get(Number(id)) };
+    },
+    // 时间段：morning / afternoon / evening / night；传空 = 清掉（不排时段）
+    updatePinSlot(id, slot) {
+      const raw = String(slot == null ? '' : slot).trim();
+      const next = ['morning', 'afternoon', 'evening', 'night'].includes(raw) ? raw : null;
+      const info = stmts.updatePinSlot.run(next, Number(id));
+      if (!info.changes) return { updated: false, pin: null };
+      return { updated: true, pin: stmts.getPin.get(Number(id)) };
+    },
 
     // 整条行程的备注（空字符串也当成「写了个空的」，存 NULL 更干净）
     updateTripTitle(id, title) {
@@ -1495,6 +1527,9 @@ function createDb(filePath) {
         const meta = [];
         if (pin.rating) meta.push(`★${pin.rating}`);
         if (pin.cost) meta.push(`¥${pin.cost}`);
+        // 时间段与预约（2026-11-25）：行程单（.md 导出）也要带上
+        if (pin.slot) meta.push(SLOT_LABEL[pin.slot] || pin.slot);
+        if (pin.booking && pin.booking !== 'none') meta.push(BOOKING_LABEL[pin.booking] || pin.booking);
         const suffix = meta.length ? `（${meta.join(' · ')}）` : '';
         lines.push(`${seq}. ${pin.name} — ${pin.address || '（无详细地址）'}${suffix}`);
       });

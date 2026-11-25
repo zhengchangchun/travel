@@ -445,6 +445,22 @@ module.exports = [
         }
         out = ctx.db.updatePinStatus(pin.id, next).pin;
       }
+      // 预约（2026-11-25）：none / needed / required —— 用户自己的安排，不是高德的事实
+      if (b.booking !== undefined) {
+        const next = String(b.booking);
+        if (!['none', 'needed', 'required'].includes(next)) {
+          throw new ctx.HttpError(400, 'BAD_REQUEST', 'booking 只能是 none / needed / required');
+        }
+        out = ctx.db.updatePinBooking(pin.id, next).pin;
+      }
+      // 时间段（2026-11-25）：morning / afternoon / evening / night；空串/null = 不排时段
+      if (b.slot !== undefined) {
+        const next = b.slot == null ? '' : String(b.slot);
+        if (next !== '' && !['morning', 'afternoon', 'evening', 'night'].includes(next)) {
+          throw new ctx.HttpError(400, 'BAD_REQUEST', 'slot 只能是 morning / afternoon / evening / night');
+        }
+        out = ctx.db.updatePinSlot(pin.id, next).pin;
+      }
       return out || ctx.db.getPin(pin.id);
     },
   },
