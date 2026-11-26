@@ -190,7 +190,7 @@ async function fetchAndIngest(ctx, { url, city, save, hooks, userId }) {
 }
 
 // 一次粘多条链接（2026-11-24，对标圆周旅迹 5.0 的「多条整合解析」）：
-// 逐条抓、逐条落库，**一条失败不影响其他条**，最后把每条的结果如实报回去。
+// 逐条抓、逐条落库，一条失败不影响其他条，最后把每条的结果如实报回去。
 // 上限 10 条（再多就是刷配额了）；同一条链接重复出现只抓一次。
 const FETCH_MANY_MAX = 10;
 
@@ -588,8 +588,14 @@ module.exports = [
 
       const rows = [];
       const errors = [];
-      let calls = 0; // 高德调用次数
+      let calls = 0; // 高德搜索池调用次数
+      let geocodeCalls = 0; // 地理编码池调用次数（搜索池用尽时的兜底）
       let osmCalls = 0; // OSM 兜底调用次数
+      // 锚点：同一条笔记里已经确认的点。用来给 geocode 兜底做距离校验 ——
+      // 实测笔记写「河坊街吃景阳观」，geocode 把「景阳观」解到了 15km 外的余杭区同名 POI。
+      // 先跑一轮拿到可信点，再用它们当锚点重跑那些「只有坐标」的。
+      const anchors = [];
+      const pending = []; // 需要第二轮（带锚点）重试的
       for (const name of names) {
         let hit = null;
         let amapErr = null;
@@ -601,6 +607,33 @@ module.exports = [
           } catch (err) {
             // 配额/网络失败先记下，再让 OSM 兜底；两条都不成才如实报错（不写假点）
             amapErr = (err && err.message) || String(err);
+          }
+          // 搜索池用尽时走地理编码池（geocode/geo + regeo）。
+          // 2026-11-25 实测：place/* 报 10044 时 geocode/* 连续 40 次全成功。
+          // 这是「按笔记搜地方」在额度用尽时还能跑通的关键一跳。
+          const quotaOut = amapErr && /OVER_LIMIT|CALL_LIMIT|QPS/i.test(amapErr);
+          if (!hit && quotaOut && typeof ctx.amap.searchPoiByGeocode === 'function') {
+            try {
+              geocodeCalls += 1;
+              // 带上**已经确认**的锚点：geocode 只按字面匹配，不知道上下文，
+              // 实测会把「景阳观」解到 16km 外的余杭区同名 POI。
+              const res = await ctx.amap.searchPoiByGeocode({
+                city,
+                keywords: name,
+                anchors: anchors.length ? anchors : null,
+              });
+              if (res && res.pois && res.pois.length) {
+                hit = Object.assign({}, res.pois[0], {
+                  source: res.via === 'regeo' ? 'amap-regeo' : 'amap-geocode',
+                });
+                amapErr = null;
+              } else if (res && res.rejected) {
+                // 同名异地：不落错点，但要把原因记下来（用户能看到为什么没补上）
+                amapErr = res.rejected;
+              }
+            } catch (err) {
+              /* 地理编码也不成：继续往下走 OSM */
+            }
           }
         }
         if (!hit && geocoder !== 'amap' && ctx.osm && typeof ctx.osm.searchOsm === 'function') {
@@ -617,6 +650,13 @@ module.exports = [
           }
         }
         if (!hit) {
+          // 只有坐标（geocode 退路）的点先挂起：等第一轮跑完拿到锚点，再带锚点重试一次。
+          // 为什么不在这一轮就落：此时还不知道同一条笔记里其他点在哪，
+          // 无法判断这个坐标是不是同名异地（实测「景阳观」被解到 15km 外的余杭区）。
+          if (amapErr && /同名异地/.test(amapErr)) {
+            pending.push({ name, reason: amapErr });
+            continue;
+          }
           rows.push({ name, city, resolved_at: null });
           if (amapErr) pushErr(errors, name, amapErr);
           else pushErr(errors, name, '没查到这个地名');
@@ -633,8 +673,55 @@ module.exports = [
           rating: hit.rating,
           category: hit.category,
           photo: hit.photo,
-          source: hit.source === 'osm' ? 'osm' : 'amap',
+          source: hit.source === 'osm' ? 'osm' : hit.source === 'amap-regeo' ? 'amap-regeo' : hit.source === 'amap-geocode' ? 'amap-geocode' : 'amap',
           resolved_at: resolvedAt,
+        });
+        // 有真坐标的点当锚点（regeo 的 POI 与 OSM 都可信；geocode 退路的不算）
+        if (Number.isFinite(hit.lng) && Number.isFinite(hit.lat) && hit.source !== 'amap-geocode') {
+          anchors.push({ name, lng: hit.lng, lat: hit.lat });
+        }
+      }
+
+      // 第二轮：带锚点重试那些「同名异地」被丢掉的
+      if (pending.length && anchors.length && typeof ctx.amap.searchPoiByGeocode === 'function') {
+        for (const item of pending) {
+          try {
+            geocodeCalls += 1;
+            const res = await ctx.amap.searchPoiByGeocode({
+              city,
+              keywords: item.name,
+              anchors,
+            });
+            if (res && res.pois && res.pois.length) {
+              const hit = res.pois[0];
+              rows.push({
+                name: item.name,
+                poi_name: hit.name,
+                city,
+                poi_id: hit.id,
+                address: hit.address,
+                lng: hit.lng,
+                lat: hit.lat,
+                rating: hit.rating,
+                category: hit.category,
+                photo: hit.photo,
+                source: res.via === 'regeo' ? 'amap-regeo' : 'amap-geocode',
+                resolved_at: resolvedAt,
+              });
+              continue;
+            }
+            rows.push({ name: item.name, city, resolved_at: null });
+            pushErr(errors, item.name, (res && res.rejected) || item.reason || '没查到这个地名');
+          } catch (err) {
+            rows.push({ name: item.name, city, resolved_at: null });
+            pushErr(errors, item.name, (err && err.message) || String(err));
+          }
+        }
+      } else if (pending.length) {
+        // 没有锚点（整条笔记一个可信点都没有）⇒ 不能判同名异地，如实报没补上
+        pending.forEach((item) => {
+          rows.push({ name: item.name, city, resolved_at: null });
+          pushErr(errors, item.name, item.reason || '没查到这个地名');
         });
       }
       const places = ctx.db.replaceNotePlaces(id, rows);
@@ -644,10 +731,13 @@ module.exports = [
         names,
         places,
         calls,
+        geocode_calls: geocodeCalls,
         osm_calls: osmCalls,
         resolved: places.filter((p) => p.poi_id).length,
         by_source: {
           amap: places.filter((p) => p.source === 'amap').length,
+          amap_regeo: places.filter((p) => p.source === 'amap-regeo').length,
+          amap_geocode: places.filter((p) => p.source === 'amap-geocode').length,
           osm: places.filter((p) => p.source === 'osm').length,
         },
         errors,

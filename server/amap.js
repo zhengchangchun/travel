@@ -237,15 +237,18 @@ async function cityBoundary(city) {
 }
 
 // ---- 多 key 轮换（2026-11-25）----
-// 高德配额是**按 key 按月**算的（个人开发者基础搜索 5000 次/月）。一个 key 用尽就换下一个，
+// 高德配额是按 key、按服务大类算的。一个 key 的某个服务用尽就换下一个 key，
 // 不用重启、不用改代码。
 //
-// 口径：
+// 口径（2026-11-25 实测 + 官方错误码表）：
 //   · 只有「配额类」错误才换 key（USER_DAILY_QUERY_OVER_LIMIT / CALL_LIMIT / QPS 超限）；
 //     参数错、key 无效这类换 key 也没用，直接抛。
+//   · 用尽状态必须按「接口族」分开记：`place/*`（搜索）与 `geocode/*`（地理编码）
+//     是两个独立的池子 —— 搜索用尽时地理编码通常还能用。早先只按 key 记，
+//     多 key 时搜索一用尽就把整个 key 标死，连还能用的 geocode 一起跳过（真 bug，已修）。
 //   · 换过的 key 记下来（exhausted），下次直接从下一个开始，不每次都撞一遍。
 //   · 全部用尽 ⇒ 抛原来的配额错误（调用方照旧能识别）。
-//   · 进程重启后 exhausted 清空（配额是按月的，重启后重试一次是合理的）。
+//   · 进程重启后 exhausted 清空（重启后重试一次是合理的）。
 const QUOTA_INFOS = [
   'USER_DAILY_QUERY_OVER_LIMIT',
   'DAILY_QUERY_OVER_LIMIT',
@@ -254,7 +257,7 @@ const QUOTA_INFOS = [
   'USER_QUERY_OVER_LIMIT',
 ];
 
-// key → 用尽时间（毫秒）。只放内存，不落盘。
+// `${key}|${family}` → 用尽时间（毫秒）。只放内存，不落盘。
 const exhaustedKeys = new Map();
 // 下次从哪个 key 开始（轮询起点）
 let keyCursor = 0;
@@ -264,6 +267,17 @@ function isQuotaInfo(info) {
   return QUOTA_INFOS.some((q) => s.includes(q));
 }
 
+// 接口族：高德按「服务大类」分池，同一个池子里的接口共享额度。
+// /v3/place/* 与 /v5/place/* 是同一个搜索池；/v3/geocode/* 是地理编码池；以此类推。
+function familyOf(pathname) {
+  const m = String(pathname || '').match(/^\/v\d+\/([a-z]+)\//i);
+  return m ? m[1].toLowerCase() : 'other';
+}
+
+function exhaustedId(key, family) {
+  return key + '|' + family;
+}
+
 function allKeys() {
   const cfg = config();
   const list = Array.isArray(cfg.amap.webServiceKeys) ? cfg.amap.webServiceKeys : [];
@@ -271,8 +285,8 @@ function allKeys() {
   return cfg.amap.webServiceKey ? [cfg.amap.webServiceKey] : [];
 }
 
-// 按轮询顺序给出候选 key：从 cursor 开始转一圈，跳过已用尽的
-function candidateKeys() {
+// 按轮询顺序给出候选 key：从 cursor 开始转一圈，跳过这个接口族已用尽的
+function candidateKeys(family) {
   const keys = allKeys();
   if (!keys.length) return [];
   const n = keys.length;
@@ -280,30 +294,41 @@ function candidateKeys() {
   const out = [];
   for (let i = 0; i < n; i += 1) {
     const k = keys[(start + i) % n];
-    if (!exhaustedKeys.has(k)) out.push(k);
+    if (!exhaustedKeys.has(exhaustedId(k, family))) out.push(k);
   }
   // 全用尽了：把全部 key 都返回（让调用方拿到真实的配额错误，而不是「没 key」）
   return out.length ? out : keys.slice();
 }
 
-function markExhausted(key) {
-  exhaustedKeys.set(key, Date.now());
+function markExhausted(key, family) {
+  exhaustedKeys.set(exhaustedId(key, family), Date.now());
   const keys = allKeys();
   const at = keys.indexOf(key);
   if (at >= 0) keyCursor = (at + 1) % Math.max(1, keys.length);
 }
 
-// 给 /api/health 与调试用：每个 key 的状态（**不返回 key 本身**，只给尾号）
+// 给 /api/health 与调试用：每个 key 的状态（不返回 key 本身，只给尾号）
+// families 列出这个 key 在哪些接口族上已用尽 —— 搜索用尽不代表地理编码也用尽。
 function keyStatus() {
   const keys = allKeys();
+  const families = Array.from(
+    new Set(Array.from(exhaustedKeys.keys()).map((id) => String(id).split('|')[1]))
+  ).sort();
   return {
     total: keys.length,
-    available: keys.filter((k) => !exhaustedKeys.has(k)).length,
-    keys: keys.map((k) => ({
-      tail: String(k).slice(-4),
-      exhausted: exhaustedKeys.has(k),
-      exhaustedAt: exhaustedKeys.has(k) ? new Date(exhaustedKeys.get(k)).toISOString() : null,
-    })),
+    available: keys.filter((k) => !families.some((f) => exhaustedKeys.has(exhaustedId(k, f)))).length,
+    families,
+    keys: keys.map((k) => {
+      const out = families.filter((f) => exhaustedKeys.has(exhaustedId(k, f)));
+      return {
+        tail: String(k).slice(-4),
+        exhausted: out.length > 0,
+        exhaustedFamilies: out,
+        exhaustedAt: out.length
+          ? new Date(Math.max(...out.map((f) => exhaustedKeys.get(exhaustedId(k, f))))).toISOString()
+          : null,
+      };
+    }),
   };
 }
 
@@ -314,7 +339,8 @@ function resetKeyStatus() {
 }
 
 async function amapGet(pathname, params = {}) {
-  const keys = candidateKeys();
+  const family = familyOf(pathname);
+  const keys = candidateKeys(family);
   if (!keys.length) {
     throw new AmapError('没有配置高德 Web 服务 key', { infocode: 'NO_KEY', info: 'NO_KEY' });
   }
@@ -346,9 +372,10 @@ async function amapGet(pathname, params = {}) {
 
     const info = json.info || json.infocode || 'UNKNOWN';
     lastErr = new AmapError(String(info), { infocode: json.infocode, info: json.info });
-    // 配额类错误 ⇒ 这个 key 用尽了，换下一个；其它错误（参数/key 无效）换也没用
+    // 配额类错误 ⇒ 这个 key 的这个接口族用尽了，换下一个；
+    // 其它错误（参数/key 无效）换也没用
     if (isQuotaInfo(info) && keys.length > 1) {
-      markExhausted(key);
+      markExhausted(key, family);
       continue;
     }
     throw lastErr;
@@ -493,7 +520,246 @@ async function poiDetail(id) {
   return pois.length ? normalizePoi(pois[0]) : null;
 }
 
-// 营业时间（2026-11-25）：**只实时取、不落库**。
+// ---------- 搜索池用尽时的兜底：geocode/geo + geocode/regeo（2026-11-25） ----------
+//
+// 为什么要有它：高德按服务大类分池。`place/*`（搜索）用尽时，`geocode/*`（地理编码）
+// 通常还有额度 —— 实测同一天同一个 key：place/text 报 10044，而 geocode/geo 与
+// geocode/regeo 连续 40 次全成功。所以「按名字找一个地方」这件事，搜索池没了也还能做。
+//
+// 两步：
+//   ① geocode/geo 把名字换成坐标（level 是「兴趣点/门牌号」时坐标本身就可信）
+//   ② geocode/regeo 拿这个坐标周边 30 个 POI（extensions=all），按名字匹配
+// ② 比 ① 好：它给的是真 POI（有 id / 电话 / 类型 / 距离），能点开详情；
+// ① 只在 ② 没匹配上时当「至少落一个点」的退路。
+//
+// 代价（必须如实说）：
+//   · 只能「按名字找」，不能「按分类浏览」—— regeo 给的是坐标周边，不是全城
+//   · 名字对不上就真的没有（不拿别的点凑，错点比没点更坏）
+//   · geocode/geo 对部分商户名会返 ENGINE_RESPONSE_DATA_ERROR（实测楼外楼/知味观/外婆家），
+//     这是高德自己的数据问题，不是配额，重试无用
+const GEOCODE_MIN_INTERVAL_MS = 300;
+let lastGeocodeAt = 0;
+
+function sleepMs(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// 名字归一：去空格/标点、小写（与 geocode-osm 的 normName 同口径，但不跨模块 require）
+function normPlaceName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[\s\u3000]/g, '')
+    .replace(/[()（）:：·\-_/、,，.。!！?？'"“”‘’「」【】\[\]]/g, '');
+}
+
+// 名字匹配等级（0 最好）：给排序用，不只是「匹不匹配」
+//   0 = 完全相等
+//   1 = 查询词是名字的前缀（「河坊街」vs「河坊街景区」、「灵隐寺」vs「灵隐寺-东经幢」）
+//   2 = 查询词被名字包含（「断桥残雪」vs「杭州西湖风景名胜区-断桥残雪」）
+//   3 = 不匹配
+// 为什么要分前缀与包含：实测搜「河坊街」时，「景阳观(河坊街店)」距离 42m、
+// 而「河坊街景区」102m —— 只按「包含 + 距离」会把餐馆顶到景区前面。
+function nameMatchRank(query, name) {
+  const q = normPlaceName(query);
+  const n = normPlaceName(name);
+  if (q.length < 2 || !n) return 3;
+  if (n === q) return 0;
+  if (n.startsWith(q)) return 1;
+  if (q.startsWith(n) && n.length >= 2) return 1;
+  // 包含匹配只对 ≥3 字的查询词开放：「西湖」会把「西湖国宾馆」「西湖文化广场」全命中，太宽
+  if (q.length >= 3 && n.includes(q)) return 2;
+  if (n.length >= 3 && q.includes(n)) return 2;
+  return 3;
+}
+
+// 「这两个名字是不是同一个地方」（保留旧接口，语义＝等级 < 3）
+function nameMatches(query, name) {
+  return nameMatchRank(query, name) < 3;
+}
+
+// regeo 的 pois[] → 内部 POI 形状。注意它没有 typecode，只有 type 文本
+// （「风景名胜;风景名胜;寺庙道观」）⇒ 分类走 classifyTypeText。
+function normalizeRegeoPoi(raw = {}) {
+  const location = String(raw.location || '');
+  const [lngStr, latStr] = location.split(',');
+  const lng = Number(lngStr);
+  const lat = Number(latStr);
+  return {
+    id: firstString(raw.id),
+    name: firstString(raw.name),
+    address: firstString(raw.address),
+    lng: Number.isFinite(lng) ? lng : null,
+    lat: Number.isFinite(lat) ? lat : null,
+    typecode: '',
+    type: firstString(raw.type),
+    category: classifyTypeText(raw.type),
+    rating: '',
+    cost: '',
+    tel: firstString(raw.tel),
+    opentime: '',
+    photo: '',
+    photos: [],
+    tags: [],
+    distance: Number(raw.distance) || 0,
+    businessArea: firstString(raw.businessarea),
+  };
+}
+
+// 按名字找地方（搜索池用尽时的兜底）。返回 { pois, via, geocode, rejected } 或抛错。
+//   via='regeo'   ⇒ 来自周边 POI（有 id，可点详情）
+//   via='geocode' ⇒ 只有坐标（regeo 没匹配上，但 geocode 的 level 可信）
+//   via='none'    ⇒ 没找到（rejected 说明为什么被丢）
+//
+// anchors（可选）：同一条笔记里已经确认的点 [{lng,lat,name}]。
+// 为什么需要它：geocode/geo 只按字面匹配、不知道上下文 —— 实测笔记里写「河坊街吃景阳观」，
+// geocode 把「景阳观」解到了余杭区（同名 POI，离河坊街 15km）。
+// 所以「level 可信就落点」这条退路必须加一道距离校验：离锚点太远就判可疑、不落点。
+// 用户 2026-11-16 定的口径：错点比没点更坏。
+//
+// 阈值（2026-11-25 实测调过）：默认 10km —— 一趟行程里的点通常都在同一个城区。
+// 实测「景阳观」被解到余杭区，离河坊街 16km，10km 能拦住。
+// 但跨城行程（杭州→乌镇 80km）不能一律拒 ⇒ 阈值自适应：
+// 取「锚点两两最大距离 × 1.5」，且不低于 10km。
+const ANCHOR_BASE_KM = 10;
+const ANCHOR_SPREAD_FACTOR = 1.5;
+
+function kmBetween(lng1, lat1, lng2, lat2) {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (Number(lat2) - Number(lat1)) * rad;
+  const dLng = (Number(lng2) - Number(lng1)) * rad;
+  const mid = ((Number(lat1) + Number(lat2)) / 2) * rad;
+  const x = dLng * Math.cos(mid);
+  return Math.sqrt(x * x + dLat * dLat) * R;
+}
+
+// 锚点允许半径：锚点越散（跨城行程）阈值越宽，但不低于 ANCHOR_BASE_KM
+function anchorRadiusKm(anchors) {
+  const list = Array.isArray(anchors) ? anchors : [];
+  let spread = 0;
+  for (let i = 0; i < list.length; i += 1) {
+    for (let j = i + 1; j < list.length; j += 1) {
+      const d = kmBetween(list[i].lng, list[i].lat, list[j].lng, list[j].lat);
+      if (d > spread) spread = d;
+    }
+  }
+  return Math.max(ANCHOR_BASE_KM, spread * ANCHOR_SPREAD_FACTOR);
+}
+
+async function searchPoiByGeocode({ city, keywords, radius = 1000, anchors = null } = {}) {
+  const name = String(keywords == null ? '' : keywords).trim();
+  if (!name) return { pois: [], via: 'none', geocode: null };
+
+  // ① 名字 → 坐标
+  const wait = GEOCODE_MIN_INTERVAL_MS - (Date.now() - lastGeocodeAt);
+  if (wait > 0) await sleepMs(wait);
+  lastGeocodeAt = Date.now();
+  const geoJson = await amapGet('/v3/geocode/geo', {
+    address: name,
+    city: city || '',
+  });
+  const geocodes = Array.isArray(geoJson.geocodes) ? geoJson.geocodes : [];
+  if (!geocodes.length) return { pois: [], via: 'none', geocode: null };
+
+  // 同名优先：geocode 可能给多条（灵隐寺在西湖区与富阳区各一个）
+  const exact = geocodes.filter((g) => nameMatches(name, g.formatted_address));
+  const g = (exact.length ? exact : geocodes)[0];
+  const [lngStr, latStr] = String(g.location || '').split(',');
+  const lng = Number(lngStr);
+  const lat = Number(latStr);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    return { pois: [], via: 'none', geocode: null };
+  }
+  const geocode = {
+    lng,
+    lat,
+    level: firstString(g.level),
+    address: firstString(g.formatted_address),
+    adcode: firstString(g.adcode),
+  };
+
+  // ② 坐标 → 周边 POI，按名字匹配
+  const wait2 = GEOCODE_MIN_INTERVAL_MS - (Date.now() - lastGeocodeAt);
+  if (wait2 > 0) await sleepMs(wait2);
+  lastGeocodeAt = Date.now();
+  const reJson = await amapGet('/v3/geocode/regeo', {
+    location: lng + ',' + lat,
+    extensions: 'all',
+    radius: Number(radius) || 1000,
+  });
+  const r = reJson && reJson.regeocode;
+  const rawPois = r && Array.isArray(r.pois) ? r.pois : [];
+  const matched = rawPois
+    .filter((p) => nameMatches(name, p.name))
+    .map(normalizeRegeoPoi)
+    // 排序（2026-11-25 实测调过）：
+    //   ① 名字匹配等级（相等 > 前缀 > 包含）—— 搜「河坊街」时「景阳观(河坊街店)」
+    //      距离 42m 但只是包含匹配，不该顶掉 102m 的「河坊街景区」
+    //   ② 有分类的优先 —— 分类空的是「临街院门」「住宅小区」这类，不是用户要找的地方
+    //   ③ 最后才按距离近
+    .sort((a, b) => {
+      const ra = nameMatchRank(name, a.name);
+      const rb = nameMatchRank(name, b.name);
+      if (ra !== rb) return ra - rb;
+      const ca = a.category ? 0 : 1;
+      const cb = b.category ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+      return a.distance - b.distance;
+    });
+
+  if (matched.length) return { pois: matched, via: 'regeo', geocode };
+
+  // ③ regeo 没匹配上：level 是「兴趣点/门牌号」时坐标本身可信，至少落一个点。
+  //    但必须过锚点校验 —— 否则会把「景阳观」落到 15km 外的余杭区同名 POI。
+  const TRUSTED_LEVELS = ['兴趣点', '门牌号'];
+  if (TRUSTED_LEVELS.includes(geocode.level)) {
+    const list = Array.isArray(anchors)
+      ? anchors.filter((a) => a && Number.isFinite(a.lng) && Number.isFinite(a.lat))
+      : [];
+    if (list.length) {
+      const nearest = list
+        .map((a) => ({ name: a.name, km: kmBetween(lng, lat, a.lng, a.lat) }))
+        .sort((x, y) => x.km - y.km)[0];
+      const limit = anchorRadiusKm(list);
+      if (nearest.km > limit) {
+        return {
+          pois: [],
+          via: 'none',
+          geocode,
+          rejected: `离「${nearest.name}」${nearest.km.toFixed(0)}km（超过 ${limit.toFixed(0)}km），判为同名异地（不落错点）`,
+        };
+      }
+    }
+    return {
+      pois: [
+        {
+          id: '',
+          name,
+          address: geocode.address,
+          lng,
+          lat,
+          typecode: '',
+          type: '',
+          category: null,
+          rating: '',
+          cost: '',
+          tel: '',
+          opentime: '',
+          photo: '',
+          photos: [],
+          tags: [],
+          distance: 0,
+          businessArea: '',
+        },
+      ],
+      via: 'geocode',
+      geocode,
+    };
+  }
+  return { pois: [], via: 'none', geocode };
+}
+
+// 营业时间（2026-11-25）：只实时取、不落库。
 // 为什么单独一个函数：营业时间会变（换季、临时闭馆、节假日调整），存进库里第二天就是错的；
 // 而且用户明确要求「每个人上来都能实时读取」。所以这条链不经过任何缓存层。
 //
@@ -808,6 +1074,15 @@ module.exports = {
   capRing,
   poiDetail,
   poiBusiness,
+  searchPoiByGeocode,
+  normalizeRegeoPoi,
+  nameMatches,
+  nameMatchRank,
+  normPlaceName,
+  kmBetween,
+  anchorRadiusKm,
+  ANCHOR_BASE_KM,
+  familyOf,
   normalizePoi,
   classifyType,
   parsePolyline,

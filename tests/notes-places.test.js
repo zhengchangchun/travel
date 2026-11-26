@@ -391,3 +391,117 @@ test('DELETE /api/notes/:id：地点候选一起删（不留孤儿行）', async
     await new Promise((r) => app.server.close(r));
   }
 });
+
+// ---------- 搜索池用尽时的地理编码兜底（2026-11-25） ----------
+
+test('地名补全：搜索池用尽时走 geocode 兜底，来源如实标 amap-regeo', async () => {
+  const geoCalls = [];
+  const app = await startApp({
+    amap: {
+      searchPoi() {
+        throw new Error('USER_DAILY_QUERY_OVER_LIMIT');
+      },
+      async searchPoiByGeocode({ city, keywords, anchors }) {
+        geoCalls.push({ city, keywords, anchors: anchors ? anchors.length : 0 });
+        if (keywords === '灵隐寺') {
+          return {
+            via: 'regeo',
+            geocode: { lng: 120.102352, lat: 30.239963, level: '兴趣点' },
+            pois: [
+              { id: 'B023B17X1Q', name: '灵隐寺-东经幢', address: '法云弄1号', lng: 120.102275, lat: 30.239951, category: 'sight', distance: 7.5 },
+            ],
+          };
+        }
+        return { via: 'none', geocode: null, pois: [] };
+      },
+    },
+    osm: { searchOsm: async () => [] },
+  });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  try {
+    const created = await req(base, 'POST', '/api/notes', {
+      url: 'https://x.com/1',
+      city: '杭州',
+      title: 'T',
+      content: '第一天去灵隐寺',
+    });
+    const r = await req(base, 'POST', '/api/notes/' + created.body.data.id + '/places', { resolve: true });
+    assert.strictEqual(r.status, 200);
+    const d = r.body.data;
+    assert.ok(d.geocode_calls > 0, '要回报地理编码调用次数');
+    assert.strictEqual(d.by_source.amap_regeo, 1, '来源要分开报');
+    const p = d.places.find((x) => x.name === '灵隐寺');
+    assert.strictEqual(p.source, 'amap-regeo', '来源如实标');
+    assert.strictEqual(p.poi_id, 'B023B17X1Q', '要带真 POI id');
+    assert.strictEqual(p.lng, 120.102275);
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('地名补全：锚点两轮 —— 先拿可信点，再用它拦住同名异地', async () => {
+  const geoCalls = [];
+  const app = await startApp({
+    amap: {
+      searchPoi() {
+        throw new Error('USER_DAILY_QUERY_OVER_LIMIT');
+      },
+      async searchPoiByGeocode({ city, keywords, anchors }) {
+        geoCalls.push({ keywords, anchors: anchors ? anchors.map((a) => a.name) : [] });
+        if (keywords === '河坊街') {
+          // 第一轮：河坊街本身能拿到真 POI（当锚点）
+          return {
+            via: 'regeo',
+            geocode: { lng: 120.170888, lat: 30.240244, level: '道路' },
+            pois: [
+              { id: 'B0FFF3DPR8', name: '河坊街景区', address: '河坊街', lng: 120.170888, lat: 30.240244, category: 'sight', distance: 0 },
+            ],
+          };
+        }
+        if (keywords === '景阳观') {
+          // 第一轮没锚点 ⇒ 会落到余杭区；第二轮带锚点 ⇒ 被拒
+          if (!anchors || !anchors.length) {
+            return {
+              via: 'geocode',
+              geocode: { lng: 120.110727, lat: 30.374613, level: '兴趣点', address: '浙江省杭州市余杭区景阳观' },
+              pois: [{ id: '', name: '景阳观', address: '浙江省杭州市余杭区景阳观', lng: 120.110727, lat: 30.374613, category: null, distance: 0 }],
+            };
+          }
+          return {
+            via: 'none',
+            geocode: { lng: 120.110727, lat: 30.374613, level: '兴趣点' },
+            pois: [],
+            rejected: '离「河坊街」16km（超过 10km），判为同名异地（不落错点）',
+          };
+        }
+        return { via: 'none', geocode: null, pois: [] };
+      },
+    },
+    osm: { searchOsm: async () => [] },
+  });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  try {
+    const created = await req(base, 'POST', '/api/notes', {
+      url: 'https://x.com/1',
+      city: '杭州',
+      title: 'T',
+      content: '第一天去河坊街，晚上在景阳观吃饭',
+    });
+    const r = await req(base, 'POST', '/api/notes/' + created.body.data.id + '/places', { resolve: true });
+    const d = r.body.data;
+    const hf = d.places.find((x) => x.name === '河坊街');
+    assert.strictEqual(hf.poi_id, 'B0FFF3DPR8', '河坊街要补上（当锚点）');
+    const jyg = d.places.find((x) => x.name === '景阳观');
+    assert.strictEqual(jyg.poi_id, null, '景阳观离锚点 16km ⇒ 不落错点');
+    assert.ok(
+      d.errors.some((e) => e.name === '景阳观' && /同名异地/.test(e.msg)),
+      '要说清为什么没补上：' + JSON.stringify(d.errors)
+    );
+    // 第二轮确实带了锚点
+    const second = geoCalls.filter((c) => c.keywords === '景阳观');
+    assert.ok(second.length >= 2, '景阳观要被重试一次');
+    assert.ok(second[second.length - 1].anchors.includes('河坊街'), '第二轮要带锚点');
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});

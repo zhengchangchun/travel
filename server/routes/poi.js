@@ -78,12 +78,31 @@ module.exports = [
       if (Array.isArray(remote) && remote.length) return remote;
       const hit = localHit();
       if (hit.length) return hit;
-      // 高德 Web 服务配额用尽时，走**高德网页版**（网页端自己的配额，与 Web 服务分开）。
-      // 2026-11-25：这是「不申请新 key 也能继续搜」的唯一一条路。
-      // 代价：慢（开一次页面 10–25 秒）、严格限速（默认 8 秒/次）、会触发风控。
-      // 所以只用于「用户主动搜一个词」这种低频场景，不用于批量采集。
+      // 高德 Web 服务搜索池用尽时，先走地理编码池（geocode/geo + regeo）。
+      // 2026-11-25 实测：place/* 报 10044 时 geocode/* 连续 40 次全成功 —— 这是
+      // 「不申请新 key、不等明天」就能继续按名字找地方的那条路。
+      // 代价：只能按名字找（不能按分类浏览），名字对不上就真没有。
       const kw = String(keywords == null ? '' : keywords).trim();
       const quotaOut = remoteError && /OVER_LIMIT|CALL_LIMIT|QPS/i.test(String(remoteError.message || ''));
+      if (quotaOut && kw.length >= 2 && ctx.amap && typeof ctx.amap.searchPoiByGeocode === 'function') {
+        try {
+          const res = await ctx.amap.searchPoiByGeocode({ city: params.city, keywords: kw });
+          if (res && res.pois && res.pois.length) {
+            return res.pois.map((p) =>
+              Object.assign({}, p, {
+                // 如实标来源：这是地理编码池给的，不是搜索池
+                source: res.via === 'regeo' ? 'amap-regeo' : 'amap-geocode',
+                category: p.category || categoryOfTypecode(p.typecode),
+              })
+            );
+          }
+        } catch (err) {
+          /* 地理编码也不成：继续往下走网页版 / OSM */
+        }
+      }
+      // 再不行走高德网页版（网页端自己的配额，与 Web 服务分开）。
+      // 代价：慢（开一次页面 10–25 秒）、严格限速（默认 8 秒/次）、会触发风控。
+      // 所以只用于「用户主动搜一个词」这种低频场景，不用于批量采集。
       if (quotaOut && kw.length >= 2 && ctx.amapWeb && typeof ctx.amapWeb.searchByWeb === 'function') {
         try {
           const web = await ctx.amapWeb.searchByWeb({ keyword: kw, city: params.city });
@@ -146,9 +165,9 @@ module.exports = [
     },
   },
   {
-    // 营业时间（2026-11-25）：**实时取、不缓存、不落库**。
+    // 营业时间（2026-11-25）：实时取、不缓存、不落库。
     // 用户口径：「最好不要缓存 每个人上来都能实时读取」—— 营业时间会变（换季/临时闭馆/节假日），
-    // 存下来第二天就是错的。所以这里**故意不走 ctx.cache**（与 /api/poi/detail 不同）。
+    // 存下来第二天就是错的。所以这里故意不走 ctx.cache（与 /api/poi/detail 不同）。
     // 拿不到就返回 { available:false }，前端不显示这一行（不显示空壳）。
     method: 'GET',
     path: '/api/poi/business',
@@ -174,7 +193,7 @@ module.exports = [
           id: poiId,
           quota,
           reason: quota
-            ? '高德这个月的查询额度用完了（下月 1 日恢复）· 营业时间下个月再看'
+            ? '高德今天的查询额度用完了（明天 0 点恢复）· 营业时间明天再看'
             : reason || '高德没有这个地点的营业时间',
         };
       }
@@ -192,7 +211,7 @@ module.exports = [
   },
   {
     // 点地图任意处问「这里是哪」（P19）。
-    // 口径：**主信息一定对得上点击处** ——
+    // 口径：主信息一定对得上点击处 ——
     //   ① 库里有点就在 25m 内（基本就是点在它上面）⇒ 用它当主名，零调用
     //   ② 否则用逆地理编码（搜索类配额用尽时它通常还有额度）拿这个坐标的地址
     //   ③ 附近的点（我们的 + 高德的）一律只进 nearby 列表、标距离，不冒充点击处
